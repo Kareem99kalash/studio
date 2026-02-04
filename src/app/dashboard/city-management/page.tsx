@@ -53,18 +53,58 @@ export default function CityManagementPage() {
 
   useEffect(() => { fetchCities(); }, []);
 
-  const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const rows = (event.target?.result as string).split('\n').slice(1);
-      const parsed = rows.map(row => parseCSVLine(row)).filter(cols => cols.length >= 4);
+ // --- IMPROVED HELPERS ---
+ const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const text = event.target?.result as string;
+    const lines = text.split(/\r?\n/); // Handles both Windows and Mac line endings
+    const rows = lines.slice(1); // Skip header
+    
+    const parsed = rows.map(row => {
+      if (!row.trim()) return null;
+      const cols = parseCSVLine(row);
+      
+      // 🔍 Look for the column that contains "POLYGON"
+      const wktIndex = cols.findIndex(col => col.toUpperCase().includes("POLYGON"));
+      
+      if (wktIndex === -1) return null;
+
+      return {
+        city: cols[0], // Assumes City is 1st column
+        zoneId: cols[1], // Assumes ID is 2nd column
+        name: cols[2], // Assumes Name is 3rd column
+        wkt: cols[wktIndex]
+      };
+    }).filter(item => item !== null);
+
+    if (parsed.length === 0) {
+      alert("❌ Error: No polygons found. Ensure your CSV has a column containing 'POLYGON((...))'");
+    } else {
       setCsvData(parsed);
-      toast({ title: "File Loaded", description: `${parsed.length} zones found.` });
-    };
-    reader.readAsText(file);
+      toast({ title: "File Loaded", description: `${parsed.length} zones successfully identified.` });
+    }
   };
+  reader.readAsText(file);
+};
+
+const parseWKT = (wkt: string) => {
+  try {
+    // 📐 Clean WKT: Removes "POLYGON ((" and "))" to extract just the numbers
+    const cleanWkt = wkt.replace(/^[^(]*\(\s*\(/i, "").replace(/\s*\)\s*\)[^)]*$/, "");
+    const pairs = cleanWkt.split(",");
+    
+    return pairs.map(pair => {
+      const [lng, lat] = pair.trim().split(/\s+/);
+      return { lat: parseFloat(lat), lng: parseFloat(lng) };
+    }).filter(p => !isNaN(p.lat) && !isNaN(p.lng));
+  } catch (e) { 
+    return []; 
+  }
+};
 
   const handleFinalSave = async () => {
     if (!cityName || csvData.length === 0) return;
