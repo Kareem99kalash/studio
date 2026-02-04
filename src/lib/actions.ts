@@ -2,10 +2,10 @@
 
 import { z } from 'zod';
 import { analyzeStoreCoverage } from '@/ai/flows/analyze-store-coverage';
-import { cities } from './data';
 import { parseMarkdownTable } from './utils';
 import type { AnalysisResult } from './types';
 import { analysisSchema } from './types';
+import type { FeatureCollection, Polygon } from 'geojson';
 
 const THRESHOLDS = {
     green: 5, // km
@@ -16,26 +16,23 @@ const BRANCH_COLORS = ['#E53935', '#1E88E5', '#43A047', '#FDD835', '#8E24AA', '#
 
 
 export async function analyzeCoverageAction(
-  values: z.infer<typeof analysisSchema>
+  values: z.infer<typeof analysisSchema>,
+  polygonData: FeatureCollection<Polygon>,
+  cityName: string
 ): Promise<AnalysisResult[]> {
   const validation = analysisSchema.safeParse(values);
   if (!validation.success) {
     throw new Error('Invalid input.');
   }
 
-  const { cityId, stores } = validation.data;
-  const city = cities.find(c => c.id === cityId);
-
-  if (!city) {
-    throw new Error('City not found.');
-  }
+  const { stores } = validation.data;
   
-  const polygonDataStr = JSON.stringify(city.polygons);
+  const polygonDataStr = JSON.stringify(polygonData);
 
   const analysisPromises = stores.map(store => 
     analyzeStoreCoverage({
       storeLocationCoordinates: `${store.lat},${store.lng}`,
-      city: city.name,
+      city: cityName,
       polygonData: polygonDataStr,
     }).then(output => ({
         store,
@@ -63,7 +60,7 @@ export async function analyzeCoverageAction(
     const polygonStyles: Record<string, { fillColor: string; strokeColor: string, fillOpacity: number, strokeWeight: number }> = {};
     const storeColor = BRANCH_COLORS[index % BRANCH_COLORS.length];
 
-    city.polygons.features.forEach(feature => {
+    polygonData.features.forEach(feature => {
         const polygonId = feature.properties.id as string;
         const assignment = polygonAssignments[polygonId];
 

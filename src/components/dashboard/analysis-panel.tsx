@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useContext } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { cities } from '@/lib/data';
+import { CityContext } from '@/context/city-context';
 import type { AnalysisFormValues } from '@/lib/types';
 import { analysisSchema } from '@/lib/types';
 import { Plus, Trash2 } from 'lucide-react';
@@ -21,12 +21,13 @@ type AnalysisPanelProps = {
 };
 
 export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPanelProps) {
+  const { cities } = useContext(CityContext);
   const storeIdCounter = useRef(1);
 
   const form = useForm<AnalysisFormValues>({
     resolver: zodResolver(analysisSchema),
     defaultValues: {
-      cityId: 'erbil',
+      cityId: cities[0]?.id || '',
       stores: [{ id: `store-0`, name: 'Store 1', lat: '36.19', lng: '44.00' }],
     },
   });
@@ -62,6 +63,7 @@ export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPa
                         onCityChange(value);
                       }}
                       defaultValue={field.value}
+                      value={field.value}
                     >
                       <FormControl>
                         <SelectTrigger>

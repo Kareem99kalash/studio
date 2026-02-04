@@ -1,33 +1,21 @@
 'use client';
 
-import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
-import type { City, AnalysisResult } from '@/lib/types';
-import type { AnalysisFormValues } from '@/lib/types';
-import { useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Polygon, Marker, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import type { City, AnalysisResult, AnalysisFormValues } from '@/lib/types';
+import { useEffect } from 'react';
 
-// The Polygon component from @vis.gl/react-google-maps was removed in a recent version.
-// This is a custom component that recreates the functionality using the useMap hook.
-const CustomPolygon = (props: google.maps.PolygonOptions) => {
+// Component to update map view when city changes
+function MapUpdater({ city }: { city: City | undefined }) {
   const map = useMap();
-  const polygonRef = useRef<google.maps.Polygon>();
-
   useEffect(() => {
-    if (!polygonRef.current) {
-      polygonRef.current = new google.maps.Polygon();
+    if (city) {
+      map.setView(city.center, 11);
     }
-    polygonRef.current.setOptions(props);
-    polygonRef.current.setMap(map);
-
-    return () => {
-      if (polygonRef.current) {
-        polygonRef.current.setMap(null);
-      }
-    };
-  }, [map, props]);
-
+  }, [city, map]);
   return null;
-};
-
+}
 
 type CoverageMapProps = {
   selectedCity: City | undefined;
@@ -39,33 +27,45 @@ export function CoverageMap({ selectedCity, stores, analysisResults }: CoverageM
   const getPolygonStyle = (polygonId: string) => {
     for (const result of analysisResults) {
       if (result.polygonStyles[polygonId]) {
-        return result.polygonStyles[polygonId];
+        const { fillColor, fillOpacity, strokeColor, strokeWeight } = result.polygonStyles[polygonId];
+        return {
+          color: strokeColor,
+          weight: strokeWeight,
+          fillColor: fillColor,
+          fillOpacity: fillOpacity,
+        };
       }
     }
     // Default style
     return {
       fillColor: 'gray',
-      strokeColor: 'black',
+      color: 'black',
       fillOpacity: 0.3,
-      strokeWeight: 1,
+      weight: 1,
     };
   };
 
   return (
     <div className="h-full w-full rounded-lg overflow-hidden">
-      <Map
-        mapId="geocoverage-map"
-        defaultCenter={selectedCity?.center}
-        defaultZoom={11}
-        key={selectedCity?.id}
-        gestureHandling={'greedy'}
-        disableDefaultUI={true}
+      <MapContainer
+        center={selectedCity?.center || [51.505, -0.09]}
+        zoom={11}
+        scrollWheelZoom={true}
+        style={{ height: '100%', width: '100%' }}
       >
+        <MapUpdater city={selectedCity} />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+
         {selectedCity?.polygons.features.map(feature => {
+          if (!feature.properties?.id) return null;
           const polygonId = feature.properties.id as string;
           const styleOptions = getPolygonStyle(polygonId);
-          const paths = feature.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
-          return <CustomPolygon key={polygonId} paths={paths} {...styleOptions} />;
+          // Leaflet expects [lat, lng], GeoJSON is [lng, lat]
+          const positions = feature.geometry.coordinates[0].map(([lng, lat]) => [lat, lng] as L.LatLngExpression);
+          return <Polygon key={polygonId} positions={positions} pathOptions={styleOptions} />;
         })}
 
         {stores.map((store) => {
@@ -73,24 +73,25 @@ export function CoverageMap({ selectedCity, stores, analysisResults }: CoverageM
             if (isNaN(position.lat) || isNaN(position.lng)) return null;
 
             const storeResult = analysisResults.find(r => r.store.id === store.id);
+            const color = storeResult?.store.color || '#4285F4';
+
+            const icon = L.divIcon({
+                html: `<div class="w-4 h-4 rounded-full border-2 border-white" style="background-color: ${color}; box-shadow: 0 2px 4px rgba(0,0,0,0.4);"></div>`,
+                className: '', // leaflet adds a default class, we don't want it
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
             
             return (
-                <AdvancedMarker 
+                <Marker 
                     key={store.id} 
-                    position={position} 
+                    position={[position.lat, position.lng]} 
+                    icon={icon}
                     title={store.name}
-                >
-                  <div
-                    className="rounded-full w-4 h-4 border-2 border-white"
-                    style={{ 
-                      backgroundColor: storeResult?.store.color || '#4285F4',
-                      boxShadow: '0px 2px 4px rgba(0,0,0,0.4)'
-                    }}
-                  />
-                </AdvancedMarker>
+                />
             );
         })}
-      </Map>
+      </MapContainer>
     </div>
   );
 }

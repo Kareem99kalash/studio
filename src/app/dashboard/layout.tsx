@@ -19,7 +19,7 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar";
-import { GoogleMapsProvider } from "@/components/google-maps-provider";
+import { CityProvider } from "@/context/city-context";
 import { Home, LayoutGrid, LogOut, Settings, UploadCloud, Users } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
@@ -32,7 +32,7 @@ export default function DashboardLayout({
   const user = { name: "Admin User", email: "admin@geocoverage.com", role: "admin", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026024d" };
 
   return (
-    <GoogleMapsProvider>
+    <CityProvider>
       <SidebarProvider>
         <Sidebar>
           <SidebarHeader>
@@ -58,7 +58,7 @@ export default function DashboardLayout({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                  <SidebarMenuButton href="#">
+                  <SidebarMenuButton href="/dashboard/city-management">
                     <UploadCloud />
                     City Management
                   </SidebarMenuButton>
@@ -108,6 +108,6 @@ export default function DashboardLayout({
           {children}
         </SidebarInset>
       </SidebarProvider>
-    </GoogleMapsProvider>
+    </CityProvider>
   );
 }

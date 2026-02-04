@@ -1,18 +1,19 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useContext } from 'react';
 import { AnalysisPanel } from '@/components/dashboard/analysis-panel';
 import { MapView } from '@/components/dashboard/map-view';
 import { analyzeCoverageAction } from '@/lib/actions';
 import type { AnalysisFormValues, AnalysisResult, City } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { cities } from '@/lib/data';
+import { CityContext } from '@/context/city-context';
 
 export default function DashboardPage() {
   const [isPending, startTransition] = useTransition();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [submittedStores, setSubmittedStores] = useState<AnalysisFormValues['stores']>([]);
   const { toast } = useToast();
+  const { cities } = useContext(CityContext);
   const [selectedCity, setSelectedCity] = useState<City | undefined>(cities[0]);
 
   const handleCityChange = (cityId: string) => {
@@ -22,10 +23,18 @@ export default function DashboardPage() {
   };
 
   const handleAnalyze = (data: AnalysisFormValues) => {
+    if (!selectedCity) {
+      toast({
+        variant: "destructive",
+        title: "No City Selected",
+        description: "Please select a city before starting the analysis.",
+      });
+      return;
+    }
     setSubmittedStores(data.stores);
     startTransition(async () => {
       try {
-        const results = await analyzeCoverageAction(data);
+        const results = await analyzeCoverageAction(data, selectedCity.polygons, selectedCity.name);
         setAnalysisResults(results);
         toast({
           title: "Analysis Complete",
