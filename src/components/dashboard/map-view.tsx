@@ -1,8 +1,21 @@
 'use client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CoverageMap } from './coverage-map';
 import { AIResults } from './ai-results';
 import type { AnalysisFormValues, AnalysisResult, City } from '@/lib/types';
+import dynamic from 'next/dynamic';
+
+const CoverageMap = dynamic(
+  () => import('./coverage-map').then((mod) => mod.CoverageMap),
+  {
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center bg-muted">
+        <p>Loading map...</p>
+      </div>
+    ),
+    ssr: false,
+  }
+);
+
 
 type MapViewProps = {
   selectedCity: City | undefined;
