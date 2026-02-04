@@ -14,7 +14,6 @@ function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
     return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
 }
 
-// Controller to handle re-centering and zooming
 function MapController({ city, resetTrigger }: { city?: any, resetTrigger: number }) {
   const map = useMap();
   useEffect(() => {
@@ -37,11 +36,9 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   const [isClient, setIsClient] = useState(false);
   const [resetTrigger, setResetTrigger] = useState(0);
 
-  // 🛡️ Prevent SSR Crash
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🤖 MARKET INTELLIGENCE CALCULATOR ---
-  // Memoized to ensure it updates exactly when analysisData or selectedCity changes
+  // --- 🤖 MARKET INTELLIGENCE RE-SYNC ---
   const aiInsights = useMemo(() => {
     const assignments = analysisData?.assignments;
     if (!assignments || Object.keys(assignments).length === 0) return null;
@@ -49,7 +46,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
     const zones = Object.entries(assignments);
     const total = zones.length;
     
-    // Case-insensitive status check to catch 'in', 'IN', 'In'
+    // Normalize status checks to handle any case variation
     const covered = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'in').length;
     const warning = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'warning').length;
     
@@ -75,15 +72,15 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
     setResetTrigger(prev => prev + 1);
   };
 
-  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Loading Map...</div>;
+  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Loading Map Engine...</div>;
 
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     try {
-        // OSRM expects [lng, lat]
+        // OSRM requires URL format: longitude,latitude
         const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
         const res = await fetch(url);
         const data = await res.json();
-        if (data.routes && data.routes[0]) {
+        if (data.routes?.[0]) {
             const coords = data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]);
             return {
                 positions: coords,
@@ -93,7 +90,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                 durationMin: Math.round(data.routes[0].duration / 60)
             };
         }
-    } catch (e) { console.error("OSRM Route Error:", e); }
+    } catch (e) { console.error("OSRM Error:", e); }
     return null; 
   };
 
@@ -111,17 +108,27 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       setIsFetchingRoute(true);
       setRoutePaths([]); 
 
-      // Retrieve store ID from current analysis assignments
+      // 1. Get the assigned store for this zone
       const assignment = analysisData?.assignments?.[name];
       const storeId = assignment?.storeId;
       const targetStore = stores.find((s: any) => s.id === storeId);
 
-      if (targetStore?.lat && targetStore?.lng && feature.properties?.centroid) {
-          const storePt: [number, number] = [parseFloat(targetStore.lat), parseFloat(targetStore.lng)];
-          const center = feature.properties.centroid;
+      // 2. If no assignment, find the physical closest store as a fallback
+      let finalStore = targetStore;
+      const center = feature.properties?.centroid;
+      
+      if (!finalStore && stores.length > 0 && center) {
+          let minDist = Infinity;
+          stores.forEach((s: any) => {
+              const d = getDistSq(parseFloat(s.lat), parseFloat(s.lng), center.lat, center.lng);
+              if (d < minDist) { minDist = d; finalStore = s; }
+          });
+      }
+
+      if (finalStore?.lat && finalStore?.lng && center) {
+          const storePt: [number, number] = [parseFloat(finalStore.lat), parseFloat(finalStore.lng)];
           
-          // --- Calculate Closest and Furthest Vertices ---
-          // Assuming single polygon ring
+          // --- 3-Point logic (Closest, Middle, Furthest) ---
           const vertices = feature.geometry.coordinates[0].map((p: any) => [p[1], p[0]] as [number, number]);
           let closestPt = vertices[0], furthestPt = vertices[0];
           let minVDist = Infinity, maxVDist = -1;
@@ -132,11 +139,10 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             if (d > maxVDist) { maxVDist = d; furthestPt = v; }
           });
 
-          // Fetch 3-Route Profile: Closest, Middle (Centroid), and Furthest
           const results = await Promise.all([
               fetchRoutePath(storePt, closestPt, '#22c55e', 'Closest (Entrance)'),
               fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Middle (Center)'),
-              fetchRoutePath(storePt, furthestPt, '#ef4444', 'Furthest Point')
+              fetchRoutePath(storePt, furthestPt, '#ef4444', 'Furthest Reach')
           ]);
 
           setRoutePaths(results.filter(r => r !== null));
@@ -146,15 +152,14 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   return (
     <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
-      {/* --- 🗺️ MAP ENGINE (70%) --- */}
       <div className="flex-[7] rounded-xl overflow-hidden border relative shadow-md bg-white">
         <div className="absolute top-4 left-4 z-[1000] flex items-center gap-2">
-           <Button variant="secondary" size="sm" className="h-8 bg-white/90 backdrop-blur shadow-sm font-bold text-[10px]" onClick={handleReset}>
+           <Button variant="secondary" size="sm" className="h-8 bg-white/90 shadow-sm font-bold text-[10px]" onClick={handleReset}>
               <RefreshCw className="h-3 w-3 mr-1" /> Reset View
            </Button>
-           {(isFetchingRoute || isLoading) && (
-              <div className="bg-white/90 p-2 rounded-lg shadow-sm border flex items-center gap-2 text-[10px] font-bold text-purple-600">
-                 <Loader2 className="h-3 w-3 animate-spin" /> Analyzing Routes...
+           {isFetchingRoute && (
+              <div className="bg-white/90 p-2 rounded-lg shadow-sm border flex items-center gap-2 text-[10px] font-bold text-blue-600">
+                 <Loader2 className="h-3 w-3 animate-spin" /> Fetching Routes...
               </div>
            )}
         </div>
@@ -198,10 +203,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
         </MapContainer>
       </div>
 
-      {/* --- 📊 DATA PANEL (30%) --- */}
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2">
-        
-        {/* MARKET INTELLIGENCE CARD */}
         <Card className="border-t-4 border-t-purple-600 shadow-sm bg-purple-50/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold">
@@ -211,13 +213,13 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           <CardContent className="space-y-3">
             {!aiInsights ? (
                <div className="py-4 text-center border border-dashed rounded bg-white">
-                  <p className="text-[10px] text-muted-foreground italic px-4">Press "Check Coverage" on the left to activate intelligence data.</p>
+                  <p className="text-[10px] text-muted-foreground italic px-4">Press "Check Coverage" to see network data.</p>
                </div>
             ) : (
               <>
                 <div className="bg-purple-600 p-3 rounded-lg text-white flex justify-between items-center shadow-lg">
                    <div className="flex flex-col">
-                     <span className="text-[9px] font-bold uppercase opacity-80 tracking-wider">Network Efficiency</span>
+                     <span className="text-[9px] font-bold uppercase opacity-80">Network Efficiency</span>
                      <span className="text-xl font-black">{aiInsights.efficiency}%</span>
                    </div>
                    <CheckCircle2 className="h-6 w-6 opacity-40" />
@@ -240,7 +242,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           </CardContent>
         </Card>
 
-        {/* LOGISTICS INSIGHTS CARD */}
         <Card className="border-t-4 border-t-blue-600 flex-1 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-blue-700 font-bold">
@@ -251,13 +252,12 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             {!selectedZone ? (
                 <div className="text-center py-10 space-y-2 opacity-30 italic">
                     <Info className="h-8 w-8 mx-auto" />
-                    <p className="text-xs">Select a polygon on the map to view detailed road routes.</p>
+                    <p className="text-xs">Select a polygon to view routes.</p>
                 </div>
             ) : (
               <>
                 <div className="space-y-1">
                   <div className="text-lg font-black text-slate-800 tracking-tight leading-none truncate">{selectedZone}</div>
-                  <div className="text-[10px] font-bold text-blue-500 uppercase">Drive Profile Analysis</div>
                 </div>
                 
                 <div className="space-y-2">
@@ -278,10 +278,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                       </div>
                     </div>
                   ))}
-                </div>
-
-                <div className="p-3 bg-blue-50 border border-blue-100 rounded text-[10px] text-blue-800 leading-relaxed italic">
-                   The **closest** route (green) represents the ideal entrance point, while the **furthest** route (red) indicates the maximum delivery distance for this zone.
                 </div>
               </>
             )}
