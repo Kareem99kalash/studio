@@ -2,12 +2,16 @@
 
 import { useState, useTransition, useEffect } from 'react';
 import { AnalysisPanel } from '@/components/dashboard/analysis-panel';
-import type { AnalysisFormValues, AnalysisResult, City } from '@/lib/types';
+import type { AnalysisFormValues, City } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import dynamic from 'next/dynamic';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore'; 
+import { useCollection, useFirestore, useMemoFirebase, useDoc } from '@/firebase';
+import { collection, getDocs, query, where, doc, getDoc, setDoc } from 'firebase/firestore'; 
 import type { FeatureCollection } from 'geojson';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 const MapView = dynamic(
   () => import('@/components/dashboard/map-view').then((mod) => mod.MapView),
@@ -17,9 +21,7 @@ const MapView = dynamic(
   }
 );
 
-// --- 🧮 DISTANCE HELPERS ---
-
-// 1. Haversine (Straight Line) - Backup Method
+// --- HELPERS ---
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
   const R = 6371; 
@@ -31,42 +33,35 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * c;
 }
 
-// 2. OSRM API (Real Road Distance)
 async function getRoadDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     try {
-        // OSRM expects "lng,lat" format
         const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
         const res = await fetch(url);
-        if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
-        
-        if (data.routes && data.routes.length > 0) {
-            // OSRM returns distance in Meters. Convert to KM.
-            return data.routes[0].distance / 1000;
-        }
+        if (data.routes && data.routes.length > 0) return data.routes[0].distance / 1000;
         return Infinity;
     } catch (error) {
-        console.warn("OSRM Failed, falling back to straight line:", error);
-        // Fallback to Haversine if API fails/limits reached
         return getDistanceKm(lat1, lon1, lat2, lon2);
     }
 }
 
-// Helper: Polygon Centroid
-function getPolygonCentroid(points: {lat: number, lng: number}[]) {
-    if (!points || points.length === 0) return { lat: 0, lng: 0 };
-    let latSum = 0, lngSum = 0;
-    points.forEach(p => { latSum += p.lat; lngSum += p.lng; });
-    return { lat: latSum / points.length, lng: lngSum / points.length };
-}
-
-// Helper: Safety Delay (to avoid API bans)
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+// Distinct colors for Store Borders (to visually separate branches)
+const STORE_COLORS = [
+    '#7c3aed', // Violet
+    '#2563eb', // Blue
+    '#db2777', // Pink
+    '#ea580c', // Orange
+    '#059669', // Emerald
+    '#0891b2', // Cyan
+    '#4f46e5', // Indigo
+    '#be123c', // Rose
+];
 
 export default function DashboardPage() {
   const [isPending, startTransition] = useTransition();
-  const [analysisResults, setAnalysisResults] = useState<any>(null); 
-  const [submittedStores, setSubmittedStores] = useState<AnalysisFormValues['stores']>([]);
+  const [progress, setProgress] = useState<string>(""); 
   const { toast } = useToast();
   const firestore = useFirestore();
 
@@ -76,9 +71,17 @@ export default function DashboardPage() {
   const [cities, setCities] = useState<City[]>([]);
   const [selectedCity, setSelectedCity] = useState<City | undefined>(undefined);
   const [isFetchingPolygons, setIsFetchingPolygons] = useState(false);
-  const [progress, setProgress] = useState<string>(""); // Show progress to user
 
-  // --- 1. FETCH DATA ---
+  // --- REAL-TIME ANALYSIS SYNC ---
+  // We subscribe to the 'current_analysis' doc inside the selected city.
+  // This means if ANYONE updates it, you see it instantly.
+  const analysisRef = useMemoFirebase(() => 
+    selectedCity ? doc(firestore, `cities/${selectedCity.id}/analysis/current`) : null, 
+  [selectedCity, firestore]);
+  
+  const { data: liveAnalysis } = useDoc(analysisRef);
+
+  // --- 1. FETCH CITY DATA ---
   useEffect(() => {
     if (citiesData) {
       setIsFetchingPolygons(true);
@@ -100,13 +103,18 @@ export default function DashboardPage() {
                     const last = coordinates[coordinates.length - 1];
                     if (first[0] !== last[0] || first[1] !== last[1]) coordinates.push(first);
                 }
+                
+                // Helper to calc centroid
+                let latSum=0, lngSum=0;
+                polyPoints.forEach((p:any) => { latSum+=p.lat; lngSum+=p.lng; });
+                const centroid = polyPoints.length ? { lat: latSum/polyPoints.length, lng: lngSum/polyPoints.length } : {lat:0, lng:0};
 
                 return {
                   type: 'Feature',
                   properties: { 
                       id: doc.id, 
                       name: data.name,
-                      centroid: getPolygonCentroid(polyPoints) 
+                      centroid: centroid
                   },
                   geometry: { type: "Polygon", coordinates: [coordinates] }
                 };
@@ -134,84 +142,101 @@ export default function DashboardPage() {
 
   const handleCityChange = (cityId: string) => {
     setSelectedCity(cities.find(c => c.id === cityId));
-    setAnalysisResults(null);
-    setSubmittedStores([]);
   };
 
-  // --- 2. ASYNC ROAD ANALYSIS LOGIC ---
+  // --- 2. RUN ANALYSIS & SAVE TO DB ---
   const handleAnalyze = (data: AnalysisFormValues) => {
     const cityToAnalyze = cities.find(c => c.id === data.cityId);
     if (!cityToAnalyze || !data.stores.length) return;
 
-    setSubmittedStores(data.stores);
-    
-    // We wrap the async logic inside a promise passed to startTransition logic manually
-    // or simply run it as an async function since we need to await API calls.
     const runAnalysis = async () => {
         try {
-            // A. Fetch Thresholds
             let limits = { green: 2.0, yellow: 5.0 }; 
             try {
                 const cityDoc = await getDoc(doc(firestore, 'cities', cityToAnalyze.id));
-                if (cityDoc.exists() && cityDoc.data().thresholds) {
-                    limits = cityDoc.data().thresholds;
-                }
+                if (cityDoc.exists() && cityDoc.data().thresholds) limits = cityDoc.data().thresholds;
             } catch (e) { console.log("Using default limits"); }
 
-            // B. Prepare Stores
-            const stores = data.stores.map(s => ({
+            // Assign a persistent color to each store
+            const stores = data.stores.map((s, idx) => ({
+                id: s.id,
+                name: s.name,
                 lat: parseFloat(s.lat),
                 lng: parseFloat(s.lng),
+                borderColor: STORE_COLORS[idx % STORE_COLORS.length]
             }));
 
             const zones = cityToAnalyze.polygons.features as any[];
-            const assignments: Record<string, string> = {}; 
-            let coveredCount = 0;
+            
+            // Results Object
+            const results: Record<string, any> = {}; 
             let processed = 0;
-
-            // C. LOOP WITH ASYNC ROAD DISTANCE
-            // Note: We use "for...of" to allow awaiting inside the loop
-            for (const zone of zones) {
-                const center = zone.properties.centroid;
-                let minKm = Infinity;
-
-                // Check distance to every store
-                for (const store of stores) {
-                    // Try rough straight line first. If > 100km, skip road check to save time
-                    const roughDist = getDistanceKm(center.lat, center.lng, store.lat, store.lng);
+            const BATCH_SIZE = 5;
+            
+            for (let i = 0; i < zones.length; i += BATCH_SIZE) {
+                const chunk = zones.slice(i, i + BATCH_SIZE);
+                
+                await Promise.all(chunk.map(async (zone) => {
+                    const center = zone.properties.centroid;
                     
-                    let roadDist = roughDist;
-                    // Only fetch real road distance if it's potentially within range (e.g. < 20km)
-                    // This optimizes speed significantly.
-                    if (roughDist < 20) {
-                         roadDist = await getRoadDistance(center.lat, center.lng, store.lat, store.lng);
-                         // Small delay to be nice to the free API
-                         await delay(50); 
+                    // 1. Find Closest Store (Straight Line First)
+                    let closestStore = stores[0];
+                    let minStraightDist = Infinity;
+
+                    for (const store of stores) {
+                        const dist = getDistanceKm(center.lat, center.lng, store.lat, store.lng);
+                        if (dist < minStraightDist) {
+                            minStraightDist = dist;
+                            closestStore = store;
+                        }
                     }
 
-                    if (roadDist < minKm) minKm = roadDist;
-                }
+                    // 2. Get Road Distance
+                    let finalDist = minStraightDist;
+                    if (minStraightDist < 20) {
+                        finalDist = await getRoadDistance(center.lat, center.lng, closestStore.lat, closestStore.lng);
+                    }
 
-                // Apply Colors
-                if (minKm <= limits.green) {
-                    assignments[zone.properties.name] = '#22c55e'; // Green
-                    coveredCount++;
-                } else if (minKm <= limits.yellow) {
-                    assignments[zone.properties.name] = '#eab308'; // Yellow
-                    coveredCount++;
-                } else {
-                    assignments[zone.properties.name] = '#ef4444'; // Red
-                }
+                    // 3. Determine Fill Color
+                    let status = 'Red';
+                    let fillColor = '#ef4444';
+                    
+                    if (finalDist <= limits.green) {
+                        status = 'Green';
+                        fillColor = '#22c55e';
+                    } else if (finalDist <= limits.yellow) {
+                        status = 'Yellow';
+                        fillColor = '#eab308';
+                    }
 
-                processed++;
-                if (processed % 5 === 0) {
-                    setProgress(`Calculating... ${Math.round((processed / zones.length) * 100)}%`);
-                }
+                    // 4. Save Record
+                    results[zone.properties.name] = {
+                        storeId: closestStore.id,
+                        storeName: closestStore.name,
+                        storeColor: closestStore.borderColor,
+                        distance: finalDist.toFixed(2),
+                        status: status,
+                        fillColor: fillColor
+                    };
+                }));
+
+                processed += chunk.length;
+                setProgress(`Calculating... ${Math.round((processed / zones.length) * 100)}%`);
+                await delay(20); 
             }
 
-            setAnalysisResults({ assignments });
-            setProgress(""); // Clear progress text
-            toast({ title: "Road Analysis Complete", description: `${coveredCount} zones covered by road network.` });
+            // 5. SAVE TO FIRESTORE (Shared with everyone)
+            const analysisPayload = {
+                timestamp: new Date().toISOString(),
+                stores: stores,
+                assignments: results,
+                totalZones: zones.length
+            };
+
+            await setDoc(doc(firestore, `cities/${cityToAnalyze.id}/analysis/current`), analysisPayload);
+            
+            setProgress(""); 
+            toast({ title: "Analysis Saved", description: "Results are now visible to all users." });
 
         } catch (err) {
             console.error("Analysis Error:", err);
@@ -220,17 +245,16 @@ export default function DashboardPage() {
         }
     };
 
-    // Execute
-    startTransition(() => {
-        runAnalysis();
-    });
+    startTransition(() => { runAnalysis(); });
   };
 
   const overallLoading = isPending || isLoadingCities || isFetchingPolygons;
 
   return (
-    <main className="grid flex-1 grid-cols-1 md:grid-cols-[380px_1fr]">
-      <div className="border-r">
+    <main className="grid flex-1 grid-cols-1 md:grid-cols-[380px_1fr] h-[calc(100vh-3.5rem)] overflow-hidden">
+      
+      {/* LEFT SIDEBAR (Controls) */}
+      <div className="border-r bg-muted/10 overflow-y-auto">
         <AnalysisPanel 
           cities={cities}
           isLoadingCities={isLoadingCities}
@@ -239,20 +263,85 @@ export default function DashboardPage() {
           onCityChange={handleCityChange} 
         />
       </div>
-      <div className="relative h-[calc(100vh-3.5rem)]">
-        {/* PROGRESS OVERLAY */}
+
+      {/* RIGHT SIDE (Map & Results) */}
+      <div className="flex flex-col h-full relative">
+        
         {progress && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black/80 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-xl animate-pulse">
                 {progress}
             </div>
         )}
-        
-        <MapView 
-            selectedCity={selectedCity} 
-            stores={submittedStores}
-            analysisData={analysisResults} 
-            isLoading={overallLoading}
-        />
+
+        <Tabs defaultValue="map" className="flex-1 flex flex-col">
+            <div className="px-4 py-2 border-b flex items-center justify-between bg-white">
+                <TabsList>
+                    <TabsTrigger value="map">🗺️ Map View</TabsTrigger>
+                    <TabsTrigger value="table">📊 Results Table</TabsTrigger>
+                </TabsList>
+                {liveAnalysis && (
+                    <Badge variant="outline" className="text-xs">
+                        Last Updated: {new Date(liveAnalysis.timestamp).toLocaleTimeString()}
+                    </Badge>
+                )}
+            </div>
+
+            <TabsContent value="map" className="flex-1 p-0 m-0 h-full">
+                <MapView 
+                    selectedCity={selectedCity} 
+                    stores={liveAnalysis?.stores || []}
+                    analysisData={liveAnalysis || null} 
+                    isLoading={overallLoading}
+                />
+            </TabsContent>
+
+            <TabsContent value="table" className="flex-1 overflow-auto p-4">
+               <Card>
+                   <CardHeader>
+                       <CardTitle>Detailed Coverage Report</CardTitle>
+                   </CardHeader>
+                   <CardContent>
+                       <Table>
+                           <TableHeader>
+                               <TableRow>
+                                   <TableHead>Zone Name</TableHead>
+                                   <TableHead>Assigned Branch</TableHead>
+                                   <TableHead>Distance (km)</TableHead>
+                                   <TableHead>Status</TableHead>
+                               </TableRow>
+                           </TableHeader>
+                           <TableBody>
+                               {liveAnalysis && liveAnalysis.assignments ? (
+                                   Object.entries(liveAnalysis.assignments).map(([zoneName, data]: [string, any]) => (
+                                       <TableRow key={zoneName}>
+                                           <TableCell className="font-medium">{zoneName}</TableCell>
+                                           <TableCell>
+                                               <span className="flex items-center gap-2">
+                                                   <span className="w-3 h-3 rounded-full" style={{backgroundColor: data.storeColor}}></span>
+                                                   {data.storeName}
+                                               </span>
+                                           </TableCell>
+                                           <TableCell>{data.distance} km</TableCell>
+                                           <TableCell>
+                                               <Badge className={
+                                                   data.status === 'Green' ? 'bg-green-500 hover:bg-green-600' :
+                                                   data.status === 'Yellow' ? 'bg-yellow-500 hover:bg-yellow-600' : 
+                                                   'bg-red-500 hover:bg-red-600'
+                                               }>
+                                                   {data.status}
+                                               </Badge>
+                                           </TableCell>
+                                       </TableRow>
+                                   ))
+                               ) : (
+                                   <TableRow><TableCell colSpan={4} className="text-center py-8">No analysis run yet.</TableCell></TableRow>
+                               )}
+                           </TableBody>
+                       </Table>
+                   </CardContent>
+               </Card>
+            </TabsContent>
+        </Tabs>
       </div>
     </main>
   );

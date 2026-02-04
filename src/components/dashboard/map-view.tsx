@@ -6,7 +6,6 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import type { City } from '@/lib/types';
 
-// --- ICONS ---
 const iconUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png';
 const iconRetinaUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png';
 const shadowUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png';
@@ -16,7 +15,6 @@ const defaultIcon = L.icon({
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], tooltipAnchor: [16, -28], shadowSize: [41, 41]
 });
 
-// --- HELPER: DISTANCE SQUARED ---
 function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
     return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
 }
@@ -30,37 +28,54 @@ type MapViewProps = {
 
 export function MapView({ selectedCity, stores, analysisData, isLoading }: MapViewProps) {
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
-  const [routePaths, setRoutePaths] = useState<any[]>([]); // Stores the real road geometry
+  const [routePaths, setRoutePaths] = useState<any[]>([]); 
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
 
   const centerPosition: [number, number] = selectedCity?.center 
     ? [selectedCity.center.lat, selectedCity.center.lng] 
     : [36.19, 44.01];
 
-  // --- 1. FETCH REAL ROAD GEOMETRY ---
+  // --- STYLE LOGIC (Border = Branch, Fill = Status) ---
+  const getZoneStyle = (feature: any) => {
+    const zoneName = feature.properties.name;
+    const isSelected = zoneName === selectedZone;
+    
+    // Default blue if no analysis
+    if (!analysisData || !analysisData.assignments) {
+      return { color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.1 };
+    }
+
+    const data = analysisData.assignments[zoneName];
+    
+    // If we have data, use it
+    if (data) {
+        return {
+            color: data.storeColor || '#000000', // Border color = Assigned Store
+            weight: isSelected ? 4 : 2,
+            fillColor: data.fillColor || '#ef4444', // Fill color = Status (Green/Red)
+            fillOpacity: isSelected ? 0.3 : 0.5
+        };
+    }
+
+    // Fallback
+    return { color: '#ef4444', weight: 1, fillColor: '#ef4444', fillOpacity: 0.5 };
+  };
+
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     try {
-        // Request GeoJSON geometry from OSRM
         const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
         const res = await fetch(url);
         const data = await res.json();
-
         if (data.routes && data.routes.length > 0) {
-            // Convert [lng, lat] (GeoJSON) -> [lat, lng] (Leaflet)
             const coords = data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]);
             return { positions: coords, color, label, endPoint: end };
         }
-    } catch (e) {
-        console.error("Route fetch failed", e);
-    }
-    return null; // Fallback or fail silently
+    } catch (e) { console.error(e); }
+    return null; 
   };
 
-  // --- 2. HANDLE CLICK ---
   const handleZoneClick = async (feature: any) => {
       const name = feature.properties.name;
-      
-      // If unselecting, clear routes
       if (selectedZone === name) {
           setSelectedZone(null);
           setRoutePaths([]);
@@ -69,28 +84,29 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
 
       setSelectedZone(name);
       setIsFetchingRoute(true);
-      setRoutePaths([]); // Clear old routes
+      setRoutePaths([]); 
 
-      // FIND RELEVANT POINTS
-      // A. Center
       const center = feature.properties.centroid;
       
-      // B. Nearest Store
-      let nearestStore: any = null;
-      let minDst = Infinity;
-      stores.forEach(store => {
-        const d = getDistSq(center.lat, center.lng, parseFloat(store.lat), parseFloat(store.lng));
-        if (d < minDst) { minDst = d; nearestStore = store; }
-      });
-
-      if (!nearestStore) {
-          setIsFetchingRoute(false);
-          return;
+      // Find Store assigned in the data (if exists) or calc nearest
+      let targetStore = null;
+      if (analysisData && analysisData.assignments && analysisData.assignments[name]) {
+          const storeId = analysisData.assignments[name].storeId;
+          targetStore = stores.find(s => s.id === storeId);
       }
 
-      const storePt: [number, number] = [parseFloat(nearestStore.lat), parseFloat(nearestStore.lng)];
+      // Fallback if no analysis data
+      if (!targetStore) {
+        let minDst = Infinity;
+        stores.forEach(store => {
+            const d = getDistSq(center.lat, center.lng, parseFloat(store.lat), parseFloat(store.lng));
+            if (d < minDst) { minDst = d; targetStore = store; }
+        });
+      }
 
-      // C. Entrance (Closest Vertex) & Furthest Vertex
+      if (!targetStore) { setIsFetchingRoute(false); return; }
+
+      const storePt: [number, number] = [parseFloat(targetStore.lat), parseFloat(targetStore.lng)];
       const rawCoords = feature.geometry.coordinates[0]; 
       const vertices = rawCoords.map((p: any) => [p[1], p[0]] as [number, number]);
       
@@ -105,9 +121,7 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
         if (d > maxVDist) { maxVDist = d; furthestPt = v; }
       });
 
-      // D. FETCH ALL 3 ROUTES IN PARALLEL
       const centerPt: [number, number] = [center.lat, center.lng];
-      
       const newRoutes = await Promise.all([
           fetchRoutePath(storePt, centerPt, 'blue', 'Center'),
           fetchRoutePath(storePt, closestPt, 'green', 'Entrance'),
@@ -118,32 +132,13 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
       setIsFetchingRoute(false);
   };
 
-  const getZoneStyle = (feature: any) => {
-    const zoneName = feature.properties.name;
-    const isSelected = zoneName === selectedZone;
-    
-    if (!analysisData || !analysisData.assignments) {
-      return { color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.1 };
-    }
-
-    const assignedColor = analysisData.assignments[zoneName];
-    const finalColor = assignedColor || '#ef4444'; 
-
-    return { 
-      color: isSelected ? '#000000' : '#ffffff', 
-      weight: isSelected ? 3 : 1, 
-      fillColor: finalColor, 
-      fillOpacity: isSelected ? 0.3 : 0.5 
-    };
-  };
-
   return (
     <div className="h-full w-full rounded-lg overflow-hidden border border-border relative">
       
       {(isLoading || isFetchingRoute) && (
         <div className="absolute inset-0 z-[1000] bg-white/50 flex items-center justify-center backdrop-blur-sm pointer-events-none">
            <div className="bg-white p-3 rounded shadow-lg text-sm font-semibold flex items-center gap-2">
-             {isFetchingRoute ? "Calculating Road Path..." : "Processing..."}
+             {isFetchingRoute ? "Calculating Route..." : "Loading Map..."}
            </div>
         </div>
       )}
@@ -154,12 +149,8 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
         style={{ height: '100%', width: '100%' }}
         key={selectedCity?.id} 
       >
-        <TileLayer
-          attribution='&copy; OpenStreetMap'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {/* 1. ZONES */}
         {selectedCity?.polygons && (
           <GeoJSON 
             key={`${selectedCity.id}-${analysisData ? 'done' : 'init'}`} 
@@ -172,26 +163,26 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
           />
         )}
 
-        {/* 2. REAL ROAD ROUTES */}
         {routePaths.map((route, i) => (
             <div key={i}>
-                <Polyline 
-                    positions={route.positions} 
-                    pathOptions={{ color: route.color, weight: 4, opacity: 0.8 }} 
-                />
+                <Polyline positions={route.positions} pathOptions={{ color: route.color, weight: 4, opacity: 0.8 }} />
                 <CircleMarker center={route.endPoint} radius={4} pathOptions={{ color: route.color, fillColor: route.color, fillOpacity: 1 }}>
                     <Tooltip direction="top" permanent>{route.label}</Tooltip>
                 </CircleMarker>
             </div>
         ))}
 
-        {/* 3. STORES */}
         {stores.map((store: any) => (
             <CircleMarker
               key={store.id}
               center={[parseFloat(store.lat), parseFloat(store.lng)]}
               radius={8}
-              pathOptions={{ color: '#ffffff', weight: 2, fillColor: '#2563eb', fillOpacity: 1 }}
+              pathOptions={{ 
+                  color: '#ffffff', 
+                  weight: 2, 
+                  fillColor: store.borderColor || '#2563eb', // Use the store's assigned brand color
+                  fillOpacity: 1 
+              }}
             >
               <Popup>
                 <div className="p-1">
