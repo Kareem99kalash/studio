@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -20,11 +21,13 @@ type AnalysisPanelProps = {
 };
 
 export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPanelProps) {
+  const storeIdCounter = useRef(1);
+
   const form = useForm<AnalysisFormValues>({
     resolver: zodResolver(analysisSchema),
     defaultValues: {
       cityId: 'erbil',
-      stores: [{ id: `store-${Date.now()}`, name: 'Store 1', lat: '36.19', lng: '44.00' }],
+      stores: [{ id: `store-0`, name: 'Store 1', lat: '36.19', lng: '44.00' }],
     },
   });
 
@@ -136,7 +139,7 @@ export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPa
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => append({ id: `store-${Date.now()}`, name: `Store ${fields.length + 1}`, lat: '', lng: '' })}
+                  onClick={() => append({ id: `store-${storeIdCounter.current++}`, name: `Store ${fields.length + 1}`, lat: '', lng: '' })}
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   Add another store
