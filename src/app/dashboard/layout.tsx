@@ -52,18 +52,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
+            {/* Dashboard Access */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
                 <Link href="/dashboard"><LayoutGrid className="size-4" /><span>Dashboard</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            {/* Admin or Manager Access: Users */}
+            {/* Admin or Manager Access: User Management */}
             {(isAdmin || isManager) && (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === '/dashboard/user-management'}>
                   <Link href="/dashboard/user-management"><Users className="size-4" /><span>Users</span></Link>
-                </SidebarMenuItem>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             )}
 
@@ -83,7 +84,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </>
             )}
 
-            {/* Ticket System */}
+            {/* Global Access: Ticket System */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard/tickets'}>
                 <Link href="/dashboard/tickets"><Ticket className="size-4" /><span>Tickets</span></Link>
