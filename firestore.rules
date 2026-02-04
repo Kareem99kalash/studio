@@ -1,0 +1,222 @@
+/**
+ * Core Philosophy:
+ * This ruleset implements a Role and Relationship-Based Access Control model.
+ * A global 'Admin' role grants broad write permissions across the database, determined
+ * by the existence of a document in the /roles_admin/{userId} collection.
+ * For standard users, access to sensitive, nested data (like city polygons and thresholds)
+ * is granted based on an explicit relationship document in the /users/{userId}/cityAccess/{cityId}
+ * collection. This approach ensures that authorization checks are performant, relying on
+ * fast `exists()` calls instead of slow, costly `get()` operations.
+ *
+ * Data Structure:
+ * The data is organized into top-level collections for publicly readable data
+ * (/cities, /storeLocations) and user-specific data (/users). Authorization data
+ * (/roles_admin, /users/{userId}/cityAccess) is segregated into dedicated collections.
+ * Data that requires specific access based on relationships (e.g., /cities/{cityId}/polygons)
+ * is nested under its parent entity.
+ *
+ * Key Security Decisions:
+ * - Admin-Only Writes: By default, write operations on shared or global data collections
+ *   (cities, storeLocations, etc.) are restricted to users with the 'Admin' role.
+ * - City Access Control: A user's ability to read detailed city data (polygons, thresholds)
+ *   is strictly controlled by the existence of a corresponding document in their
+ *   /users/{userId}/cityAccess subcollection. A user cannot grant this access to themselves;
+ *   it must be provisioned by an Admin.
+ * - Ambiguity Resolution: For collections where the data model does not provide a clear
+ *   path for authorization (e.g., AnalysisResult lacking a cityId), access is defaulted
+ *   to the most secure posture (Admin-only) to prevent data leakage, with comments
+ *   highlighting the required schema change.
+ *
+ * Denormalization for Authorization:
+ * The /users/{userId}/cityAccess/{cityId} collection is a prime example of denormalization
+ * for authorization. Instead of querying a central access control list, the rules can perform
+ * a direct, performant `exists()` check on a path constructed with the user's UID and the
+ * target city ID. This makes security rules for nested city data simple and scalable.
+ *
+ * Structural Segregation:
+ * User-private data and access grants are structurally segregated under /users/{userId}.
+ * Publicly readable data like /cities and /storeLocations is kept at the top level for
+ * easy and performant public listing.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    //-------------------------------------------------------------------------
+    // Helper Functions
+    //-------------------------------------------------------------------------
+
+    /**
+     * isSignedIn
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * isOwner
+     * Checks if the authenticated user's UID matches the given userId.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * isAdmin
+     * Checks if the user has an admin role document.
+     * This is a performant check for role-based access control.
+     */
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    /**
+     * hasCityAccess
+     * Checks if a non-admin user has been granted access to a specific city.
+     * This lookup avoids slow and costly `get` calls in rules.
+     */
+    function hasCityAccess(cityId) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/cityAccess/$(cityId));
+    }
+
+    /**
+     * canReadCityData
+     * Determines if a user can read data within a specific city's subcollections.
+     * Access is granted to Admins or users with explicit city access.
+     */
+    function canReadCityData(cityId) {
+      return isSignedIn() && (isAdmin() || hasCityAccess(cityId));
+    }
+
+    //-------------------------------------------------------------------------
+    // User Data
+    //-------------------------------------------------------------------------
+
+    /**
+     * @description Controls access to a user's own profile document.
+     * @path /users/{userId}
+     * @allow (create) An authenticated user creating their own user document for the first time.
+     * @deny (create) A user trying to create a document for another user ID.
+     * @principle Restricts access to a user's own data tree and ensures self-creation.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if (isOwner(userId) || isAdmin()) && resource != null;
+      allow delete: if (isOwner(userId) || isAdmin()) && resource != null;
+    }
+
+    /**
+     * @description Manages admin role grants. Only other admins can manage this list.
+     * @path /roles_admin/{userId}
+     * @allow (create) An existing admin adding another user to the admin list.
+     * @deny (create) A non-admin user trying to make themselves an admin.
+     * @principle Secures the role-granting process to prevent privilege escalation.
+     */
+    match /roles_admin/{userId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Manages a user's access grant to a specific city.
+     * @path /users/{userId}/cityAccess/{cityId}
+     * @allow (get) A user reading their own list of city access grants.
+     * @deny (create) A user trying to grant themselves access to a city.
+     * @principle Prevents users from escalating their own privileges. Access must be granted by an Admin.
+     */
+    match /users/{userId}/cityAccess/{cityId} {
+      allow get, list: if isOwner(userId) || isAdmin();
+      allow create: if isAdmin() && request.resource.data.userId == userId && request.resource.data.cityId == cityId;
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    //-------------------------------------------------------------------------
+    // City & Geographical Data
+    //-------------------------------------------------------------------------
+
+    /**
+     * @description Defines rules for city documents. Data is public to read, but only admins can modify it.
+     * @path /cities/{cityId}
+     * @allow (get) Any user, authenticated or not, reading the list of cities.
+     * @deny (create) A non-admin user trying to add a new city.
+     * @principle Enforces public read access for general information while securing writes.
+     */
+    match /cities/{cityId} {
+      allow get, list: if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Secures polygon data within a city. Reading requires explicit city access.
+     * @path /cities/{cityId}/polygons/{polygonId}
+     * @allow (get) A user with access to {cityId} reading a polygon document.
+     * @deny (get) A user without access to {cityId} trying to read a polygon.
+     * @principle Enforces authorization checks on nested data based on parent resource access.
+     */
+    match /cities/{cityId}/polygons/{polygonId} {
+      allow get, list: if canReadCityData(cityId);
+      allow create: if isAdmin() && request.resource.data.cityId == cityId;
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Secures threshold data for a city. Reading requires explicit city access.
+     * @path /cities/{cityId}/threshold/{docId}
+     * @allow (get) A user with access to {cityId} reading the city's threshold document.
+     * @deny (get) A user without access to {cityId} trying to read the threshold.
+     * @principle Enforces authorization checks on nested data based on parent resource access.
+     */
+    match /cities/{cityId}/threshold/{docId} {
+      allow get, list: if canReadCityData(cityId);
+      allow create: if isAdmin() && request.resource.data.cityId == cityId;
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    //-------------------------------------------------------------------------
+    // Store & Analysis Data
+    //-------------------------------------------------------------------------
+
+    /**
+     * @description Defines rules for store locations. Data is public to read, but only admins can modify it.
+     * @path /storeLocations/{storeLocationId}
+     * @allow (list) Any user, authenticated or not, listing all store locations.
+     * @deny (delete) A non-admin user trying to remove a store location.
+     * @principle Enforces public read access for general information while securing writes.
+     */
+    match /storeLocations/{storeLocationId} {
+      allow get, list: if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description **ADMIN ONLY ACCESS**. Secures analysis results.
+     * @path /storeLocations/{storeLocationId}/analysisResults/{analysisResultId}
+     * @allow (get) An admin reading an analysis result.
+     * @deny (get) A non-admin user trying to read any analysis result.
+     * @principle Defaults to the most secure posture (admin-only) due to ambiguous authorization requirements.
+     */
+    match /storeLocations/{storeLocationId}/analysisResults/{analysisResultId} {
+      // CRITICAL: The security requirement is "User needs access to a city to read," but the
+      // 'AnalysisResult' entity and its path do not contain a `cityId`. It is impossible to securely
+      // check for city access without this link. Access is restricted to Admins until the schema is updated.
+      // TODO: Add a `cityId` field to the 'AnalysisResult' entity and update rules to use `canReadCityData(resource.data.cityId)`.
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+  }
+}

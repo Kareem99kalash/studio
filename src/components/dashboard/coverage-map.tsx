@@ -48,6 +48,7 @@ export function CoverageMap({ selectedCity, stores, analysisResults }: CoverageM
   return (
     <div className="h-full w-full rounded-lg overflow-hidden">
       <MapContainer
+      key={selectedCity ? JSON.stringify(selectedCity.center) : "default-map"}
         center={selectedCity?.center || [51.505, -0.09]}
         zoom={11}
         scrollWheelZoom={true}

@@ -1,6 +1,8 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
+  reactStrictMode: false, // 👈 THIS IS THE FIX
+  
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

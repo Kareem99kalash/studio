@@ -1,0 +1,349 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the GeoCoverage Analyzer application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "username": {
+          "type": "string",
+          "description": "The user's username."
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role (e.g., Admin, Manager, Agent)."
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "role"
+      ]
+    },
+    "City": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "City",
+      "type": "object",
+      "description": "Represents a city for which polygon data is stored.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the City entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the city."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Polygon": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Polygon",
+      "type": "object",
+      "description": "Represents a geographical polygon within a city.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Polygon entity."
+        },
+        "cityId": {
+          "type": "string",
+          "description": "Reference to City. (Relationship: City 1:N Polygon)"
+        },
+        "polygonName": {
+          "type": "string",
+          "description": "The name of the polygon."
+        },
+        "wkt": {
+          "type": "string",
+          "description": "Well-known text representation of the polygon geometry."
+        }
+      },
+      "required": [
+        "id",
+        "cityId",
+        "polygonName",
+        "wkt"
+      ]
+    },
+    "Threshold": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Threshold",
+      "type": "object",
+      "description": "Represents delivery thresholds for a city.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Threshold entity."
+        },
+        "cityId": {
+          "type": "string",
+          "description": "Reference to City. (Relationship: City 1:1 Threshold)"
+        },
+        "greenLimit": {
+          "type": "number",
+          "description": "The green limit threshold in kilometers."
+        },
+        "softLimit": {
+          "type": "number",
+          "description": "The soft limit threshold in kilometers."
+        },
+        "hardCutoff": {
+          "type": "number",
+          "description": "The hard cut-off threshold in kilometers."
+        }
+      },
+      "required": [
+        "id",
+        "cityId",
+        "greenLimit",
+        "softLimit",
+        "hardCutoff"
+      ]
+    },
+    "StoreLocation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StoreLocation",
+      "type": "object",
+      "description": "Represents a store location with coordinates.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the StoreLocation entity."
+        },
+        "latitude": {
+          "type": "number",
+          "description": "The latitude of the store location."
+        },
+        "longitude": {
+          "type": "number",
+          "description": "The longitude of the store location."
+        }
+      },
+      "required": [
+        "id",
+        "latitude",
+        "longitude"
+      ]
+    },
+    "AnalysisResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AnalysisResult",
+      "type": "object",
+      "description": "Represents the result of a coverage analysis for a store location.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the AnalysisResult entity."
+        },
+        "storeLocationId": {
+          "type": "string",
+          "description": "Reference to StoreLocation. (Relationship: StoreLocation 1:N AnalysisResult)"
+        },
+        "polygonIds": {
+          "type": "array",
+          "description": "References to Polygons covered by the analysis.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "analysisDate": {
+          "type": "string",
+          "description": "Date and time the analysis was performed.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "storeLocationId",
+        "polygonIds",
+        "analysisDate"
+      ]
+    },
+    "UserCityAccess": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserCityAccess",
+      "type": "object",
+      "description": "Represents which cities a user has access to.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserCityAccess entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N UserCityAccess)"
+        },
+        "cityId": {
+          "type": "string",
+          "description": "Reference to City. (Relationship: City 1:N UserCityAccess)"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "cityId"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user data. Only the user themselves or an admin can access their own document.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "role_admin",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores admin role. Existence of a document indicates admin privileges.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the admin user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/cities/{cityId}",
+        "definition": {
+          "entityName": "City",
+          "schema": {
+            "$ref": "#/backend/entities/City"
+          },
+          "description": "Stores city data. Anyone can read city data.",
+          "params": [
+            {
+              "name": "cityId",
+              "description": "The unique identifier of the city."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/cities/{cityId}/polygons/{polygonId}",
+        "definition": {
+          "entityName": "Polygon",
+          "schema": {
+            "$ref": "#/backend/entities/Polygon"
+          },
+          "description": "Stores polygon data for a specific city.  User needs access to a city to read the polygons inside.",
+          "params": [
+            {
+              "name": "cityId",
+              "description": "The unique identifier of the city."
+            },
+            {
+              "name": "polygonId",
+              "description": "The unique identifier of the polygon."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/cities/{cityId}/threshold",
+        "definition": {
+          "entityName": "Threshold",
+          "schema": {
+            "$ref": "#/backend/entities/Threshold"
+          },
+          "description": "Stores the thresholds for a specific city. User needs access to city to read.",
+          "params": [
+            {
+              "name": "cityId",
+              "description": "The unique identifier of the city."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/storeLocations/{storeLocationId}",
+        "definition": {
+          "entityName": "StoreLocation",
+          "schema": {
+            "$ref": "#/backend/entities/StoreLocation"
+          },
+          "description": "Stores store location data.  Only admin has access to create or delete, everyone can read.",
+          "params": [
+            {
+              "name": "storeLocationId",
+              "description": "The unique identifier of the store location."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/storeLocations/{storeLocationId}/analysisResults/{analysisResultId}",
+        "definition": {
+          "entityName": "AnalysisResult",
+          "schema": {
+            "$ref": "#/backend/entities/AnalysisResult"
+          },
+          "description": "Stores analysis results for a specific store location.  User needs access to a city to read.",
+          "params": [
+            {
+              "name": "storeLocationId",
+              "description": "The unique identifier of the store location."
+            },
+            {
+              "name": "analysisResultId",
+              "description": "The unique identifier of the analysis result."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/cityAccess/{cityId}",
+        "definition": {
+          "entityName": "UserCityAccess",
+          "schema": {
+            "$ref": "#/backend/entities/UserCityAccess"
+          },
+          "description": "Indicates that a user has access to a city.  The existence of this document grants access to all of the city data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            },
+            {
+              "name": "cityId",
+              "description": "The unique identifier of the city."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "This Firestore structure prioritizes security, scalability, and debuggability based on the core design principles and strategy mandates. It emphasizes Authorization Independence, Structural Segregation, Access Modeling, and Data Clarity.\n\n**Authorization Independence:**\nTo achieve authorization independence and avoid `get()` calls in security rules, the `UserCityAccess` collection denormalizes user-city access. The existence of a document in the `/users/{userId}/cityAccess/{cityId}` collection signifies that the user has access to that particular city. This allows security rules to verify access directly without needing to `get()` data from other collections.\n\n**Structural Segregation:**\nThe structure segregates data based on access requirements. User-specific data (e.g., `/users/{userId}/cityAccess/{cityId}`) is separated from global data (e.g., `/cities`, `/polygons`, `/thresholds`, `/storeLocations`, `/analysisResults`).\n\n**Access Modeling:**\n*   **Path-Based Ownership:** The `/users/{userId}/cityAccess/{cityId}` collection uses path-based ownership to manage user-city access.\n*   **Global Roles:** Admin privileges are managed through the existence of documents in `/roles_admin/{userId}`.\n\n**QAPs (Rules are not Filters):**\nThe structure supports secure list operations:\n*   Listing cities requires no special access. Anyone can list the cities.\n*   Listing polygons within a city: access to `/cities/{cityId}/polygons/{polygonId}` depends on the existence of the city, and thus the user must have access to the city.  The rules engine can use `exists(/databases/$(database)/documents/users/$(request.auth.uid)/cityAccess/$(cityId))` to ensure the user has proper permissions.\n\n**Invariants:**\nThe structure supports data integrity:\n*   Ownership is explicit through path-based ownership and the `UserCityAccess` collection.\n*   Timestamps can be enforced with server-side timestamps.\n*   Denormalized data (city access) ensures consistency across the application."
+  }
+}
