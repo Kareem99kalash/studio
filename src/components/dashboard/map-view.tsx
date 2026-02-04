@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON, Polyline, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON, Polyline, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import type { City } from '@/lib/types';
@@ -20,6 +20,27 @@ function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
     return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
 }
 
+// --- 🛰️ RECENTER LOGIC COMPONENT ---
+function MapRecenter({ city }: { city?: City }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (city?.polygons?.features?.length) {
+      const bounds = L.geoJSON(city.polygons).getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { 
+          padding: [50, 50], 
+          maxZoom: 13, 
+          animate: true,
+          duration: 1.5 
+        });
+      }
+    }
+  }, [city, map]);
+
+  return null;
+}
+
 type MapViewProps = {
   selectedCity?: City;
   stores: any[];
@@ -33,15 +54,12 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
 
   // --- 🔄 SESSION RESET ---
-  // When the analysis results change (new timestamp), clear old paths and selection
   useEffect(() => {
     setRoutePaths([]);
     setSelectedZone(null);
   }, [analysisData?.timestamp]);
 
-  const centerPosition: [number, number] = selectedCity?.center 
-    ? [selectedCity.center.lat, selectedCity.center.lng] 
-    : [36.19, 44.01];
+  const centerPosition: [number, number] = [36.19, 44.01];
 
   // --- 🎨 STYLE LOGIC ---
   const getZoneStyle = (feature: any) => {
@@ -94,13 +112,11 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
       const center = feature.properties.centroid;
       let targetStore = null;
 
-      // 1. Prioritize store assigned in current analysis
       if (analysisData?.assignments?.[name]) {
           const storeId = analysisData.assignments[name].storeId;
           targetStore = stores.find(s => s.id === storeId);
       }
 
-      // 2. Fallback to closest if no analysis data exists
       if (!targetStore) {
         let minDst = Infinity;
         stores.forEach(store => {
@@ -128,7 +144,6 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
 
       const centerPt: [number, number] = [center.lat, center.lng];
       
-      // Parallel fetch for speed
       const newRoutes = await Promise.all([
           fetchRoutePath(storePt, centerPt, 'blue', 'Center'),
           fetchRoutePath(storePt, closestPt, 'green', 'Entrance'),
@@ -157,6 +172,7 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
         style={{ height: '100%', width: '100%' }}
         key={`${selectedCity?.id}-${analysisData?.timestamp || 'initial'}`} 
       >
+        <MapRecenter city={selectedCity} />
         <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         {selectedCity?.polygons && (
