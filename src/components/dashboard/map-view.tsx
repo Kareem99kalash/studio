@@ -34,9 +34,10 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
     : [36.19, 44.01];
 
   // --- NEW STYLE LOGIC ---
-  // Simply reads the hex color assigned to this zone name
+  // ... inside MapView ...
+
   const getZoneStyle = (feature: any) => {
-    // 1. If no analysis run yet, show faint blue
+    // 1. PRE-ANALYSIS: Blue & Transparent
     if (!analysisData || !analysisData.assignments) {
       return { 
         color: '#3b82f6', 
@@ -47,14 +48,18 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
     }
 
     const zoneName = feature.properties.name;
-    // 2. Get the calculated color (Green/Yellow/Red) or default to Red if missing
-    const color = analysisData.assignments[zoneName] || '#ef4444'; 
+    
+    // 2. LOOKUP COLOR
+    // If name matches, use assigned color. 
+    // If NO match (mismatch name), default to RED (#ef4444).
+    const assignedColor = analysisData.assignments[zoneName];
+    const finalColor = assignedColor || '#ef4444'; 
 
     return { 
-      color: '#ffffff', // White border looks cleaner
+      color: '#ffffff', // White border
       weight: 1, 
-      fillColor: color, 
-      fillOpacity: 0.5 // 50% opacity so you can see map labels underneath
+      fillColor: finalColor, 
+      fillOpacity: 0.5 
     };
   };
 

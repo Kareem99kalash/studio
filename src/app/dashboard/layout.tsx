@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
 import { useEffect } from 'react';
 import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -30,7 +30,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LayoutGrid, LogOut, Settings, UploadCloud, Users } from "lucide-react";
-import Link from "next/link";
+import Link from "next/link"; // Required for navigation
 import { Logo } from "@/components/logo";
 
 export default function DashboardLayout({
@@ -39,6 +39,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname(); // Identify active page
   const auth = useAuth();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
@@ -115,24 +116,35 @@ export default function DashboardLayout({
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
+            {/* 1. DASHBOARD LINK */}
             <SidebarMenuItem>
-              <SidebarMenuButton href="/dashboard" isActive>
-                <LayoutGrid />
-                Dashboard
+              <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
+                <Link href="/dashboard">
+                  <LayoutGrid />
+                  <span>Dashboard</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+
             {isAdmin && (
               <>
+              {/* 2. USER MANAGEMENT LINK */}
               <SidebarMenuItem>
-                <SidebarMenuButton href="/dashboard/user-management">
-                  <Users />
-                  User Management
+                <SidebarMenuButton asChild isActive={pathname === '/dashboard/user-management'}>
+                  <Link href="/dashboard/user-management">
+                    <Users />
+                    <span>User Management</span>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+
+              {/* 3. CITY MANAGEMENT LINK */}
               <SidebarMenuItem>
-                <SidebarMenuButton href="/dashboard/city-management">
-                  <UploadCloud />
-                  City Management
+                <SidebarMenuButton asChild isActive={pathname === '/dashboard/city-management'}>
+                  <Link href="/dashboard/city-management">
+                    <UploadCloud />
+                    <span>City Management</span>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               </>
@@ -142,15 +154,17 @@ export default function DashboardLayout({
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton href="#">
-                <Settings />
-                Settings
+              <SidebarMenuButton asChild>
+                <Link href="#">
+                  <Settings />
+                  <span>Settings</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={handleLogout}>
                 <LogOut />
-                Logout
+                <span>Logout</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -4,13 +4,11 @@ import { collection, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase"; 
 import { useRef, useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { analysisSchema } from '@/lib/types'; // You might need to update this schema to accept 'coords' string if strict
 import { Plus, Trash2, UploadCloud, Settings2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from "@/components/ui/separator";
@@ -54,16 +52,14 @@ type AnalysisPanelProps = {
 
 export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, onCityChange }: AnalysisPanelProps) {
   const storeIdCounter = useRef(1);
-  const [greenLimit, setGreenLimit] = useState<string>("2"); // Default 2 KM
-  const [yellowLimit, setYellowLimit] = useState<string>("5"); // Default 5 KM
+  const [greenLimit, setGreenLimit] = useState<string>("2"); 
+  const [yellowLimit, setYellowLimit] = useState<string>("5"); 
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  // NOTE: Schema might need update in types.ts to allow 'coords' string, 
-  // but we can parse it here before submitting.
   const form = useForm<AnalysisFormValues>({
     defaultValues: {
       cityId: '',
-      stores: [{ id: `store-0`, name: 'Store 1', lat: '', lng: '', coords: '36.19, 44.00' }], 
+      stores: [{ id: `store-0`, name: 'Store 1', lat: '', lng: '', coords: '' }], // Added coords field
     },
   });
 
@@ -96,16 +92,33 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
   }, [selectedCityId, cities]);
 
   const onSubmit = (data: any) => {
-    // PARSE COORDINATES STRING "36.123, 44.123" -> Lat/Lng
-    const parsedStores = data.stores.map((store: any) => {
-      if (store.coords) {
-        const [latStr, lngStr] = store.coords.split(',').map((s: string) => s.trim());
-        return { ...store, lat: latStr, lng: lngStr };
+    // 1. ROBUST COORDINATE PARSING
+    const validStores = data.stores.map((store: any) => {
+      let lat = parseFloat(store.lat);
+      let lng = parseFloat(store.lng);
+
+      // If user pasted into the "coords" box:
+      if (store.coords && store.coords.trim() !== "") {
+        const clean = store.coords.replace(/[() ]/g, ''); // Remove spaces & ()
+        const parts = clean.split(',');
+        
+        if (parts.length === 2) {
+          lat = parseFloat(parts[0]);
+          lng = parseFloat(parts[1]);
+        }
       }
-      return store;
-    });
+
+      return { ...store, lat, lng };
+    }).filter((s: any) => !isNaN(s.lat) && !isNaN(s.lng)); 
+
+    // 2. ERROR CHECK
+    if (validStores.length === 0) {
+        alert("❌ No valid coordinates found!\nPlease use format: 36.123, 44.123");
+        return;
+    }
     
-    onAnalyze({ ...data, stores: parsedStores });
+    // 3. SEND TO DASHBOARD
+    onAnalyze({ ...data, stores: validStores });
   };
 
   const handleUpdateSettings = async () => {
@@ -118,7 +131,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
           const docRef = doc(db, "cities", city.id);
           await updateDoc(docRef, {
               thresholds: {
-                  green: parseFloat(greenLimit), // Saved as KM
+                  green: parseFloat(greenLimit), 
                   yellow: parseFloat(yellowLimit)
               }
           });
@@ -131,9 +144,67 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
       }
   };
 
-  // --- CSV LOGIC (Keep existing logic or use new inputs) ---
+  // --- CSV LOGIC ---
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'polygons' | 'users') => {
-      // ... (Keep your existing CSV logic here)
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      const rows = text.split('\n').slice(1);
+      const batch = writeBatch(db);
+      let count = 0;
+
+      rows.forEach((row) => {
+        if (!row.trim()) return;
+        const cols = parseCSVLine(row);
+
+        if (type === 'polygons') {
+          const city = cols[0];
+          const zoneId = cols[1];
+          const name = cols[2];
+          const wkt = cols[3];
+          
+          if (wkt && wkt.includes('OLYGON')) {
+            const positions = parseWKT(wkt);
+            if (positions.length > 2) {
+                const ref = doc(collection(db, "zones")); 
+                batch.set(ref, {
+                  city: city,
+                  zoneId: zoneId,
+                  name: name,
+                  positions: positions,
+                  type: "Feature"
+                });
+                count++;
+            }
+          }
+        }
+        else if (type === 'users') {
+          const [username, fullName, password, role, allowedCities] = cols;
+          if (username) {
+            const ref = doc(db, "users", username);
+            batch.set(ref, {
+              username: username,
+              name: fullName,
+              role: role,
+              allowedCities: allowedCities ? allowedCities.split('|') : [],
+            });
+            count++;
+          }
+        }
+      });
+
+      try {
+        await batch.commit();
+        alert(`✅ Successfully imported ${count} items into '${type}'!`);
+      } catch (error) {
+        console.error("Import Error:", error);
+        alert(`❌ Error importing ${type}. See console.`);
+      }
+    };
+    reader.readAsText(file);
   };
   
   return (
@@ -219,6 +290,24 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                   {isLoading ? "Analyzing..." : "Check Coverage"}
               </Button>
               
+              {/* DATA IMPORT */}
+              <div className="mt-8 pt-6 border-t border-border space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <UploadCloud className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bulk Import</span>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="space-y-1">
+                    <FormLabel className="text-[10px] text-muted-foreground uppercase">Polygons (CSV)</FormLabel>
+                    <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'polygons')} className="h-8 text-xs cursor-pointer" />
+                  </div>
+                  <div className="space-y-1">
+                    <FormLabel className="text-[10px] text-muted-foreground uppercase">Users (CSV)</FormLabel>
+                    <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'users')} className="h-8 text-xs cursor-pointer" />
+                  </div>
+                </div>
+              </div>
+
             </form>
           </Form>
         </CardContent>
