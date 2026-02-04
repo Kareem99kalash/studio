@@ -116,7 +116,8 @@ service cloud.firestore {
      * @principle Secures the role-granting process to prevent privilege escalation.
      */
     match /roles_admin/{userId} {
-      allow get, list: if isAdmin();
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
       // This rule is relaxed for development to allow the first user to become an admin.
       // A user can only make themselves an admin.
       allow create: if isOwner(userId) && request.resource.data.id == userId;
