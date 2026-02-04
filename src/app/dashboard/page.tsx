@@ -6,7 +6,7 @@ import type { AnalysisFormValues, AnalysisResult, City } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import dynamic from 'next/dynamic';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore'; // Added doc/getDoc
 import type { FeatureCollection } from 'geojson';
 
 const MapView = dynamic(
@@ -17,27 +17,22 @@ const MapView = dynamic(
   }
 );
 
-// --- 🧮 MATH HELPERS ---
-
-// 1. Calculate Real-World Distance (Haversine Formula) in Kilometers
+// --- 🧮 MATH HELPER (Haversine Distance) ---
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
+  
+  const R = 6371; // Earth radius in KM
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * (Math.PI/180)) * Math.cos(lat2 * (Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
 }
 
-function deg2rad(deg: number) {
-  return deg * (Math.PI / 180);
-}
-
-// 2. Find Center of a Polygon (to measure distance from)
+// Helper to find Polygon Centroid
 function getPolygonCentroid(points: {lat: number, lng: number}[]) {
+    if (!points || points.length === 0) return { lat: 0, lng: 0 };
     let latSum = 0, lngSum = 0;
     points.forEach(p => { latSum += p.lat; lngSum += p.lng; });
     return { lat: latSum / points.length, lng: lngSum / points.length };
@@ -45,7 +40,7 @@ function getPolygonCentroid(points: {lat: number, lng: number}[]) {
 
 export default function DashboardPage() {
   const [isPending, startTransition] = useTransition();
-  const [analysisResults, setAnalysisResults] = useState<any>(null); // Stores the final assignments
+  const [analysisResults, setAnalysisResults] = useState<any>(null); 
   const [submittedStores, setSubmittedStores] = useState<AnalysisFormValues['stores']>([]);
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -69,18 +64,15 @@ export default function DashboardPage() {
               const q = query(zonesRef, where('city', '==', cityDoc.name)); 
               const zonesSnapshot = await getDocs(q);
 
-              // Get City Thresholds (if they exist in the city doc, we'd fetch them here too)
-              // For now, we'll assume they are on the city object or default
-              
               const features = zonesSnapshot.docs.map(doc => {
                 const data = doc.data();
                 const rawPositions = data.positions || [];
                 
-                // Helper: Clean Points
-                const polyPoints = rawPositions.map((p: any) => ({ lat: p.lat, lng: p.lng }));
+                // Helper: Clean Points for Math
+                const polyPoints = rawPositions.map((p: any) => ({ lat: parseFloat(p.lat), lng: parseFloat(p.lng) }));
                 
-                // GeoJSON format
-                let coordinates = rawPositions.map((p: any) => [p.lng, p.lat]);
+                // GeoJSON format for Map (Needs [lng, lat])
+                let coordinates = rawPositions.map((p: any) => [parseFloat(p.lng), parseFloat(p.lat)]);
                 if (coordinates.length > 0) {
                     const first = coordinates[0];
                     const last = coordinates[coordinates.length - 1];
@@ -92,7 +84,7 @@ export default function DashboardPage() {
                   properties: { 
                       id: doc.id, 
                       name: data.name,
-                      centroid: getPolygonCentroid(polyPoints) // Pre-calculate center
+                      centroid: getPolygonCentroid(polyPoints) 
                   },
                   geometry: {
                       type: "Polygon",
@@ -106,7 +98,6 @@ export default function DashboardPage() {
                 name: cityDoc.name,
                 polygons: { type: 'FeatureCollection', features } as FeatureCollection,
                 center: { lat: 36.1911, lng: 44.0094 },
-                thresholds: (cityDoc as any).thresholds || { green: 30, yellow: 60 } // Default limits
               };
             })
           );
@@ -128,73 +119,60 @@ export default function DashboardPage() {
     setSubmittedStores([]);
   };
 
-  // --- 2. TERRITORY ALLOCATION LOGIC ---
+  // --- 2. DISTANCE ANALYSIS LOGIC ---
   const handleAnalyze = (data: AnalysisFormValues) => {
     const cityToAnalyze = cities.find(c => c.id === data.cityId);
     if (!cityToAnalyze || !data.stores.length) return;
 
     setSubmittedStores(data.stores);
     
-    startTransition(() => {
+    startTransition(async () => {
         try {
-            // A. Prepare Stores
+            // A. Fetch Live Thresholds (Green/Yellow limits)
+            let limits = { green: 2.0, yellow: 5.0 }; // Defaults
+            try {
+                const cityDoc = await getDoc(doc(firestore, 'cities', cityToAnalyze.id));
+                if (cityDoc.exists() && cityDoc.data().thresholds) {
+                    limits = cityDoc.data().thresholds;
+                }
+            } catch (e) { console.log("Using default limits"); }
+
+            // B. Prepare Stores
             const stores = data.stores.map(s => ({
-                id: s.id,
-                name: s.name,
                 lat: parseFloat(s.lat),
                 lng: parseFloat(s.lng),
-                zoneCount: 0, // Track how many zones this store gets
-                color: '#22c55e' // Default green
             }));
 
-            // B. Map of ZoneID -> Assigned Store ID
-            const assignments: Record<string, string> = {};
-
-            // C. Assign each Zone to the NEAREST Store
+            // C. Calculate Colors
+            const assignments: Record<string, string> = {}; 
             const zones = cityToAnalyze.polygons.features as any[];
-            
+            let coveredCount = 0;
+
             zones.forEach(zone => {
                 const center = zone.properties.centroid;
-                let minDistance = Infinity;
-                let closestStoreIndex = -1;
-
-                // Find closest store
-                stores.forEach((store, index) => {
-                    const dist = getDistanceKm(center.lat, center.lng, store.lat, store.lng);
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        closestStoreIndex = index;
-                    }
+                
+                // Find distance to NEAREST store
+                let minKm = Infinity;
+                stores.forEach(store => {
+                    const km = getDistanceKm(center.lat, center.lng, store.lat, store.lng);
+                    if (km < minKm) minKm = km;
                 });
 
-                // Assign ownership
-                if (closestStoreIndex !== -1) {
-                    const winner = stores[closestStoreIndex];
-                    assignments[zone.properties.name] = winner.id;
-                    winner.zoneCount++; // Increment store's workload
-                }
-            });
-
-            // D. Determine Store Colors based on Thresholds
-            const thresholds = cityToAnalyze.thresholds || { green: 30, yellow: 60 };
-            
-            stores.forEach(store => {
-                if (store.zoneCount <= thresholds.green) {
-                    store.color = '#22c55e'; // Green (Safe)
-                } else if (store.zoneCount <= thresholds.yellow) {
-                    store.color = '#eab308'; // Yellow (Warning)
+                // Assign Traffic Light Colors
+                if (minKm <= limits.green) {
+                    assignments[zone.properties.name] = '#22c55e'; // Green
+                    coveredCount++;
+                } else if (minKm <= limits.yellow) {
+                    assignments[zone.properties.name] = '#eab308'; // Yellow
+                    coveredCount++;
                 } else {
-                    store.color = '#ef4444'; // Red (Overloaded)
+                    assignments[zone.properties.name] = '#ef4444'; // Red
                 }
             });
 
-            // Save results to pass to Map
-            setAnalysisResults({
-                assignments, // { "Zone A": "store-1" }
-                storeStats: stores // [{ id: "store-1", color: "red", zoneCount: 65 }]
-            });
-
-            toast({ title: "Coverage Optimized", description: "Zones assigned to nearest branches." });
+            // D. Send to Map
+            setAnalysisResults({ assignments });
+            toast({ title: "Analysis Complete", description: `${coveredCount} zones are in the safe (green) range.` });
 
         } catch (err) {
             console.error("Analysis Error:", err);
@@ -220,7 +198,7 @@ export default function DashboardPage() {
         <MapView 
             selectedCity={selectedCity} 
             stores={submittedStores}
-            analysisData={analysisResults} // Passing the new complex result object
+            analysisData={analysisResults} 
             isLoading={overallLoading}
         />
       </div>

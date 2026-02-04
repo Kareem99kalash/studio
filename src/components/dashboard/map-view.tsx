@@ -5,26 +5,20 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import type { City } from '@/lib/types';
 
-// Fix Leaflet Icons
+// Fix Leaflet Icons (Standard Next.js Fix)
 const iconUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png';
 const iconRetinaUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png';
 const shadowUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png';
 
 const defaultIcon = L.icon({
-  iconUrl,
-  iconRetinaUrl,
-  shadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  tooltipAnchor: [16, -28],
-  shadowSize: [41, 41]
+  iconUrl, iconRetinaUrl, shadowUrl,
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], tooltipAnchor: [16, -28], shadowSize: [41, 41]
 });
 
 type MapViewProps = {
   selectedCity?: City;
   stores: any[];
-  analysisData: any; // Now contains { assignments: { "Zone A": "#hexcolor" }, stats: ... }
+  analysisData: any; 
   isLoading: boolean;
 };
 
@@ -33,11 +27,9 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
     ? [selectedCity.center.lat, selectedCity.center.lng] 
     : [36.19, 44.01];
 
-  // --- NEW STYLE LOGIC ---
-  // ... inside MapView ...
-
+  // --- SAFE STYLE FUNCTION ---
   const getZoneStyle = (feature: any) => {
-    // 1. PRE-ANALYSIS: Blue & Transparent
+    // 1. DEFAULT (Before Analysis): Blue & Transparent
     if (!analysisData || !analysisData.assignments) {
       return { 
         color: '#3b82f6', 
@@ -48,11 +40,10 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
     }
 
     const zoneName = feature.properties.name;
-    
-    // 2. LOOKUP COLOR
-    // If name matches, use assigned color. 
-    // If NO match (mismatch name), default to RED (#ef4444).
     const assignedColor = analysisData.assignments[zoneName];
+
+    // 2. SAFETY FALLBACK: Use Red if color is missing/invalid
+    // This prevents "Black Polygons"
     const finalColor = assignedColor || '#ef4444'; 
 
     return { 
@@ -68,7 +59,7 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
       
       {isLoading && (
         <div className="absolute inset-0 z-[1000] bg-white/50 flex items-center justify-center backdrop-blur-sm">
-           <div className="bg-white p-3 rounded shadow-lg text-sm font-semibold">Checking Distance...</div>
+           <div className="bg-white p-3 rounded shadow-lg text-sm font-semibold">Processing...</div>
         </div>
       )}
 
@@ -83,34 +74,30 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* 1. ZONES (Colored by Distance) */}
+        {/* 1. ZONES */}
         {selectedCity?.polygons && (
           <GeoJSON 
-            key={`${selectedCity.id}-${analysisData ? 'analyzed' : 'raw'}`} 
+            key={`${selectedCity.id}-${analysisData ? 'done' : 'init'}`} 
             data={selectedCity.polygons} 
             style={getZoneStyle}
             onEachFeature={(feature, layer) => {
-               const zoneName = feature.properties.name;
-               // Simple tooltip with just the name
-               layer.bindTooltip(zoneName, { sticky: true });
+               layer.bindTooltip(feature.properties.name, { sticky: true });
             }}
           />
         )}
 
-        {/* 2. STORES (Simple Markers) */}
-        {stores.map((store) => (
+        {/* 2. STORES */}
+        {stores.map((store: any) => (
             <CircleMarker
               key={store.id}
               center={[parseFloat(store.lat), parseFloat(store.lng)]}
-              radius={8}
+              radius={6}
               pathOptions={{ color: '#fff', weight: 2, fillColor: '#2563eb', fillOpacity: 1 }}
             >
               <Popup>
                 <div className="p-1">
                   <strong className="text-sm">{store.name}</strong>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {store.lat}, {store.lng}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{store.lat}, {store.lng}</div>
                 </div>
               </Popup>
             </CircleMarker>
