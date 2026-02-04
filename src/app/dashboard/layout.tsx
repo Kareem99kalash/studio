@@ -12,39 +12,52 @@ import { Logo } from "@/components/logo";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  
+  // 🔒 DEFAULT TO BLOCKED
+  // We start unauthorized. We only show the dashboard if we PROVE you are logged in.
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
 
-  // --- 1. STABLE AUTH CHECK ---
   useEffect(() => {
+    // 1. Check LocalStorage immediately
     const checkAuth = () => {
         try {
-            const storedUser = localStorage.getItem('geo_user');
-            if (!storedUser) {
-                // If no user, redirect immediately and KEEP LOADING true
-                // preventing the UI from flickering
-                router.replace('/'); 
-            } else {
-                setUser(JSON.parse(storedUser));
-                setLoading(false); // Only stop loading if success
+            const stored = localStorage.getItem('geo_user');
+            
+            if (!stored) {
+                // If no user, kick them out and DO NOT authorize
+                // Use window.location for a hard redirect to break any router loops
+                window.location.href = '/'; 
+                return;
             }
+
+            const parsedUser = JSON.parse(stored);
+            if (!parsedUser || !parsedUser.username) {
+                throw new Error("Invalid user data");
+            }
+
+            // Success: User exists and is valid
+            setUser(parsedUser);
+            setIsAuthorized(true);
+
         } catch (e) {
-            router.replace('/');
+            // If any error (bad JSON, etc), clear data and kick out
+            localStorage.removeItem('geo_user');
+            window.location.href = '/';
         }
     };
-    
-    // Tiny timeout ensures router is ready
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
+
+    checkAuth();
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('geo_user');
-    router.replace('/');
+    window.location.href = '/';
   };
 
-  // While checking, show a full-screen spinner (No flickering)
-  if (loading) {
+  // 🚧 BLOCKER: If not authorized yet, show ONLY the spinner.
+  // This prevents the Dashboard from trying to render (and glitching) before we know who you are.
+  if (!isAuthorized || !user) {
       return (
         <div className="h-screen w-full flex items-center justify-center bg-slate-50">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -52,9 +65,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       );
   }
 
-  // If loading is false but user is null (shouldn't happen due to redirect, but safety first)
-  if (!user) return null;
-
+  // --- RENDER DASHBOARD (Only happens if authorized) ---
   const isAdmin = user.role === 'Admin';
 
   return (
