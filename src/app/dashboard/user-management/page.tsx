@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
+import { logAction } from '@/lib/logging'; // Added logging utility
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -19,7 +20,7 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(''); // Search State
+  const [searchTerm, setSearchTerm] = useState(''); 
   
   // Wizard State
   const [step, setStep] = useState(1);
@@ -71,11 +72,11 @@ export default function UserManagementPage() {
     if (!formData.username || !formData.password) return;
     setIsSaving(true);
     try {
-      // 🛡️ NORMALIZE & CHECK FOR DUPLICATES
       const normalizedUsername = formData.username.trim().toLowerCase();
       const userRef = doc(db, 'users', normalizedUsername);
+      
+      // 🛡️ DUPLICATE CHECK
       const docSnap = await getDoc(userRef);
-
       if (docSnap.exists()) {
         toast({ 
           variant: "destructive", 
@@ -95,6 +96,9 @@ export default function UserManagementPage() {
         createdAt: new Date().toISOString()
       });
 
+      // 📜 LOG ACTION
+      await logAction(currentUser.username, "CREATE_USER", `Created ${formData.role}: ${normalizedUsername}`);
+
       toast({ title: "User Created", description: `${normalizedUsername} is now active.` });
       setStep(1);
       setFormData({ username: '', name: '', password: '', role: 'Agent', allowedCities: [] });
@@ -110,6 +114,10 @@ export default function UserManagementPage() {
     if (!isAdmin) return; 
     try {
       await updateDoc(doc(db, 'users', id), { password: newPassword });
+      
+      // 📜 LOG ACTION
+      await logAction(currentUser.username, "RESET_PASSWORD", `Changed password for user: ${id}`);
+
       toast({ title: "Updated", description: "Password changed successfully." });
       setEditingId(null);
       setNewPassword('');
@@ -119,8 +127,17 @@ export default function UserManagementPage() {
 
   const handleDelete = async (id: string) => {
     if (!isAdmin || !confirm("Delete user?")) return; 
-    await deleteDoc(doc(db, 'users', id));
-    fetchData();
+    try {
+      await deleteDoc(doc(db, 'users', id));
+      
+      // 📜 LOG ACTION
+      await logAction(currentUser.username, "DELETE_USER", `Deleted user account: ${id}`);
+
+      fetchData();
+      toast({ title: "User Deleted" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error deleting user" });
+    }
   };
 
   // 🔍 Filtered User List

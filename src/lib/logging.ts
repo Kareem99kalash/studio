@@ -1,21 +1,22 @@
-import { db } from '@/firebase';
+import { db } from '@/firebase'; // Double check this path!
 import { collection, addDoc } from 'firebase/firestore';
 
-/**
- * Saves a user action to the 'logs' collection in Firestore
- * @param username - The username of the person doing the action
- * @param action - A short title (e.g., "DELETE_USER", "RUN_ANALYSIS")
- * @param details - A description (e.g., "Deleted user @john_doe")
- */
 export async function logAction(username: string, action: string, details: string) {
+  if (!username) {
+    console.error("Logging failed: No username provided");
+    return;
+  }
+
   try {
-    await addDoc(collection(db, 'logs'), {
+    console.log(`📡 Attempting to log: ${action} for ${username}`);
+    const docRef = await addDoc(collection(db, 'logs'), {
       username: username.toLowerCase(),
       action: action.toUpperCase(),
-      details,
+      details: details,
       timestamp: new Date().toISOString(),
     });
+    console.log("✅ Log successfully saved with ID: ", docRef.id);
   } catch (e) {
-    console.error("Critical: Logging failed", e);
+    console.error("❌ Firestore Logging Error:", e);
   }
 }
