@@ -4,7 +4,9 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/logo";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -14,14 +16,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAuth, setIsAuth] = useState(false);
 
   useEffect(() => {
-    // 1. Check local storage for the user we saved at login
+    // Check local storage for the user session
     const stored = localStorage.getItem('geo_user');
     if (!stored) {
-      // Hard redirect to login if no session found
       window.location.href = '/'; 
     } else {
       try {
-        setUser(JSON.parse(stored));
+        const parsedUser = JSON.parse(stored);
+        setUser(parsedUser);
         setIsAuth(true);
       } catch (e) {
         window.location.href = '/';
@@ -29,70 +31,94 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, []);
 
-  // Show a clean loading state while checking storage to prevent "glitching"
-  if (!isAuth) {
+  const handleLogout = () => {
+    localStorage.removeItem('geo_user');
+    window.location.href = '/'; // Hard redirect to clear any state
+  };
+
+  if (!isAuth || !user) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
       </div>
     );
   }
+
+  const isAdmin = user.role === 'Admin';
 
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-2">
-            <Logo className="size-6 text-primary" />
-            <span className="font-bold text-lg">GeoCoverage</span>
+            <Logo className="size-6 text-purple-600" />
+            <span className="font-bold text-lg tracking-tight">GeoCoverage</span>
           </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
-                <Link href="/dashboard"><LayoutGrid /><span>Dashboard</span></Link>
+                <Link href="/dashboard"><LayoutGrid className="size-4" /><span>Dashboard</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {user?.role === 'Admin' && (
+
+            {isAdmin && (
               <>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === '/dashboard/city-thresholds'}>
-                    <Link href="/dashboard/city-thresholds"><SlidersHorizontal /><span>Thresholds</span></Link>
+                    <Link href="/dashboard/city-thresholds"><SlidersHorizontal className="size-4" /><span>Thresholds</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === '/dashboard/user-management'}>
-                    <Link href="/dashboard/user-management"><Users /><span>Users</span></Link>
+                    <Link href="/dashboard/user-management"><Users className="size-4" /><span>Users</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === '/dashboard/city-management'}>
-                    <Link href="/dashboard/city-management"><UploadCloud /><span>Cities</span></Link>
+                    <Link href="/dashboard/city-management"><UploadCloud className="size-4" /><span>Cities</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </>
             )}
           </SidebarMenu>
         </SidebarContent>
-        <SidebarFooter className="p-4">
-          <SidebarMenuButton 
-            className="text-red-500 hover:text-red-600 hover:bg-red-50"
-            onClick={() => { localStorage.clear(); window.location.href = '/'; }}
-          >
-            <LogOut /><span>Logout</span>
-          </SidebarMenuButton>
+        
+        {/* 🚪 RESTORED LOGOUT BUTTON */}
+        <SidebarFooter className="p-4 border-t">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton 
+                onClick={handleLogout} 
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+              >
+                <LogOut className="size-4" />
+                <span>Logout</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
+      
       <SidebarInset>
-        <header className="flex h-14 items-center border-b px-4 bg-white sticky top-0 z-10">
+        <header className="flex h-14 items-center justify-between border-b px-4 bg-white sticky top-0 z-10">
           <SidebarTrigger />
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-sm font-medium">{user?.name}</span>
-            <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded uppercase font-bold text-slate-500">{user?.role}</span>
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-medium leading-none">{user.name}</p>
+              <p className="text-[10px] text-muted-foreground uppercase font-bold mt-1">{user.role}</p>
+            </div>
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-purple-100 text-purple-700 font-bold">
+                {user.username?.[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
           </div>
         </header>
-        {children}
+        <div className="flex-1 overflow-hidden">
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
