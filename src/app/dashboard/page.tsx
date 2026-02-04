@@ -145,6 +145,19 @@ export default function DashboardPage() {
     });
   };
 
+  const downloadCSV = () => {
+    if (!liveAnalysis?.assignments) return;
+    const headers = ['Zone', 'Branch', 'Road KM', 'Status'];
+    const rows = Object.entries(liveAnalysis.assignments).map(([name, d]: [string, any]) => 
+      [`"${name}"`, `"${d.storeName}"`, d.distance, d.status]
+    );
+    const blob = new Blob([[headers.join(','), ...rows.map(r => r.join(','))].join('\n')], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Analysis_${selectedCity?.name}.csv`;
+    link.click();
+  };
+
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-purple-600" /></div>;
 
   return (
@@ -155,22 +168,71 @@ export default function DashboardPage() {
       <div className="flex flex-col h-full relative overflow-hidden">
         {progress && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black text-white px-4 py-2 rounded-full text-sm animate-pulse">{progress}</div>}
         <Tabs defaultValue="map" className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 py-2 border-b bg-white flex justify-between items-center"><TabsList><TabsTrigger value="map">Map</TabsTrigger><TabsTrigger value="table">Table</TabsTrigger></TabsList></div>
+          <div className="px-4 py-2 border-b bg-white flex justify-between items-center shrink-0">
+            <TabsList><TabsTrigger value="map">Map</TabsTrigger><TabsTrigger value="table">Table</TabsTrigger></TabsList>
+            {liveAnalysis && (
+                <Badge variant="outline" className="text-[10px] uppercase">
+                    Updated: {new Date(liveAnalysis.timestamp).toLocaleTimeString()}
+                </Badge>
+            )}
+          </div>
           <TabsContent value="map" className="flex-1 p-0 m-0 h-full overflow-hidden">
             <MapView selectedCity={selectedCity} stores={liveAnalysis?.stores || []} analysisData={liveAnalysis} isLoading={false} />
           </TabsContent>
-          <TabsContent value="table" className="flex-1 overflow-y-auto p-4">
-            <Card><CardHeader className="flex flex-row items-center justify-between border-b sticky top-0 bg-white z-10"><CardTitle>Results</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-slate-50 sticky top-[73px] z-10 shadow-sm"><TableRow><TableHead>Zone</TableHead><TableHead>Branch</TableHead><TableHead>Distance</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {liveAnalysis?.assignments ? Object.entries(liveAnalysis.assignments).map(([name, data]: [string, any]) => (
-                    <TableRow key={name}><TableCell className="font-medium">{name}</TableCell><TableCell>{data.storeName}</TableCell><TableCell>{data.distance} km</TableCell></TableRow>
-                  )) : <TableRow><TableCell colSpan={3} className="text-center py-8">Press "Check Coverage" to see results.</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </CardContent></Card>
+          <TabsContent value="table" className="flex-1 overflow-y-auto p-4 bg-slate-50">
+            <Card className="flex flex-col min-h-fit">
+              <CardHeader className="flex flex-row items-center justify-between border-b sticky top-0 bg-white z-10">
+                <CardTitle>Results</CardTitle>
+                <Button size="sm" variant="outline" onClick={downloadCSV} disabled={!liveAnalysis}>
+                    <Download className="mr-2 h-4 w-4" /> Export CSV
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-slate-50 sticky top-[73px] z-10 shadow-sm">
+                    <TableRow>
+                      <TableHead>Zone Name</TableHead>
+                      <TableHead>Branch</TableHead>
+                      <TableHead>Distance</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {liveAnalysis?.assignments ? Object.entries(liveAnalysis.assignments).map(([name, data]: [string, any]) => (
+                      <TableRow key={name} className="hover:bg-slate-50/50">
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <span 
+                              className="w-2 h-2 rounded-full shrink-0" 
+                              style={{ backgroundColor: data.fillColor }} 
+                            />
+                            {name}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-2">
+                            <span 
+                              className="w-2 h-2 rounded-full" 
+                              style={{ backgroundColor: data.storeColor }} 
+                            />
+                            {data.storeName}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{data.distance} km</TableCell>
+                        <TableCell>
+                          <Badge 
+                            className="text-white border-none shadow-sm"
+                            style={{ backgroundColor: data.fillColor }}
+                          >
+                            {data.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    )) : <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Press "Check Coverage" to see real road results.</TableCell></TableRow>}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
