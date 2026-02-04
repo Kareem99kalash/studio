@@ -1,136 +1,137 @@
 'use client';
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+
+import { useState, useEffect } from 'react';
+import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '@/firebase'; // Ensure this points to your firebase config
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Trash2, Plus, UploadCloud } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { FeatureCollection, Polygon, Feature } from 'geojson';
-import { useFirestore } from '@/firebase';
-import { collection, doc, writeBatch } from 'firebase/firestore';
 
 export default function CityManagementPage() {
-  const firestore = useFirestore();
+  const [cities, setCities] = useState<any[]>([]);
+  const [newCityName, setNewCityName] = useState('');
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const [cityName, setCityName] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      setFile(event.target.files[0]);
+  // 1. Fetch Cities
+  const fetchCities = async () => {
+    try {
+      setLoading(true);
+      const snap = await getDocs(collection(db, 'cities'));
+      setCities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error(error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to load cities." });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!cityName || !file) {
-      toast({
-        variant: 'destructive',
-        title: 'Missing fields',
-        description: 'Please provide a city name and a GeoJSON file.',
+  useEffect(() => {
+    fetchCities();
+  }, []);
+
+  // 2. Add City
+  const handleAddCity = async () => {
+    if (!newCityName.trim()) return;
+    try {
+      await addDoc(collection(db, 'cities'), {
+        name: newCityName,
+        createdAt: new Date().toISOString(),
+        thresholds: { green: 2.0, yellow: 5.0 } // Default rules
       });
-      return;
+      setNewCityName('');
+      fetchCities();
+      toast({ title: "Success", description: "City added." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to add city." });
     }
-    setIsLoading(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const content = e.target?.result;
-        if (typeof content !== 'string') {
-          throw new Error("Could not read file.");
-        }
-        const geojson = JSON.parse(content) as FeatureCollection<Polygon>;
+  };
 
-        if (geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
-          throw new Error("Invalid GeoJSON format. Must be a FeatureCollection.");
-        }
-
-        for (const feature of geojson.features) {
-          if (feature.type !== 'Feature' || !feature.properties || typeof feature.properties.id === 'undefined' || typeof feature.properties.name === 'undefined') {
-            throw new Error("Each feature in the GeoJSON must have 'id' and 'name' in its properties.");
-          }
-        }
-
-        const cityId = cityName.toLowerCase().replace(/\s+/g, '-');
-        const cityRef = doc(firestore, 'cities', cityId);
-
-        const batch = writeBatch(firestore);
-
-        batch.set(cityRef, { id: cityId, name: cityName });
-
-        geojson.features.forEach((feature: Feature<Polygon>) => {
-          const polygonId = feature.properties!.id as string;
-          const polygonName = feature.properties!.name as string;
-          const polygonRef = doc(firestore, `cities/${cityId}/polygons`, polygonId);
-          batch.set(polygonRef, {
-            id: polygonId,
-            cityId: cityId,
-            polygonName: polygonName,
-            wkt: JSON.stringify(feature.geometry), // Store GeoJSON geometry as a string in the 'wkt' field
-          });
-        });
-
-        await batch.commit();
-
-        toast({
-          title: 'City Added',
-          description: `${cityName} with its polygons has been successfully uploaded to Firestore.`,
-        });
-        setCityName('');
-        setFile(null);
-        // This is a workaround to clear the file input
-        const fileInput = document.getElementById('geojson-file') as HTMLInputElement;
-        if (fileInput) fileInput.value = '';
-
-      } catch (error: any) {
-        toast({
-          variant: 'destructive',
-          title: 'Upload Failed',
-          description: error.message || 'Could not parse file or save to database. Check permissions.',
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    reader.readAsText(file);
+  // 3. Delete City
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this city? This cannot be undone.")) return;
+    try {
+      await deleteDoc(doc(db, 'cities', id));
+      fetchCities();
+      toast({ title: "Deleted", description: "City removed." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "Failed to delete city." });
+    }
   };
 
   return (
-    <main className="p-4 sm:p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline text-xl">City Management</CardTitle>
-          <CardDescription>Upload new city polygon data using a GeoJSON file. This will be saved to Firestore.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
-            <div className="space-y-2">
-              <Label htmlFor="city-name">City Name</Label>
-              <Input
-                id="city-name"
-                value={cityName}
-                onChange={(e) => setCityName(e.target.value)}
-                placeholder="e.g., Baghdad"
-                disabled={isLoading}
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold tracking-tight">City Management</h1>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* ADD CITY CARD */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Add New City</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Input 
+                placeholder="City Name (e.g. Erbil)" 
+                value={newCityName} 
+                onChange={(e) => setNewCityName(e.target.value)} 
               />
+              <Button onClick={handleAddCity}>
+                <Plus className="mr-2 h-4 w-4" /> Add
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="geojson-file">Polygon File (GeoJSON)</Label>
-              <Input
-                id="geojson-file"
-                type="file"
-                accept=".json, .geojson"
-                onChange={handleFileChange}
-                disabled={isLoading}
-              />
-            </div>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? 'Uploading...' : 'Upload City Data'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </main>
+            <p className="text-xs text-muted-foreground mt-2">
+              Note: Polygons for this city must be uploaded separately via CSV on the Dashboard.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* CITY LIST */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>Active Cities</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>City Name</TableHead>
+                  <TableHead>Created At</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                    <TableRow><TableCell colSpan={3} className="text-center">Loading...</TableCell></TableRow>
+                ) : cities.length === 0 ? (
+                    <TableRow><TableCell colSpan={3} className="text-center">No cities found.</TableCell></TableRow>
+                ) : (
+                    cities.map((city) => (
+                      <TableRow key={city.id}>
+                        <TableCell className="font-medium flex items-center gap-2">
+                            <UploadCloud className="h-4 w-4 text-blue-500" />
+                            {city.name}
+                        </TableCell>
+                        <TableCell>{city.createdAt ? new Date(city.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(city.id)}>
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
