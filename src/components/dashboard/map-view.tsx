@@ -57,7 +57,6 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
   };
 
   // --- ROUTE CALCULATION ---
-  // Calculates lines from Store -> Center, Entrance, Furthest
   const renderRoutes = () => {
     if (!selectedZone || !analysisData || !selectedCity) return null;
 
@@ -65,8 +64,7 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
     const zoneFeature = selectedCity.polygons.features.find((f: any) => f.properties.name === selectedZone);
     if (!zoneFeature) return null;
 
-    // We need to find which store is closest (or assigned) to this zone
-    // For visualization, we simply find the nearest store to the zone center
+    // Find nearest store to the zone center
     const center = zoneFeature.properties.centroid;
     let nearestStore: any = null;
     let minDst = Infinity;
@@ -81,14 +79,13 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
     const storePt = [parseFloat(nearestStore.lat), parseFloat(nearestStore.lng)] as [number, number];
 
     // 2. Find Key Points (Vertices)
-    // Flatten coordinates to a simple list of points
     const rawCoords = zoneFeature.geometry.coordinates[0]; 
     // GeoJSON is [lng, lat], Leaflet needs [lat, lng]
     const vertices = rawCoords.map((p: any) => [p[1], p[0]] as [number, number]);
 
     let closestPt = vertices[0];
     let furthestPt = vertices[0];
-    let min VDist = Infinity;
+    let minVDist = Infinity; // 👈 FIXED: removed space here
     let maxVDist = -1;
 
     vertices.forEach(v => {
@@ -171,8 +168,6 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
               key={store.id}
               center={[parseFloat(store.lat), parseFloat(store.lng)]}
               radius={8}
-              // Z-Index Hack: Rendering order in Leaflet SVG is determined by DOM order.
-              // Since this is last in the JSX, it stays on top.
               pathOptions={{ color: '#ffffff', weight: 2, fillColor: '#2563eb', fillOpacity: 1 }}
             >
               <Popup>
