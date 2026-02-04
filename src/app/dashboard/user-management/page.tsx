@@ -155,10 +155,24 @@ export default function UserManagementPage() {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Agent">Agent (View Only)</SelectItem>
-                      <SelectItem value="Manager">Manager (Create/Tickets)</SelectItem>
-                      <SelectItem value="Admin">Admin (Full Access)</SelectItem>
+                      
+                      {/* 🛡️ RBAC GUARD: Only Admins can create Managers or other Admins */}
+                      {isAdmin && (
+                        <>
+                          <SelectItem value="Manager">Manager (Create/Tickets)</SelectItem>
+                          <SelectItem value="Admin">Admin (Full Access)</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
+
+                  {/* Visual feedback for Managers */}
+                  {!isAdmin && (
+                    <p className="text-[10px] text-amber-600 font-medium">
+                      Managers are restricted to creating Agent accounts.
+                    </p>
+                  )}
+
                   <Button size="sm" className="w-full" onClick={() => setStep(3)}>
                     Next <ChevronRight className="ml-1 h-4 w-4" />
                   </Button>

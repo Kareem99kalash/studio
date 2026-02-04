@@ -4,6 +4,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket } from "lucide-react";
 import Link from "next/link";
+import { doc, onSnapshot } from 'firebase/firestore'; // Added for real-time check
+import { db } from '@/firebase'; // Ensure this points to your firebase config
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { Logo } from "@/components/logo";
@@ -18,14 +20,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const stored = localStorage.getItem('geo_user');
     if (!stored) {
       window.location.href = '/'; 
-    } else {
-      try {
-        const parsedUser = JSON.parse(stored);
-        setUser(parsedUser);
-        setIsAuth(true);
-      } catch (e) {
-        window.location.href = '/';
-      }
+      return;
+    }
+
+    try {
+      const parsedUser = JSON.parse(stored);
+      setUser(parsedUser);
+      setIsAuth(true);
+
+      // 🛡️ SECURITY KILL-SWITCH: Real-time listener
+      // This monitors the specific user document. If it's deleted, they are logged out.
+      const userRef = doc(db, 'users', parsedUser.username);
+      const unsub = onSnapshot(userRef, (docSnap) => {
+        if (!docSnap.exists()) {
+          console.warn("User account no longer exists. Terminating session...");
+          localStorage.removeItem('geo_user');
+          window.location.href = '/'; 
+        }
+      });
+
+      return () => unsub(); // Cleanup listener when component unmounts
+    } catch (e) {
+      window.location.href = '/';
     }
   }, []);
 
@@ -35,7 +51,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   if (!isAuth || !user) {
-    return <div className="h-screen w-full flex items-center justify-center bg-slate-50">Loading Dashboard...</div>;
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Verifying Authorization</p>
+      </div>
+    );
   }
 
   const isAdmin = user.role === 'Admin';
