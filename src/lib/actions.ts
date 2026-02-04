@@ -5,18 +5,7 @@ import { analyzeStoreCoverage } from '@/ai/flows/analyze-store-coverage';
 import { cities } from './data';
 import { parseMarkdownTable } from './utils';
 import type { AnalysisResult } from './types';
-
-export const analysisSchema = z.object({
-  cityId: z.string().min(1, 'City is required.'),
-  stores: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string().min(1, 'Store name is required.'),
-      lat: z.string().refine(val => !isNaN(parseFloat(val)), { message: 'Must be a number.' }),
-      lng: z.string().refine(val => !isNaN(parseFloat(val)), { message: 'Must be a number.' }),
-    })
-  ).min(1, 'At least one store is required.'),
-});
+import { analysisSchema } from './types';
 
 const THRESHOLDS = {
     green: 5, // km

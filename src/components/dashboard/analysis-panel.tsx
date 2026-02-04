@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cities } from '@/lib/data';
 import type { AnalysisFormValues } from '@/lib/types';
-import { analysisSchema } from '@/lib/actions';
+import { analysisSchema } from '@/lib/types';
 import { Plus, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
