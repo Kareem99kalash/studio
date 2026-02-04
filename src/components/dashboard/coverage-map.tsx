@@ -1,97 +1,113 @@
 'use client';
 
-import { MapContainer, TileLayer, Polygon, Marker, useMap } from 'react-leaflet';
+import { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import { db } from '../../firebase'; // Adjust path if needed
+import { collection, onSnapshot } from 'firebase/firestore';
 import L from 'leaflet';
-import type { City, AnalysisResult, AnalysisFormValues } from '@/lib/types';
-import { useEffect } from 'react';
 
-// Component to update map view when city changes
-function MapUpdater({ city }: { city: City | undefined }) {
-  const map = useMap();
-  useEffect(() => {
-    if (city) {
-      map.setView(city.center, 11);
-    }
-  }, [city, map]);
-  return null;
+// --- FIX LEAFLET ICONS IN NEXT.JS ---
+// (Leaflet icons often disappear in Next.js without this fix)
+const iconUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png';
+const iconRetinaUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png';
+const shadowUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png';
+
+const defaultIcon = L.icon({
+  iconUrl: iconUrl,
+  iconRetinaUrl: iconRetinaUrl,
+  shadowUrl: shadowUrl,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  tooltipAnchor: [16, -28],
+  shadowSize: [41, 41]
+});
+
+// --- TYPES ---
+interface Zone {
+  id: string;
+  name: string;
+  color?: string;
+  positions: { lat: number; lng: number }[]; // Matches your DB structure
 }
 
-type CoverageMapProps = {
-  selectedCity: City | undefined;
-  stores: AnalysisFormValues['stores'];
-  analysisResults: AnalysisResult[];
-};
+interface Store {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
 
-export function CoverageMap({ selectedCity, stores, analysisResults }: CoverageMapProps) {
-  const getPolygonStyle = (polygonId: string) => {
-    for (const result of analysisResults) {
-      if (result.polygonStyles[polygonId]) {
-        const { fillColor, fillOpacity, strokeColor, strokeWeight } = result.polygonStyles[polygonId];
-        return {
-          color: strokeColor,
-          weight: strokeWeight,
-          fillColor: fillColor,
-          fillOpacity: fillOpacity,
-        };
-      }
-    }
-    // Default style
-    return {
-      fillColor: 'gray',
-      color: 'black',
-      fillOpacity: 0.3,
-      weight: 1,
-    };
-  };
+export function CoverageMap() {
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+
+  // 1. LISTEN TO ZONES (POLYGONS)
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'zones'), (snapshot) => {
+      const loadedZones = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Zone[];
+      
+      console.log("Loaded Zones:", loadedZones); // Check your console to verify!
+      setZones(loadedZones);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 2. LISTEN TO BRANCHES (STORES)
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'branches'), (snapshot) => {
+      const loadedStores = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Store[];
+      setStores(loadedStores);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   return (
-    <div className="h-full w-full rounded-lg overflow-hidden">
-      <MapContainer
-      key={selectedCity ? JSON.stringify(selectedCity.center) : "default-map"}
-        center={selectedCity?.center || [51.505, -0.09]}
-        zoom={11}
-        scrollWheelZoom={true}
+    <div className="h-full w-full rounded-lg overflow-hidden border border-border">
+      <MapContainer 
+        center={[36.19, 44.01]} // Default: Erbil
+        zoom={12} 
         style={{ height: '100%', width: '100%' }}
       >
-        <MapUpdater city={selectedCity} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {selectedCity?.polygons.features.map(feature => {
-          if (!feature.properties?.id) return null;
-          const polygonId = feature.properties.id as string;
-          const styleOptions = getPolygonStyle(polygonId);
-          // Leaflet expects [lat, lng], GeoJSON is [lng, lat]
-          const positions = feature.geometry.coordinates[0].map(([lng, lat]) => [lat, lng] as L.LatLngExpression);
-          return <Polygon key={polygonId} positions={positions} pathOptions={styleOptions} />;
-        })}
+        {/* DRAW ZONES */}
+        {zones.map((zone) => (
+          <Polygon 
+            key={zone.id}
+            pathOptions={{ 
+              color: zone.color || '#3b82f6', // Default blue if no color
+              fillOpacity: 0.2,
+              weight: 2
+            }}
+            positions={zone.positions}
+          >
+            <Tooltip sticky>{zone.name}</Tooltip>
+          </Polygon>
+        ))}
 
-        {stores.map((store) => {
-            const position = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
-            if (isNaN(position.lat) || isNaN(position.lng)) return null;
-
-            const storeResult = analysisResults.find(r => r.store.id === store.id);
-            const color = storeResult?.store.color || '#4285F4';
-
-            const icon = L.divIcon({
-                html: `<div class="w-4 h-4 rounded-full border-2 border-white" style="background-color: ${color}; box-shadow: 0 2px 4px rgba(0,0,0,0.4);"></div>`,
-                className: '', // leaflet adds a default class, we don't want it
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
-            });
-            
-            return (
-                <Marker 
-                    key={store.id} 
-                    position={[position.lat, position.lng]} 
-                    icon={icon}
-                    title={store.name}
-                />
-            );
-        })}
+        {/* DRAW STORES */}
+        {stores.map((store) => (
+          <Marker 
+            key={store.id} 
+            position={[store.lat, store.lng]} 
+            icon={defaultIcon}
+          >
+            <Popup>{store.name}</Popup>
+          </Marker>
+        ))}
       </MapContainer>
     </div>
   );

@@ -59,6 +59,7 @@ const parseWKT = (wkt: string) => {
   }
 };
 
+
 type AnalysisPanelProps = {
   cities: City[];
   isLoadingCities: boolean;
