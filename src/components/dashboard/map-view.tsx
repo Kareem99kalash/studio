@@ -5,7 +5,7 @@ import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON, Polyline, Toolti
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Route, Navigation, Ruler, BrainCircuit, Users, Building2, Clock, MapPin, Flame, Info, Loader2 } from 'lucide-react';
+import { Route, Navigation, Ruler, BrainCircuit, Users, Building2, Clock, MapPin, Flame, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -39,9 +39,10 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
-  // Guard against SSR
+  // Guard against SSR crashes
   useEffect(() => { setIsClient(true); }, []);
 
+  // --- 🤖 AI GLOBAL SUMMARY ---
   useEffect(() => {
     if (analysisData?.assignments) {
       const zones = Object.entries(analysisData.assignments);
@@ -61,12 +62,12 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
         warning,
         out: zones.length - (covered + warning),
         furthestPolygon: furthest.name,
-        efficiency: zones.length > 0 ? (((covered + warning) / zones.length) * 100).toFixed(1) : "0"
+        efficiency: (((covered + warning) / zones.length) * 100).toFixed(1)
       });
     }
   }, [analysisData]);
 
-  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center">Initializing Map...</div>;
+  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center">Loading Map Engine...</div>;
 
   const handleZoneClick = async (feature: any) => {
       const name = feature?.properties?.name;
@@ -83,11 +84,10 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           density: Math.min(areaFactor / 2, 1)
       });
 
-      // Find store safe check
       const storeId = analysisData?.assignments?.[name]?.storeId;
       const targetStore = stores.find((s: any) => s.id === storeId) || stores[0];
 
-      if (targetStore && targetStore.lat && targetStore.lng && feature.properties?.centroid) {
+      if (targetStore?.lat && targetStore?.lng && feature.properties?.centroid) {
           const storePt: [number, number] = [parseFloat(targetStore.lat), parseFloat(targetStore.lng)];
           const center = feature.properties.centroid;
           
@@ -112,7 +112,10 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   return (
     <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
+      {/* --- 🗺️ MAP (70%) --- */}
       <div className="flex-[7] rounded-xl overflow-hidden border relative shadow-md bg-white">
+        
+        {/* HEATMAP CONTROLS */}
         <div className="absolute top-4 left-4 z-[1000] bg-white/90 backdrop-blur p-3 rounded-lg shadow-lg border border-slate-200 flex items-center gap-4">
           <div className="flex items-center space-x-2">
             <Flame className={`h-4 w-4 ${showHeatmap ? 'text-orange-500' : 'text-slate-400'}`} />
@@ -125,26 +128,33 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           <MapRecenter city={selectedCity} />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           
-          {selectedCity?.polygons?.features && (
-            <GeoJSON data={selectedCity.polygons} style={(f: any) => {
-              const zoneName = f?.properties?.name;
-              const data = analysisData?.assignments?.[zoneName];
-              const area = f?.properties?.area || 0.5;
-              
-              if (showHeatmap) return { color: 'white', weight: 0.5, fillColor: getHeatmapColor(area / 2), fillOpacity: 0.7 };
-              return { 
-                color: data?.storeColor || '#cbd5e1', 
-                weight: zoneName === selectedZone ? 4 : 1, 
-                fillColor: data?.fillColor || '#f1f5f9', 
-                fillOpacity: 0.6 
-              };
-            }} onEachFeature={(f, l) => l.on({ click: () => handleZoneClick(f) })} />
+          {/* 🔑 FIXED: Added Key based on city ID and heatmap state to force re-render */}
+          {selectedCity?.polygons && (
+            <GeoJSON 
+                key={`${selectedCity.id}-${showHeatmap ? 'heat' : 'normal'}`} 
+                data={selectedCity.polygons} 
+                style={(f: any) => {
+                    const zoneName = f?.properties?.name;
+                    const data = analysisData?.assignments?.[zoneName];
+                    const area = f?.properties?.area || 0.5;
+                    
+                    if (showHeatmap) return { color: 'white', weight: 0.5, fillColor: getHeatmapColor(area / 2), fillOpacity: 0.7 };
+                    return { 
+                        color: data?.storeColor || '#cbd5e1', 
+                        weight: zoneName === selectedZone ? 4 : 1, 
+                        fillColor: data?.fillColor || '#f1f5f9', 
+                        fillOpacity: 0.6 
+                    };
+                }} 
+                onEachFeature={(f, l) => l.on({ click: () => handleZoneClick(f) })} 
+            />
           )}
 
           {!showHeatmap && routePaths.map((r, i) => (
             <Polyline key={i} positions={r.positions} pathOptions={{ color: r.color, weight: 4 }} />
           ))}
 
+          {/* 📍 STORE MARKERS */}
           {stores?.map((s: any) => (
             s.lat && s.lng && (
               <CircleMarker key={s.id} center={[parseFloat(s.lat), parseFloat(s.lng)]} radius={8} pathOptions={{ color: 'white', weight: 2, fillColor: s.borderColor || '#2563eb', fillOpacity: 1 }}>
@@ -155,43 +165,70 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
         </MapContainer>
       </div>
 
+      {/* --- 📊 INFO PANEL (30%) --- */}
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2">
         <Card className="border-t-4 border-t-purple-600 shadow-sm">
-          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-purple-600" /> Market Intelligence</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold"><BrainCircuit className="h-4 w-4" /> AI Market Summary</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {!aiInsights ? <p className="text-[10px] text-muted-foreground">Run analysis to see results...</p> : (
+            {!aiInsights ? <p className="text-[10px] text-muted-foreground italic">Run coverage check to see summary.</p> : (
               <div className="space-y-2">
-                <div className="bg-purple-600 p-3 rounded-lg text-white flex justify-between items-center">
-                   <div className="flex flex-col"><span className="text-[9px] font-bold uppercase opacity-80">Network Efficiency</span><span className="text-lg font-black">{aiInsights.efficiency}%</span></div>
+                <div className="bg-purple-600 p-3 rounded-lg text-white flex justify-between items-center shadow-inner">
+                   <div className="flex flex-col">
+                     <span className="text-[9px] font-bold uppercase opacity-80">Network Efficiency</span>
+                     <span className="text-lg font-black">{aiInsights.efficiency}%</span>
+                   </div>
                 </div>
-                <div className="text-[10px] text-slate-500 italic">Furthest Coverage: <strong>{aiInsights.furthestPolygon}</strong></div>
+                <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-50 p-2 rounded border text-center">
+                        <div className="text-[8px] font-bold text-slate-400 uppercase">Covered</div>
+                        <div className="text-sm font-bold text-green-600">{aiInsights.covered}</div>
+                    </div>
+                    <div className="bg-slate-50 p-2 rounded border text-center">
+                        <div className="text-[8px] font-bold text-slate-400 uppercase">Warning</div>
+                        <div className="text-sm font-bold text-amber-500">{aiInsights.warning}</div>
+                    </div>
+                </div>
+                <div className="text-[10px] text-slate-500 bg-slate-100 p-2 rounded flex items-center gap-2">
+                    <Navigation className="h-3 w-3" /> Furthest Zone: <strong className="text-slate-800">{aiInsights.furthestPolygon}</strong>
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
 
         <Card className="border-t-4 border-t-blue-600 flex-1 shadow-sm">
-          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><MapPin className="h-4 w-4 text-blue-600" /> Zone Details</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-blue-700 font-bold"><MapPin className="h-4 w-4" /> Zone Intelligence</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {!selectedZone ? <p className="text-center py-10 text-[10px] opacity-40">Click a polygon for deep-dive</p> : (
+            {!selectedZone ? <div className="text-center py-10 italic text-[10px] text-slate-400">Select a polygon for AI deep-dive</div> : (
               <>
-                <div className="text-lg font-black text-slate-800 tracking-tight">{selectedZone}</div>
+                <div className="text-lg font-black text-slate-800 tracking-tight leading-none">{selectedZone}</div>
                 <div className="grid grid-cols-2 gap-2">
-                    <div className="p-2 bg-slate-50 rounded border text-[11px]">
-                      <span className="text-slate-400 font-bold uppercase block text-[8px]">Population</span>
-                      <Users className="inline h-3 w-3 mr-1 text-blue-500" /> {zoneStats?.population?.toLocaleString()}
+                    <div className="p-2 bg-slate-50 rounded border">
+                      <span className="text-slate-400 font-bold uppercase block text-[8px]">Est. Population</span>
+                      <div className="flex items-center gap-1 text-sm font-bold text-slate-700"><Users className="h-3 w-3 text-blue-500" /> {zoneStats?.population?.toLocaleString()}</div>
                     </div>
-                    <div className="p-2 bg-slate-50 rounded border text-[11px]">
+                    <div className="p-2 bg-slate-50 rounded border">
                       <span className="text-slate-400 font-bold uppercase block text-[8px]">Businesses</span>
-                      <Building2 className="inline h-3 w-3 mr-1 text-blue-500" /> {zoneStats?.businesses}
+                      <div className="flex items-center gap-1 text-sm font-bold text-slate-700"><Building2 className="h-3 w-3 text-blue-500" /> {zoneStats?.businesses}</div>
                     </div>
                 </div>
+                
                 {routePaths.map((r, i) => (
                     <div key={i} className="bg-white p-2 border rounded shadow-sm text-[11px] flex justify-between items-center">
-                      <span className="text-slate-500">Logistics</span>
-                      <div className="text-right font-bold text-slate-700">{r.distanceKm} km <br/> <span className="text-blue-600 flex items-center gap-1 justify-end"><Clock className="h-2 w-2" /> {r.durationMin} min</span></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Delivery Window</span>
+                        <span className="font-bold text-slate-700 flex items-center gap-1"><Clock className="h-3 w-3 text-blue-600" /> {r.durationMin} mins</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[9px] font-bold text-slate-400 uppercase">Distance</div>
+                        <div className="text-xs font-black text-slate-800">{r.distanceKm} km</div>
+                      </div>
                     </div>
                 ))}
+
+                <div className="p-3 bg-amber-50 border border-amber-100 rounded text-[10px] text-amber-800 leading-relaxed italic">
+                  <strong>AI Analysis:</strong> This sector is primarily {zoneStats?.population > 3000 ? 'High-Density Residential' : 'Moderate Commercial'}. Demand peaks are expected during {zoneStats?.population > 3000 ? 'evening' : 'mid-day'} hours.
+                </div>
               </>
             )}
           </CardContent>
