@@ -1,8 +1,33 @@
 'use client';
 
-import { Map, Marker, Polygon } from '@vis.gl/react-google-maps';
+import { Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import type { City, AnalysisResult } from '@/lib/types';
 import type { AnalysisFormValues } from '@/lib/types';
+import { useEffect, useRef } from 'react';
+
+// The Polygon component from @vis.gl/react-google-maps was removed in a recent version.
+// This is a custom component that recreates the functionality using the useMap hook.
+const CustomPolygon = (props: google.maps.PolygonOptions) => {
+  const map = useMap();
+  const polygonRef = useRef<google.maps.Polygon>();
+
+  useEffect(() => {
+    if (!polygonRef.current) {
+      polygonRef.current = new google.maps.Polygon();
+    }
+    polygonRef.current.setOptions(props);
+    polygonRef.current.setMap(map);
+
+    return () => {
+      if (polygonRef.current) {
+        polygonRef.current.setMap(null);
+      }
+    };
+  }, [map, props]);
+
+  return null;
+};
+
 
 type CoverageMapProps = {
   selectedCity: City | undefined;
@@ -37,32 +62,32 @@ export function CoverageMap({ selectedCity, stores, analysisResults }: CoverageM
         disableDefaultUI={true}
       >
         {selectedCity?.polygons.features.map(feature => {
-          const polygonId = feature.properties.id;
+          const polygonId = feature.properties.id as string;
           const styleOptions = getPolygonStyle(polygonId);
           const paths = feature.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
-          return <Polygon key={polygonId} paths={paths} {...styleOptions} />;
+          return <CustomPolygon key={polygonId} paths={paths} {...styleOptions} />;
         })}
 
-        {stores.map((store, index) => {
+        {stores.map((store) => {
             const position = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             if (isNaN(position.lat) || isNaN(position.lng)) return null;
 
             const storeResult = analysisResults.find(r => r.store.id === store.id);
             
             return (
-                <Marker 
+                <AdvancedMarker 
                     key={store.id} 
                     position={position} 
                     title={store.name}
-                    icon={{
-                        path: window.google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: storeResult?.store.color || '#4285F4',
-                        fillOpacity: 1,
-                        strokeWeight: 2,
-                        strokeColor: 'white'
+                >
+                  <div
+                    className="rounded-full w-4 h-4 border-2 border-white"
+                    style={{ 
+                      backgroundColor: storeResult?.store.color || '#4285F4',
+                      boxShadow: '0px 2px 4px rgba(0,0,0,0.4)'
                     }}
-                />
+                  />
+                </AdvancedMarker>
             );
         })}
       </Map>
