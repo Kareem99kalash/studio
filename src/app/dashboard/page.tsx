@@ -7,7 +7,7 @@ import type { AnalysisFormValues, AnalysisResult, City } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import dynamic from 'next/dynamic';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore'; // 👈 Added query & where
 import type { FeatureCollection } from 'geojson';
 
 const MapView = dynamic(
@@ -22,7 +22,6 @@ const MapView = dynamic(
   }
 );
 
-
 export default function DashboardPage() {
   const [isPending, startTransition] = useTransition();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
@@ -31,7 +30,7 @@ export default function DashboardPage() {
   const firestore = useFirestore();
 
   const citiesRef = useMemoFirebase(() => collection(firestore, 'cities'), [firestore]);
-  const { data: citiesData, isLoading: isLoadingCities, error: citiesError } = useCollection<{id: string, name: string}>(citiesRef);
+  const { data: citiesData, isLoading: isLoadingCities } = useCollection<{id: string, name: string}>(citiesRef);
   
   const [cities, setCities] = useState<City[]>([]);
   const [selectedCity, setSelectedCity] = useState<City | undefined>(undefined);
@@ -44,14 +43,41 @@ export default function DashboardPage() {
         try {
           const fullCities: City[] = await Promise.all(
             citiesData.map(async (cityDoc) => {
-              const polygonsColRef = collection(firestore, `cities/${cityDoc.id}/polygons`);
-              const polygonsSnapshot = await getDocs(polygonsColRef);
-              const features = polygonsSnapshot.docs.map(doc => {
+              
+              // 1. LOOK IN THE GLOBAL "ZONES" COLLECTION
+              const zonesRef = collection(firestore, 'zones');
+              // 2. QUERY BY CITY NAME (Since we saved city name in the zone doc)
+              const q = query(zonesRef, where('city', '==', cityDoc.name)); 
+              const zonesSnapshot = await getDocs(q);
+
+              const features = zonesSnapshot.docs.map(doc => {
                 const data = doc.data();
+                
+                // 3. CONVERT {lat, lng} TO GEOJSON ARRAY [lng, lat]
+                // GeoJSON expects Longitude first, then Latitude!
+                let coordinates = (data.positions || []).map((p: any) => [p.lng, p.lat]);
+
+                // Ensure Polygon is "closed" (first point == last point)
+                if (coordinates.length > 0) {
+                    const first = coordinates[0];
+                    const last = coordinates[coordinates.length - 1];
+                    if (first[0] !== last[0] || first[1] !== last[1]) {
+                        coordinates.push(first);
+                    }
+                }
+
                 return {
                   type: 'Feature',
-                  properties: { id: data.id, name: data.polygonName },
-                  geometry: JSON.parse(data.wkt)
+                  properties: { 
+                      id: doc.id, 
+                      name: data.name,
+                      // Pass thresholds if they exist on the zone, or generic
+                      thresholds: data.thresholds || { green: 30, yellow: 60 } 
+                  },
+                  geometry: {
+                      type: "Polygon",
+                      coordinates: [coordinates] // GeoJSON requires triple nesting for Polygons
+                  }
                 };
               }) as GeoJSON.Feature<GeoJSON.Polygon>[];
               
@@ -60,9 +86,12 @@ export default function DashboardPage() {
                 features: features,
               };
 
+              // Calculate center from first polygon or default to Erbil
               let center = { lat: 36.1911, lng: 44.0094 }; 
               if (features.length > 0 && features[0].geometry.coordinates[0]?.[0]) {
-                  center = { lat: features[0].geometry.coordinates[0][0][1], lng: features[0].geometry.coordinates[0][0][0] };
+                  // Remember: GeoJSON is [lng, lat], so index 1 is lat
+                  const firstPt = features[0].geometry.coordinates[0][0];
+                  center = { lat: firstPt[1], lng: firstPt[0] };
               }
 
               return {
@@ -111,6 +140,7 @@ export default function DashboardPage() {
     setSubmittedStores(data.stores);
     startTransition(async () => {
       try {
+        // Now cityToAnalyze.polygons contains valid GeoJSON
         const results = await analyzeCoverageAction(data, cityToAnalyze.polygons, cityToAnalyze.name);
         setAnalysisResults(results);
         toast({
