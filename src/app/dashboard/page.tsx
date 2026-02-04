@@ -70,30 +70,78 @@ export default function DashboardPage() {
 
     startTransition(async () => {
       try {
-        setProgress("Fetching Road Distances...");
-        const storeCoordsStr = data.stores.map(s => `${s.lng},${s.lat}`).join(';');
+        setProgress("Analyzing Road Network...");
+        
+        // 1. ENSURE NUMBERS: Explicitly parse thresholds to avoid string comparison bugs
+        let limits = { green: 2.0, yellow: 5.0 };
+        const cityDoc = await getDoc(doc(db, 'cities', cityToAnalyze.id));
+        if (cityDoc.exists() && cityDoc.data().thresholds) {
+            limits = {
+                green: Number(cityDoc.data().thresholds.green),
+                yellow: Number(cityDoc.data().thresholds.yellow)
+            };
+        }
+
+        const stores = data.stores.map((s, idx) => ({
+          ...s, borderColor: STORE_COLORS[idx % STORE_COLORS.length]
+        }));
+
+        // 2. MATRIX API CALL
+        const storeCoordsStr = stores.map(s => `${s.lng},${s.lat}`).join(';');
         const zones = cityToAnalyze.polygons.features as any[];
         const zoneCoordsStr = zones.map(z => `${z.properties.centroid.lng},${z.properties.centroid.lat}`).join(';');
 
-        const matrixUrl = `https://router.project-osrm.org/table/v1/driving/${storeCoordsStr};${zoneCoordsStr}?sources=${Array.from({length: data.stores.length}, (_, i) => i).join(';')}&annotations=distance`;
+        const matrixUrl = `https://router.project-osrm.org/table/v1/driving/${storeCoordsStr};${zoneCoordsStr}?sources=${Array.from({length: stores.length}, (_, i) => i).join(';')}&annotations=distance`;
+        
         const response = await fetch(matrixUrl);
         const matrixData = await response.json();
         const assignments: Record<string, any> = {};
 
+        // 3. COLOR LOGIC
         zones.forEach((zone, zIdx) => {
           let minKm = Infinity;
           let bestIdx = 0;
+
           matrixData.distances.forEach((storeDistances: number[], sIdx: number) => {
-            const dKm = storeDistances[data.stores.length + zIdx] / 1000;
+            const dKm = storeDistances[stores.length + zIdx] / 1000;
             if (dKm < minKm) { minKm = dKm; bestIdx = sIdx; }
           });
-          assignments[zone.properties.name] = { storeId: data.stores[bestIdx].id, storeName: data.stores[bestIdx].name, distance: minKm.toFixed(2) };
+
+          // 🛡️ Double Check: Ensure comparison is between Numbers
+          let status = 'Red', fillColor = '#ef4444'; // Default to Red
+          
+          if (minKm <= limits.green) { 
+              status = 'Green'; 
+              fillColor = '#22c55e'; 
+          } else if (minKm <= limits.yellow) { 
+              status = 'Yellow'; 
+              fillColor = '#eab308'; 
+          }
+
+          assignments[zone.properties.name] = {
+            storeId: stores[bestIdx].id, 
+            storeName: stores[bestIdx].name, 
+            storeColor: stores[bestIdx].borderColor,
+            distance: minKm.toFixed(2), 
+            status, 
+            fillColor
+          };
         });
 
-        await setDoc(doc(db, `cities/${cityToAnalyze.id}/analysis/current`), { timestamp: new Date().toISOString(), stores: data.stores, assignments });
+        // 4. PERSIST
+        await setDoc(doc(db, `cities/${cityToAnalyze.id}/analysis/current`), {
+          timestamp: new Date().toISOString(), 
+          stores, 
+          assignments, 
+          totalZones: zones.length
+        });
+        
         setProgress("");
-        toast({ title: "Analysis Complete" });
-      } catch (err) { setProgress(""); toast({ variant: "destructive", title: "Failed" }); }
+        toast({ title: "Analysis Updated", description: "Thresholds applied successfully." });
+      } catch (err) {
+        setProgress("");
+        toast({ variant: "destructive", title: "Logic Error", description: "Check console for details." });
+      }
     });
   };
 
