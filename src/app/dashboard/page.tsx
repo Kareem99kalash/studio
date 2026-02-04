@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 
 const MapView = dynamic(
   () => import('@/components/dashboard/map-view').then((mod) => mod.MapView),
@@ -47,7 +49,6 @@ async function getRoadDistance(lat1: number, lon1: number, lat2: number, lon2: n
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-// Distinct colors for Store Borders (to visually separate branches)
 const STORE_COLORS = [
     '#7c3aed', // Violet
     '#2563eb', // Blue
@@ -73,8 +74,6 @@ export default function DashboardPage() {
   const [isFetchingPolygons, setIsFetchingPolygons] = useState(false);
 
   // --- REAL-TIME ANALYSIS SYNC ---
-  // We subscribe to the 'current_analysis' doc inside the selected city.
-  // This means if ANYONE updates it, you see it instantly.
   const analysisRef = useMemoFirebase(() => 
     selectedCity ? doc(firestore, `cities/${selectedCity.id}/analysis/current`) : null, 
   [selectedCity, firestore]);
@@ -104,7 +103,6 @@ export default function DashboardPage() {
                     if (first[0] !== last[0] || first[1] !== last[1]) coordinates.push(first);
                 }
                 
-                // Helper to calc centroid
                 let latSum=0, lngSum=0;
                 polyPoints.forEach((p:any) => { latSum+=p.lat; lngSum+=p.lng; });
                 const centroid = polyPoints.length ? { lat: latSum/polyPoints.length, lng: lngSum/polyPoints.length } : {lat:0, lng:0};
@@ -144,7 +142,37 @@ export default function DashboardPage() {
     setSelectedCity(cities.find(c => c.id === cityId));
   };
 
-  // --- 2. RUN ANALYSIS & SAVE TO DB ---
+  // --- 2. DOWNLOAD CSV FUNCTION ---
+  const downloadCSV = () => {
+    if (!liveAnalysis || !liveAnalysis.assignments) {
+        toast({ variant: "destructive", title: "No Data", description: "Run an analysis first." });
+        return;
+    }
+
+    const headers = ['Zone Name', 'Assigned Branch', 'Distance (km)', 'Status'];
+    const rows = Object.entries(liveAnalysis.assignments).map(([zoneName, data]: [string, any]) => [
+        `"${zoneName}"`, // Quote strings to handle commas
+        `"${data.storeName}"`,
+        data.distance,
+        data.status
+    ]);
+
+    const csvContent = [
+        headers.join(','), 
+        ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `coverage_${selectedCity?.name || 'report'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- 3. RUN ANALYSIS & SAVE TO DB ---
   const handleAnalyze = (data: AnalysisFormValues) => {
     const cityToAnalyze = cities.find(c => c.id === data.cityId);
     if (!cityToAnalyze || !data.stores.length) return;
@@ -157,7 +185,6 @@ export default function DashboardPage() {
                 if (cityDoc.exists() && cityDoc.data().thresholds) limits = cityDoc.data().thresholds;
             } catch (e) { console.log("Using default limits"); }
 
-            // Assign a persistent color to each store
             const stores = data.stores.map((s, idx) => ({
                 id: s.id,
                 name: s.name,
@@ -167,8 +194,6 @@ export default function DashboardPage() {
             }));
 
             const zones = cityToAnalyze.polygons.features as any[];
-            
-            // Results Object
             const results: Record<string, any> = {}; 
             let processed = 0;
             const BATCH_SIZE = 5;
@@ -179,7 +204,6 @@ export default function DashboardPage() {
                 await Promise.all(chunk.map(async (zone) => {
                     const center = zone.properties.centroid;
                     
-                    // 1. Find Closest Store (Straight Line First)
                     let closestStore = stores[0];
                     let minStraightDist = Infinity;
 
@@ -191,13 +215,11 @@ export default function DashboardPage() {
                         }
                     }
 
-                    // 2. Get Road Distance
                     let finalDist = minStraightDist;
                     if (minStraightDist < 20) {
                         finalDist = await getRoadDistance(center.lat, center.lng, closestStore.lat, closestStore.lng);
                     }
 
-                    // 3. Determine Fill Color
                     let status = 'Red';
                     let fillColor = '#ef4444';
                     
@@ -209,7 +231,6 @@ export default function DashboardPage() {
                         fillColor = '#eab308';
                     }
 
-                    // 4. Save Record
                     results[zone.properties.name] = {
                         storeId: closestStore.id,
                         storeName: closestStore.name,
@@ -225,7 +246,6 @@ export default function DashboardPage() {
                 await delay(20); 
             }
 
-            // 5. SAVE TO FIRESTORE (Shared with everyone)
             const analysisPayload = {
                 timestamp: new Date().toISOString(),
                 stores: stores,
@@ -234,7 +254,6 @@ export default function DashboardPage() {
             };
 
             await setDoc(doc(firestore, `cities/${cityToAnalyze.id}/analysis/current`), analysisPayload);
-            
             setProgress(""); 
             toast({ title: "Analysis Saved", description: "Results are now visible to all users." });
 
@@ -297,8 +316,12 @@ export default function DashboardPage() {
 
             <TabsContent value="table" className="flex-1 overflow-auto p-4">
                <Card>
-                   <CardHeader>
+                   <CardHeader className="flex flex-row items-center justify-between">
                        <CardTitle>Detailed Coverage Report</CardTitle>
+                       <Button size="sm" variant="outline" onClick={downloadCSV} disabled={!liveAnalysis}>
+                           <Download className="mr-2 h-4 w-4" />
+                           Download CSV
+                       </Button>
                    </CardHeader>
                    <CardContent>
                        <Table>
