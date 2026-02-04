@@ -30,30 +30,31 @@ const parseCSVLine = (row: string) => {
   });
 };
 
-// --- HELPER 2: PARSE WKT (Handle POLYGON & MULTIPOLYGON) ---
+// --- HELPER 2: ROBUST WKT PARSER ---
 const parseWKT = (wkt: string) => {
   try {
     if (!wkt) return [];
+
+    // 1. Regex to find all coordinate pairs (e.g. "44.0 36.0")
+    // This ignores all text like "POLYGON", "((", "))", commas, etc.
+    const matches = wkt.match(/(-?\d+\.?\d+)\s+(-?\d+\.?\d+)/g);
     
-    // 1. Clean the outer text (POLYGON, MULTIPOLYGON, parens)
-    // This removes "POLYGON((" and "))"
-    const content = wkt.replace(/^[A-Z]+\(\(+/, '').replace(/\)+\)+$/, '');
-    
-    // 2. Split into coordinate pairs
-    return content.split(',').map(pair => {
-      const parts = pair.trim().split(/\s+/);
-      if (parts.length < 2) return null;
-      
-      const lng = parseFloat(parts[0]);
-      const lat = parseFloat(parts[1]);
-      
-      if (isNaN(lng) || isNaN(lat)) return null;
-      
-      // Mapbox expects {lat, lng}
-      return { lat, lng }; 
+    if (!matches) return [];
+
+    // 2. Map them to objects
+    return matches.map(pair => {
+      const [lngStr, latStr] = pair.trim().split(/\s+/);
+      const lng = parseFloat(lngStr);
+      const lat = parseFloat(latStr);
+
+      // Validate
+      if (isNaN(lat) || isNaN(lng)) return null;
+
+      // Note: WKT is "LONGITUDE LATITUDE", but Apps usually want { lat, lng }
+      return { lat, lat, lng: lng }; 
     }).filter((p): p is {lat: number, lng: number} => p !== null);
   } catch (e) {
-    console.error("Invalid WKT:", wkt);
+    console.error("WKT Parse Error:", e);
     return [];
   }
 };
