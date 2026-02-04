@@ -1,8 +1,8 @@
 'use client';
 
-import { collection, writeBatch, doc } from "firebase/firestore";
+import { collection, writeBatch, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebase"; 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -12,45 +12,30 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { AnalysisFormValues, City } from '@/lib/types';
 import { analysisSchema } from '@/lib/types';
-import { Plus, Trash2, UploadCloud } from 'lucide-react';
+import { Plus, Trash2, UploadCloud, Save, Settings2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from "@/components/ui/separator";
 
-// --- HELPER 1: SMART CSV SPLITTER ---
-// Splits by comma, but ignores commas inside quotes (e.g. "POLYGON((...))")
+// --- HELPER: ROBUST CSV & WKT PARSER ---
 const parseCSVLine = (row: string) => {
   const regex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
   return row.split(regex).map(cell => {
     let clean = cell.trim();
-    // Remove surrounding quotes if they exist
-    if (clean.startsWith('"') && clean.endsWith('"')) {
-      clean = clean.substring(1, clean.length - 1);
-    }
-    // Fix double quotes "" becoming "
+    if (clean.startsWith('"') && clean.endsWith('"')) clean = clean.substring(1, clean.length - 1);
     return clean.replace(/""/g, '"');
   });
 };
 
-// --- HELPER 2: ROBUST WKT PARSER ---
 const parseWKT = (wkt: string) => {
   try {
     if (!wkt) return [];
-
-    // 1. Regex to find all coordinate pairs (e.g. "44.0 36.0")
-    // This ignores all text like "POLYGON", "((", "))", commas, etc.
     const matches = wkt.match(/(-?\d+\.?\d+)\s+(-?\d+\.?\d+)/g);
-    
     if (!matches) return [];
-
-    // 2. Map them to objects
     return matches.map(pair => {
       const [lngStr, latStr] = pair.trim().split(/\s+/);
       const lng = parseFloat(lngStr);
       const lat = parseFloat(latStr);
-
-      // Validate
       if (isNaN(lat) || isNaN(lng)) return null;
-
-      // Note: WKT is "LONGITUDE LATITUDE", but Apps usually want { lat, lng }
       return { lat, lat, lng: lng }; 
     }).filter((p): p is {lat: number, lng: number} => p !== null);
   } catch (e) {
@@ -58,7 +43,6 @@ const parseWKT = (wkt: string) => {
     return [];
   }
 };
-
 
 type AnalysisPanelProps = {
   cities: City[];
@@ -70,6 +54,11 @@ type AnalysisPanelProps = {
 
 export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, onCityChange }: AnalysisPanelProps) {
   const storeIdCounter = useRef(1);
+  
+  // Local state for the threshold inputs
+  const [greenLimit, setGreenLimit] = useState<string>("30");
+  const [yellowLimit, setYellowLimit] = useState<string>("60");
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const form = useForm<AnalysisFormValues>({
     resolver: zodResolver(analysisSchema),
@@ -84,7 +73,11 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
     name: 'stores',
   });
 
+  // Watch for City Changes to update the inputs
+  const selectedCityId = form.watch('cityId');
+
   useEffect(() => {
+    // 1. Set Default City on Load
     if (cities.length > 0 && !form.getValues('cityId')) {
       const defaultCityId = cities[0].id;
       form.reset({ ...form.getValues(), cityId: defaultCityId });
@@ -92,32 +85,68 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
     }
   }, [cities, form, onCityChange]);
 
+  useEffect(() => {
+    // 2. Update Threshold Inputs when City Changes
+    if (selectedCityId) {
+        const city = cities.find(c => c.id === selectedCityId);
+        if (city && (city as any).thresholds) {
+            setGreenLimit((city as any).thresholds.green.toString());
+            setYellowLimit((city as any).thresholds.yellow.toString());
+        } else {
+            // Defaults if no config exists yet
+            setGreenLimit("30");
+            setYellowLimit("60");
+        }
+    }
+  }, [selectedCityId, cities]);
+
   const onSubmit = (data: AnalysisFormValues) => {
     onAnalyze(data);
   };
 
+  // --- NEW: UPDATE CITY THRESHOLDS ---
+  const handleUpdateSettings = async () => {
+      if (!selectedCityId) return;
+      
+      // Find the city name/doc ID (assuming ID is the document ID)
+      const city = cities.find(c => c.id === selectedCityId);
+      if (!city) return;
+
+      setIsSavingSettings(true);
+      try {
+          const docRef = doc(db, "cities", city.id);
+          await updateDoc(docRef, {
+              thresholds: {
+                  green: parseInt(greenLimit),
+                  yellow: parseInt(yellowLimit)
+              }
+          });
+          alert(`✅ Updated ${city.name} settings!\nGreen: ${greenLimit}, Yellow: ${yellowLimit}`);
+      } catch (error) {
+          console.error("Error updating settings:", error);
+          alert("❌ Failed to save settings.");
+      } finally {
+          setIsSavingSettings(false);
+      }
+  };
+
   // --- CSV UPLOAD LOGIC ---
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'polygons' | 'thresholds' | 'users') => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'polygons' | 'users') => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (e) => {
       const text = e.target?.result as string;
-      const rows = text.split('\n').slice(1); // Remove header
+      const rows = text.split('\n').slice(1);
       const batch = writeBatch(db);
       let count = 0;
 
       rows.forEach((row) => {
         if (!row.trim()) return;
-        
-        // Use the smart splitter instead of row.split(',')
         const cols = parseCSVLine(row);
 
-        // 1. UPLOAD POLYGONS (Zones)
         if (type === 'polygons') {
-          // Expected: City, Zone_ID, name, WKT
-          // Note: If WKT had commas, it is now safely in cols[3]
           const city = cols[0];
           const zoneId = cols[1];
           const name = cols[2];
@@ -125,8 +154,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
           
           if (wkt && wkt.includes('OLYGON')) {
             const positions = parseWKT(wkt);
-            
-            if (positions.length > 2) { // Only save if we have a valid shape (3+ points)
+            if (positions.length > 2) {
                 const ref = doc(collection(db, "zones")); 
                 batch.set(ref, {
                   city: city,
@@ -139,24 +167,6 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
             }
           }
         }
-
-        // 2. UPLOAD THRESHOLDS
-        else if (type === 'thresholds') {
-          const [city, green, yellow] = cols;
-          if (city) {
-            const ref = doc(db, "cities", city); 
-            batch.set(ref, {
-              name: city,
-              thresholds: {
-                green: Number(green),
-                yellow: Number(yellow)
-              }
-            }, { merge: true });
-            count++;
-          }
-        }
-
-        // 3. UPLOAD USERS
         else if (type === 'users') {
           const [username, fullName, password, role, allowedCities] = cols;
           if (username) {
@@ -184,22 +194,24 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
   };
   
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader>
+    <Card className="h-full flex flex-col border-none shadow-none">
+      <CardHeader className="px-4 py-4">
         <CardTitle className="font-headline text-xl">Coverage Analysis</CardTitle>
-        <CardDescription>Enter store location coordinates manually.</CardDescription>
+        <CardDescription>Configure stores and analyze capacity.</CardDescription>
       </CardHeader>
-      <ScrollArea className="flex-grow">
-        <CardContent>
+      
+      <ScrollArea className="flex-grow px-4">
+        <CardContent className="p-0 space-y-6 pb-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               
+              {/* 1. CITY SELECTION */}
               <FormField
                 control={form.control}
                 name="cityId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>City</FormLabel>
+                    <FormLabel>Select City</FormLabel>
                     <Select onValueChange={(val) => { field.onChange(val); onCityChange(val); }} value={field.value} disabled={isLoadingCities || cities.length === 0}>
                       <FormControl><SelectTrigger><SelectValue placeholder={isLoadingCities ? "Loading..." : "Select City"} /></SelectTrigger></FormControl>
                       <SelectContent>
@@ -211,52 +223,90 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                 )}
               />
 
+              {/* 2. ADMIN: CITY SETTINGS (Visual Editor) */}
+              <div className="bg-slate-50 p-3 rounded-md border border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2 text-slate-800">
+                      <Settings2 className="h-4 w-4" />
+                      <span className="text-xs font-bold uppercase tracking-wider">City Configuration</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-semibold text-green-700">Green Limit (Safe)</label>
+                          <Input 
+                            type="number" 
+                            value={greenLimit} 
+                            onChange={(e) => setGreenLimit(e.target.value)} 
+                            className="h-8 text-xs bg-white" 
+                          />
+                      </div>
+                      <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-semibold text-amber-600">Yellow Limit (Max)</label>
+                          <Input 
+                            type="number" 
+                            value={yellowLimit} 
+                            onChange={(e) => setYellowLimit(e.target.value)} 
+                            className="h-8 text-xs bg-white" 
+                          />
+                      </div>
+                  </div>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleUpdateSettings} 
+                    disabled={isSavingSettings || !selectedCityId}
+                    className="w-full h-7 text-xs"
+                  >
+                    {isSavingSettings ? "Saving..." : "Save Configuration"}
+                  </Button>
+              </div>
+
+              <Separator />
+
+              {/* 3. STORE LOCATIONS */}
               <div className="space-y-4">
-                <FormLabel>Store Coordinates</FormLabel>
+                <FormLabel>Store Locations</FormLabel>
                 {fields.map((field, index) => (
-                  <Card key={field.id} className="p-4 bg-muted/50">
-                    <div className="grid grid-cols-1 gap-4">
+                  <Card key={field.id} className="p-3 bg-muted/30 border border-slate-200">
+                    <div className="grid grid-cols-1 gap-3">
                       <FormField control={form.control} name={`stores.${index}.name`} render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs">Store Name</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                        <FormItem className="space-y-1"><FormLabel className="text-[10px] uppercase text-muted-foreground">Name</FormLabel><FormControl><Input {...field} className="h-8" /></FormControl></FormItem>
                       )} />
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-3">
                         <FormField control={form.control} name={`stores.${index}.lat`} render={({ field }) => (
-                           <FormItem><FormLabel className="text-xs">Lat</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                           <FormItem className="space-y-1"><FormLabel className="text-[10px] uppercase text-muted-foreground">Lat</FormLabel><FormControl><Input {...field} className="h-8" /></FormControl></FormItem>
                         )} />
                         <FormField control={form.control} name={`stores.${index}.lng`} render={({ field }) => (
-                           <FormItem><FormLabel className="text-xs">Lng</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
+                           <FormItem className="space-y-1"><FormLabel className="text-[10px] uppercase text-muted-foreground">Lng</FormLabel><FormControl><Input {...field} className="h-8" /></FormControl></FormItem>
                         )} />
                       </div>
                     </div>
-                    {fields.length > 1 && <Button variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="h-4 w-4" /></Button>}
+                    {fields.length > 1 && <Button variant="ghost" size="icon" className="h-6 w-6 mt-2 hover:text-red-500" onClick={() => remove(index)}><Trash2 className="h-3 w-3" /></Button>}
                   </Card>
                 ))}
-                <Button type="button" variant="outline" size="sm" onClick={() => append({ id: `store-${storeIdCounter.current++}`, name: `Store ${fields.length + 1}`, lat: '', lng: '' })}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Store
+                <Button type="button" variant="ghost" size="sm" className="w-full border border-dashed border-slate-300 text-muted-foreground" onClick={() => append({ id: `store-${storeIdCounter.current++}`, name: `Store ${fields.length + 1}`, lat: '', lng: '' })}>
+                  <Plus className="mr-2 h-3 w-3" /> Add Branch
                 </Button>
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>Analyze Coverage</Button>
+              <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700" disabled={isLoading}>
+                  {isLoading ? "Analyzing..." : "Run Allocation Analysis"}
+              </Button>
 
-              <div className="mt-8 pt-6 border-t border-border space-y-4 bg-slate-50 p-4 rounded-lg">
+              {/* 4. DATA IMPORT */}
+              <div className="mt-8 pt-6 border-t border-border space-y-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <UploadCloud className="h-4 w-4 text-purple-600" />
-                  <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">Admin Data Import</span>
+                  <UploadCloud className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bulk Import</span>
                 </div>
-
                 <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-1">
-                    <FormLabel className="text-[10px] text-muted-foreground uppercase">1. Polygons (CSV with WKT)</FormLabel>
+                    <FormLabel className="text-[10px] text-muted-foreground uppercase">Polygons (CSV)</FormLabel>
                     <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'polygons')} className="h-8 text-xs cursor-pointer" />
                   </div>
-
                   <div className="space-y-1">
-                    <FormLabel className="text-[10px] text-muted-foreground uppercase">2. City Thresholds (CSV)</FormLabel>
-                    <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'thresholds')} className="h-8 text-xs cursor-pointer" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <FormLabel className="text-[10px] text-muted-foreground uppercase">3. User List (CSV)</FormLabel>
+                    <FormLabel className="text-[10px] text-muted-foreground uppercase">Users (CSV)</FormLabel>
                     <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'users')} className="h-8 text-xs cursor-pointer" />
                   </div>
                 </div>

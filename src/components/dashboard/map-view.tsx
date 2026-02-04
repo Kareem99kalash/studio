@@ -1,48 +1,48 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, CircleMarker, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import type { AnalysisResult, City } from '@/lib/types';
-
-// Fix Leaflet's default icon issue in Next.js
-const iconUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png';
-const iconRetinaUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png';
-const shadowUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png';
-
-const defaultIcon = L.icon({
-  iconUrl,
-  iconRetinaUrl,
-  shadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  tooltipAnchor: [16, -28],
-  shadowSize: [41, 41]
-});
+import type { City } from '@/lib/types';
 
 type MapViewProps = {
   selectedCity?: City;
   stores: any[];
-  analysisResults: AnalysisResult[];
+  analysisData: any; // Contains { assignments, storeStats }
   isLoading: boolean;
 };
 
-export function MapView({ selectedCity, stores, analysisResults, isLoading }: MapViewProps) {
-  // Default to Erbil if nothing selected
+export function MapView({ selectedCity, stores, analysisData, isLoading }: MapViewProps) {
   const centerPosition: [number, number] = selectedCity?.center 
     ? [selectedCity.center.lat, selectedCity.center.lng] 
     : [36.19, 44.01];
+
+  // Helper to find the assigned color for a zone
+  const getZoneStyle = (feature: any) => {
+    if (!analysisData) {
+      // Default (Pre-analysis): Blue outline, transparent
+      return { color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.1 };
+    }
+
+    const zoneName = feature.properties.name;
+    const storeId = analysisData.assignments[zoneName];
+    
+    if (storeId) {
+       // Find the store to get its color
+       const storeStat = analysisData.storeStats.find((s: any) => s.id === storeId);
+       const color = storeStat ? storeStat.color : '#94a3b8'; // Fallback grey
+       return { color: '#ffffff', weight: 1, fillColor: color, fillOpacity: 0.6 };
+    }
+
+    // Unassigned (shouldn't happen with this logic, but just in case)
+    return { color: '#94a3b8', weight: 1, fillColor: '#94a3b8', fillOpacity: 0.2 };
+  };
 
   return (
     <div className="h-full w-full rounded-lg overflow-hidden border border-border relative">
       
       {isLoading && (
         <div className="absolute inset-0 z-[1000] bg-white/50 flex items-center justify-center backdrop-blur-sm">
-          <div className="bg-white p-3 rounded shadow-lg text-sm font-semibold">
-            Updating Map...
-          </div>
+           <div className="bg-white p-3 rounded shadow-lg text-sm font-semibold">Calculating Coverage...</div>
         </div>
       )}
 
@@ -50,69 +50,60 @@ export function MapView({ selectedCity, stores, analysisResults, isLoading }: Ma
         center={centerPosition} 
         zoom={12} 
         style={{ height: '100%', width: '100%' }}
-        key={selectedCity?.id || 'default'} // Forces map to reset when city changes
+        key={selectedCity?.id} 
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution='&copy; OpenStreetMap'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* 1. DRAW ZONES (POLYGONS) */}
+        {/* 1. ZONES */}
         {selectedCity?.polygons && (
           <GeoJSON 
-            key={selectedCity.id} // Important: Re-renders when data changes
+            key={`${selectedCity.id}-${analysisData ? 'analyzed' : 'raw'}`} 
             data={selectedCity.polygons} 
-            style={() => ({
-              color: '#3b82f6', // Blue outline
-              weight: 2,
-              fillColor: '#3b82f6', 
-              fillOpacity: 0.15
-            })}
+            style={getZoneStyle}
             onEachFeature={(feature, layer) => {
-              // Show Zone Name on Hover
-              if (feature.properties && feature.properties.name) {
-                layer.bindTooltip(feature.properties.name, { sticky: true });
-              }
+               if (analysisData) {
+                   const zoneName = feature.properties.name;
+                   const storeId = analysisData.assignments[zoneName];
+                   const store = analysisData.storeStats.find((s: any) => s.id === storeId);
+                   layer.bindTooltip(`${zoneName} → ${store ? store.name : 'Unassigned'}`);
+               } else {
+                   layer.bindTooltip(feature.properties.name);
+               }
             }}
           />
         )}
 
-        {/* 2. DRAW STORES (as Colored Circles) */}
+        {/* 2. STORES */}
         {stores.map((store) => {
-          // Find the result for this store to determine color
-          const result = analysisResults.find(r => r.storeId === store.id);
-          const isCovered = result?.status === 'Covered';
-          
-          // Color: Green if covered, Red if not, Grey if analysis hasn't run yet
-          const color = result ? (isCovered ? '#22c55e' : '#ef4444') : '#64748b';
+          // If we have analysis data, use the calculated color (Green/Yellow/Red)
+          const stat = analysisData?.storeStats.find((s: any) => s.id === store.id);
+          const color = stat ? stat.color : '#3b82f6'; // Default Blue
+          const count = stat ? stat.zoneCount : 0;
 
           return (
             <CircleMarker
               key={store.id}
               center={[parseFloat(store.lat), parseFloat(store.lng)]}
-              radius={8}
-              pathOptions={{
-                color: '#ffffff',
-                weight: 2,
-                fillColor: color,
-                fillOpacity: 1
-              }}
+              radius={10}
+              pathOptions={{ color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }}
             >
               <Popup>
-                <div className="p-1">
-                  <p className="font-bold text-sm mb-1">{store.name}</p>
-                  <p className="text-xs">
-                    Status: <span style={{ color }}>{result?.status || "Pending"}</span>
-                  </p>
-                  {result?.zoneName && (
-                    <p className="text-xs text-muted-foreground">Zone: {result.zoneName}</p>
+                <div className="p-1 text-center">
+                  <strong className="block text-sm">{store.name}</strong>
+                  {stat && (
+                    <div className="text-xs mt-1">
+                      <p>Zones Assigned: <strong>{count}</strong></p>
+                      <p style={{color}}>Status: {count > 60 ? 'Overload' : count > 30 ? 'Warning' : 'Good'}</p>
+                    </div>
                   )}
                 </div>
               </Popup>
             </CircleMarker>
           );
         })}
-
       </MapContainer>
     </div>
   );

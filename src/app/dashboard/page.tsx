@@ -2,7 +2,6 @@
 
 import { useState, useTransition, useEffect } from 'react';
 import { AnalysisPanel } from '@/components/dashboard/analysis-panel';
-// import { analyzeCoverageAction } from '@/lib/actions'; // ❌ REMOVE THIS
 import type { AnalysisFormValues, AnalysisResult, City } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import dynamic from 'next/dynamic';
@@ -18,25 +17,35 @@ const MapView = dynamic(
   }
 );
 
-// --- 🧮 CLIENT-SIDE MATH HELPER ---
-// Ray-casting algorithm to check if a point is inside a polygon
-function isPointInPolygon(point: {lat: number, lng: number}, polygon: {lat: number, lng: number}[]) {
-    const x = point.lng, y = point.lat;
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i].lng, yi = polygon[i].lat;
-        const xj = polygon[j].lng, yj = polygon[j].lat;
-        
-        const intersect = ((yi > y) !== (yj > y)) &&
-            (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
-    }
-    return inside;
+// --- 🧮 MATH HELPERS ---
+
+// 1. Calculate Real-World Distance (Haversine Formula) in Kilometers
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function deg2rad(deg: number) {
+  return deg * (Math.PI / 180);
+}
+
+// 2. Find Center of a Polygon (to measure distance from)
+function getPolygonCentroid(points: {lat: number, lng: number}[]) {
+    let latSum = 0, lngSum = 0;
+    points.forEach(p => { latSum += p.lat; lngSum += p.lng; });
+    return { lat: latSum / points.length, lng: lngSum / points.length };
 }
 
 export default function DashboardPage() {
   const [isPending, startTransition] = useTransition();
-  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+  const [analysisResults, setAnalysisResults] = useState<any>(null); // Stores the final assignments
   const [submittedStores, setSubmittedStores] = useState<AnalysisFormValues['stores']>([]);
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -48,7 +57,7 @@ export default function DashboardPage() {
   const [selectedCity, setSelectedCity] = useState<City | undefined>(undefined);
   const [isFetchingPolygons, setIsFetchingPolygons] = useState(false);
 
-  // --- 1. FETCH & PREPARE DATA ---
+  // --- 1. FETCH DATA ---
   useEffect(() => {
     if (citiesData) {
       setIsFetchingPolygons(true);
@@ -60,18 +69,19 @@ export default function DashboardPage() {
               const q = query(zonesRef, where('city', '==', cityDoc.name)); 
               const zonesSnapshot = await getDocs(q);
 
-              // Prepare GeoJSON for MapView
+              // Get City Thresholds (if they exist in the city doc, we'd fetch them here too)
+              // For now, we'll assume they are on the city object or default
+              
               const features = zonesSnapshot.docs.map(doc => {
                 const data = doc.data();
                 const rawPositions = data.positions || [];
                 
-                // For Math (Keep as Objects)
+                // Helper: Clean Points
                 const polyPoints = rawPositions.map((p: any) => ({ lat: p.lat, lng: p.lng }));
-
-                // For Map (Convert to Arrays [lng, lat])
+                
+                // GeoJSON format
                 let coordinates = rawPositions.map((p: any) => [p.lng, p.lat]);
                 if (coordinates.length > 0) {
-                    // Close the polygon ring
                     const first = coordinates[0];
                     const last = coordinates[coordinates.length - 1];
                     if (first[0] !== last[0] || first[1] !== last[1]) coordinates.push(first);
@@ -82,33 +92,28 @@ export default function DashboardPage() {
                   properties: { 
                       id: doc.id, 
                       name: data.name,
-                      thresholds: data.thresholds || { green: 30, yellow: 60 },
-                      _rawPoints: polyPoints // HIDDEN FIELD: We use this for math below!
+                      centroid: getPolygonCentroid(polyPoints) // Pre-calculate center
                   },
                   geometry: {
                       type: "Polygon",
                       coordinates: [coordinates]
                   }
                 };
-              }) as any[]; // Using 'any' to allow our custom _rawPoints property
-
-              let center = { lat: 36.1911, lng: 44.0094 }; 
-              if (features.length > 0 && features[0]._rawPoints?.[0]) {
-                  center = features[0]._rawPoints[0];
-              }
+              });
 
               return {
                 id: cityDoc.id,
                 name: cityDoc.name,
                 polygons: { type: 'FeatureCollection', features } as FeatureCollection,
-                center: center
+                center: { lat: 36.1911, lng: 44.0094 },
+                thresholds: (cityDoc as any).thresholds || { green: 30, yellow: 60 } // Default limits
               };
             })
           );
           setCities(fullCities);
           if(fullCities.length > 0 && !selectedCity) setSelectedCity(fullCities[0]);
         } catch (error) {
-            console.error("Failed to fetch polygons:", error);
+            console.error(error);
         } finally {
             setIsFetchingPolygons(false);
         }
@@ -119,56 +124,81 @@ export default function DashboardPage() {
 
   const handleCityChange = (cityId: string) => {
     setSelectedCity(cities.find(c => c.id === cityId));
-    setAnalysisResults([]);
+    setAnalysisResults(null);
     setSubmittedStores([]);
   };
 
-  // --- 2. NEW LOCAL ANALYSIS LOGIC (Replaces Server Action) ---
+  // --- 2. TERRITORY ALLOCATION LOGIC ---
   const handleAnalyze = (data: AnalysisFormValues) => {
     const cityToAnalyze = cities.find(c => c.id === data.cityId);
-    if (!cityToAnalyze) {
-      toast({ variant: "destructive", title: "No City Selected" });
-      return;
-    }
+    if (!cityToAnalyze || !data.stores.length) return;
 
     setSubmittedStores(data.stores);
     
-    // START CALCULATION
     startTransition(() => {
         try {
-            const results: AnalysisResult[] = data.stores.map(store => {
-                const storePt = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
-                let matchedZone: string | null = null;
-                let matchedColor = '#ef4444'; // Default Red
+            // A. Prepare Stores
+            const stores = data.stores.map(s => ({
+                id: s.id,
+                name: s.name,
+                lat: parseFloat(s.lat),
+                lng: parseFloat(s.lng),
+                zoneCount: 0, // Track how many zones this store gets
+                color: '#22c55e' // Default green
+            }));
 
-                // Check every zone in the city
-                for (const feature of cityToAnalyze.polygons.features as any[]) {
-                    if (isPointInPolygon(storePt, feature.properties._rawPoints)) {
-                        matchedZone = feature.properties.name;
-                        // Logic: If inside ANY zone, mark Green (or use zone color if you have it)
-                        matchedColor = '#22c55e'; 
-                        break; // Stop after finding first match
+            // B. Map of ZoneID -> Assigned Store ID
+            const assignments: Record<string, string> = {};
+
+            // C. Assign each Zone to the NEAREST Store
+            const zones = cityToAnalyze.polygons.features as any[];
+            
+            zones.forEach(zone => {
+                const center = zone.properties.centroid;
+                let minDistance = Infinity;
+                let closestStoreIndex = -1;
+
+                // Find closest store
+                stores.forEach((store, index) => {
+                    const dist = getDistanceKm(center.lat, center.lng, store.lat, store.lng);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestStoreIndex = index;
                     }
+                });
+
+                // Assign ownership
+                if (closestStoreIndex !== -1) {
+                    const winner = stores[closestStoreIndex];
+                    assignments[zone.properties.name] = winner.id;
+                    winner.zoneCount++; // Increment store's workload
                 }
-
-                return {
-                    storeId: store.id,
-                    storeName: store.name,
-                    status: matchedZone ? 'Covered' : 'Uncovered',
-                    zoneName: matchedZone || 'No Coverage',
-                    matchColor: matchedColor
-                };
             });
 
-            setAnalysisResults(results);
-            toast({ 
-                title: "Analysis Complete", 
-                description: `Processed ${results.length} stores.` 
+            // D. Determine Store Colors based on Thresholds
+            const thresholds = cityToAnalyze.thresholds || { green: 30, yellow: 60 };
+            
+            stores.forEach(store => {
+                if (store.zoneCount <= thresholds.green) {
+                    store.color = '#22c55e'; // Green (Safe)
+                } else if (store.zoneCount <= thresholds.yellow) {
+                    store.color = '#eab308'; // Yellow (Warning)
+                } else {
+                    store.color = '#ef4444'; // Red (Overloaded)
+                }
             });
+
+            // Save results to pass to Map
+            setAnalysisResults({
+                assignments, // { "Zone A": "store-1" }
+                storeStats: stores // [{ id: "store-1", color: "red", zoneCount: 65 }]
+            });
+
+            toast({ title: "Coverage Optimized", description: "Zones assigned to nearest branches." });
 
         } catch (err) {
-            console.error("Local Analysis Error:", err);
-            toast({ variant: "destructive", title: "Error", description: "Calculation failed." });
+            console.error("Analysis Error:", err);
+            toast({ variant: "destructive", title: "Error", description: "Optimization failed." });
         }
     });
   };
@@ -190,7 +220,7 @@ export default function DashboardPage() {
         <MapView 
             selectedCity={selectedCity} 
             stores={submittedStores}
-            analysisResults={analysisResults}
+            analysisData={analysisResults} // Passing the new complex result object
             isLoading={overallLoading}
         />
       </div>
