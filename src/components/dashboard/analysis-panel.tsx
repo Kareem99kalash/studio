@@ -15,18 +15,43 @@ import { analysisSchema } from '@/lib/types';
 import { Plus, Trash2, UploadCloud } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-// --- HELPER: PARSE WKT ---
-// Converts "POLYGON((44.0 36.0, ...))" to [{lat:36.0, lng:44.0}, ...]
+// --- HELPER 1: SMART CSV SPLITTER ---
+// Splits by comma, but ignores commas inside quotes (e.g. "POLYGON((...))")
+const parseCSVLine = (row: string) => {
+  const regex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
+  return row.split(regex).map(cell => {
+    let clean = cell.trim();
+    // Remove surrounding quotes if they exist
+    if (clean.startsWith('"') && clean.endsWith('"')) {
+      clean = clean.substring(1, clean.length - 1);
+    }
+    // Fix double quotes "" becoming "
+    return clean.replace(/""/g, '"');
+  });
+};
+
+// --- HELPER 2: PARSE WKT (Handle POLYGON & MULTIPOLYGON) ---
 const parseWKT = (wkt: string) => {
   try {
-    // 1. Remove text, keep numbers: "44.0 36.0, 44.1 36.1"
-    const content = wkt.replace(/POLYGON\(\(/i, '').replace(/\)\)/, '');
+    if (!wkt) return [];
     
-    // 2. Split into pairs
+    // 1. Clean the outer text (POLYGON, MULTIPOLYGON, parens)
+    // This removes "POLYGON((" and "))"
+    const content = wkt.replace(/^[A-Z]+\(\(+/, '').replace(/\)+\)+$/, '');
+    
+    // 2. Split into coordinate pairs
     return content.split(',').map(pair => {
-      const [lng, lat] = pair.trim().split(/\s+/).map(Number);
-      return { lat, lng }; // Note: WKT is usually "LON LAT", Mapbox needs "LAT LNG"
-    }).filter(p => !isNaN(p.lat) && !isNaN(p.lng));
+      const parts = pair.trim().split(/\s+/);
+      if (parts.length < 2) return null;
+      
+      const lng = parseFloat(parts[0]);
+      const lat = parseFloat(parts[1]);
+      
+      if (isNaN(lng) || isNaN(lat)) return null;
+      
+      // Mapbox expects {lat, lng}
+      return { lat, lng }; 
+    }).filter((p): p is {lat: number, lng: number} => p !== null);
   } catch (e) {
     console.error("Invalid WKT:", wkt);
     return [];
@@ -69,7 +94,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
     onAnalyze(data);
   };
 
-  // --- NEW: CSV UPLOAD LOGIC ---
+  // --- CSV UPLOAD LOGIC ---
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'polygons' | 'thresholds' | 'users') => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -83,34 +108,40 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
 
       rows.forEach((row) => {
         if (!row.trim()) return;
-        // Basic CSV split (Note: fails if cells contain commas)
-        const cols = row.split(',').map(c => c.trim());
+        
+        // Use the smart splitter instead of row.split(',')
+        const cols = parseCSVLine(row);
 
         // 1. UPLOAD POLYGONS (Zones)
         if (type === 'polygons') {
-          // Format: City, Zone_ID, name, WKT
-          const [city, zoneId, name, wkt] = cols;
+          // Expected: City, Zone_ID, name, WKT
+          // Note: If WKT had commas, it is now safely in cols[3]
+          const city = cols[0];
+          const zoneId = cols[1];
+          const name = cols[2];
+          const wkt = cols[3];
           
-          if (wkt && wkt.includes('POLYGON')) {
-            const positions = parseWKT(wkt); // Convert WKT to Coordinates
-            const ref = doc(collection(db, "zones")); 
-            batch.set(ref, {
-              city: city,
-              zoneId: zoneId,
-              name: name,
-              positions: positions, // Saved as clean Array of Objects
-              type: "Feature" // Standard GeoJSON type
-            });
-            count++;
+          if (wkt && wkt.includes('OLYGON')) {
+            const positions = parseWKT(wkt);
+            
+            if (positions.length > 2) { // Only save if we have a valid shape (3+ points)
+                const ref = doc(collection(db, "zones")); 
+                batch.set(ref, {
+                  city: city,
+                  zoneId: zoneId,
+                  name: name,
+                  positions: positions,
+                  type: "Feature"
+                });
+                count++;
+            }
           }
         }
 
-        // 2. UPLOAD THRESHOLDS (Cities Config)
+        // 2. UPLOAD THRESHOLDS
         else if (type === 'thresholds') {
-          // Format: city, green_limit, yellow_limit
           const [city, green, yellow] = cols;
           if (city) {
-            // We use the City Name as the ID so it's easy to find "Erbil" later
             const ref = doc(db, "cities", city); 
             batch.set(ref, {
               name: city,
@@ -118,14 +149,13 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                 green: Number(green),
                 yellow: Number(yellow)
               }
-            }, { merge: true }); // Merge: Don't delete existing city data
+            }, { merge: true });
             count++;
           }
         }
 
         // 3. UPLOAD USERS
         else if (type === 'users') {
-          // Format: username, name, password, role, allowed cities
           const [username, fullName, password, role, allowedCities] = cols;
           if (username) {
             const ref = doc(db, "users", username);
@@ -133,10 +163,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
               username: username,
               name: fullName,
               role: role,
-              // Convert "Erbil|Duhok" to ["Erbil", "Duhok"]
               allowedCities: allowedCities ? allowedCities.split('|') : [],
-              // ⚠️ SECURITY NOTE: We do NOT upload the password to Firestore.
-              // Passwords belong in Firebase Auth, not the database.
             });
             count++;
           }
@@ -165,7 +192,6 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               
-              {/* City Selection */}
               <FormField
                 control={form.control}
                 name="cityId"
@@ -183,7 +209,6 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                 )}
               />
 
-              {/* Stores (Manual Entry) */}
               <div className="space-y-4">
                 <FormLabel>Store Coordinates</FormLabel>
                 {fields.map((field, index) => (
@@ -211,7 +236,6 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
 
               <Button type="submit" className="w-full" disabled={isLoading}>Analyze Coverage</Button>
 
-              {/* 👇 ADMIN IMPORT TOOLS 👇 */}
               <div className="mt-8 pt-6 border-t border-border space-y-4 bg-slate-50 p-4 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
                   <UploadCloud className="h-4 w-4 text-purple-600" />
@@ -219,19 +243,16 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                 </div>
 
                 <div className="grid grid-cols-1 gap-3">
-                  {/* 1. Polygons */}
                   <div className="space-y-1">
                     <FormLabel className="text-[10px] text-muted-foreground uppercase">1. Polygons (CSV with WKT)</FormLabel>
                     <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'polygons')} className="h-8 text-xs cursor-pointer" />
                   </div>
 
-                  {/* 2. Thresholds */}
                   <div className="space-y-1">
                     <FormLabel className="text-[10px] text-muted-foreground uppercase">2. City Thresholds (CSV)</FormLabel>
                     <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'thresholds')} className="h-8 text-xs cursor-pointer" />
                   </div>
 
-                  {/* 3. Users */}
                   <div className="space-y-1">
                     <FormLabel className="text-[10px] text-muted-foreground uppercase">3. User List (CSV)</FormLabel>
                     <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'users')} className="h-8 text-xs cursor-pointer" />
@@ -246,4 +267,3 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
     </Card>
   );
 }
-// Identity Verification Fix
