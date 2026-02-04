@@ -1,5 +1,7 @@
 'use client';
 
+import { collection, writeBatch, doc } from "firebase/firestore";
+import { db } from "../../firebase"; // Adjust path if needed (e.g. '@/firebase')
 import { useRef, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { AnalysisFormValues, City } from '@/lib/types';
 import { analysisSchema } from '@/lib/types';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Database } from 'lucide-react'; // Added Database icon
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 type AnalysisPanelProps = {
@@ -39,17 +41,77 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
 
   useEffect(() => {
     if (cities.length > 0 && !form.getValues('cityId')) {
-        const defaultCityId = cities[0].id;
-        form.reset({
-            ...form.getValues(),
-            cityId: defaultCityId,
-        });
-        onCityChange(defaultCityId);
+      const defaultCityId = cities[0].id;
+      form.reset({
+        ...form.getValues(),
+        cityId: defaultCityId,
+      });
+      onCityChange(defaultCityId);
     }
   }, [cities, form, onCityChange]);
 
   const onSubmit = (data: AnalysisFormValues) => {
     onAnalyze(data);
+  };
+
+  // --- TEMPORARY: DATA SEEDER (FIXED) ---
+  const seedDatabase = async () => {
+    // 1. Create a Batch
+    const batch = writeBatch(db);
+
+    // 2. Define Branches
+    const initialBranches = [
+      { name: "Main HQ", lat: 36.19, lng: 44.00, city: "Erbil" },
+      { name: "North Depot", lat: 36.25, lng: 44.05, city: "Erbil" },
+      { name: "South Hub", lat: 36.12, lng: 43.98, city: "Erbil" }
+    ];
+
+    // 3. Define Zones (FIXED: Using Objects instead of Arrays)
+    const initialZones = [
+      { 
+        name: "Zone A (Close)", 
+        status: "Pending", 
+        color: "#484f58", 
+        // 👇 CHANGED: Array of Objects, not Array of Arrays
+        positions: [
+          { lat: 36.20, lng: 44.00 }, 
+          { lat: 36.22, lng: 44.02 }, 
+          { lat: 36.20, lng: 44.04 }
+        ] 
+      },
+      { 
+        name: "Zone B (Far)", 
+        status: "Pending", 
+        color: "#484f58", 
+        // 👇 CHANGED: Array of Objects
+        positions: [
+          { lat: 36.15, lng: 43.95 }, 
+          { lat: 36.17, lng: 43.97 }, 
+          { lat: 36.15, lng: 43.99 }
+        ] 
+      }
+    ];
+
+    // 4. Queue Branches
+    initialBranches.forEach((b) => {
+      const ref = doc(collection(db, "branches")); 
+      batch.set(ref, b);
+    });
+
+    // 5. Queue Zones
+    initialZones.forEach((z) => {
+      const ref = doc(collection(db, "zones")); 
+      batch.set(ref, z);
+    });
+
+    // 6. Commit
+    try {
+      await batch.commit();
+      alert("✅ Python Data Successfully Uploaded to Firebase!");
+    } catch (error) {
+      console.error("Upload failed:", error);
+      alert("❌ Error uploading data. Check console.");
+    }
   };
   
   return (
@@ -108,7 +170,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                             <FormControl>
                               <Input {...field} placeholder="e.g., Downtown Branch" />
                             </FormControl>
-                             <FormMessage />
+                            <FormMessage />
                           </FormItem>
                         )}
                       />
@@ -118,11 +180,11 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                           name={`stores.${index}.lat`}
                           render={({ field }) => (
                             <FormItem>
-                               <FormLabel className="text-xs">Latitude</FormLabel>
+                              <FormLabel className="text-xs">Latitude</FormLabel>
                               <FormControl>
                                 <Input {...field} placeholder="e.g., 36.19" />
                               </FormControl>
-                               <FormMessage />
+                              <FormMessage />
                             </FormItem>
                           )}
                         />
@@ -131,17 +193,17 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                           name={`stores.${index}.lng`}
                           render={({ field }) => (
                             <FormItem>
-                               <FormLabel className="text-xs">Longitude</FormLabel>
+                              <FormLabel className="text-xs">Longitude</FormLabel>
                               <FormControl>
                                 <Input {...field} placeholder="e.g., 44.00" />
                               </FormControl>
-                               <FormMessage />
+                              <FormMessage />
                             </FormItem>
                           )}
                         />
                       </div>
                     </div>
-                     {fields.length > 1 && (
+                    {fields.length > 1 && (
                       <Button variant="ghost" size="icon" className="mt-2" onClick={() => remove(index)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -162,6 +224,23 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
               <Button type="submit" className="w-full" disabled={isLoading || isLoadingCities}>
                 {isLoading ? 'Analyzing...' : 'Analyze Coverage'}
               </Button>
+
+              {/* 👇 ADMIN TOOLS SECTION 👇 */}
+              <div className="mt-6 pt-6 border-t border-border">
+                <div className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                  Admin Tools
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                  onClick={seedDatabase}
+                >
+                  <Database className="mr-2 h-4 w-4" />
+                  Upload Python Data to Firebase
+                </Button>
+              </div>
+              
             </form>
           </Form>
         </CardContent>

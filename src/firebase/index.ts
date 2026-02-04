@@ -40,6 +40,16 @@ export function getSdks(firebaseApp: FirebaseApp) {
   };
 }
 
+// =========================================================
+// 👇 NEW CODE ADDED HERE
+// We run the initialization function immediately so we can
+// export 'db' for use in your Client Components.
+// =========================================================
+const { firestore: db, auth, firebaseApp: app } = initializeFirebase();
+
+export { db, auth, app };
+// =========================================================
+
 export * from './provider';
 export * from './client-provider';
 export * from './firestore/use-collection';
