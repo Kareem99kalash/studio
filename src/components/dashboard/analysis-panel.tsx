@@ -214,7 +214,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
         <CardDescription>Distance-based zone coverage.</CardDescription>
       </CardHeader>
       
-      <ScrollArea className="flex-grow px-4">
+      <ScrollArea className="h-[calc(100vh-160px)] px-4"> 
         <CardContent className="p-0 space-y-6 pb-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">

@@ -190,23 +190,28 @@ export default function DashboardPage() {
 
   return (
     <main className="grid grid-cols-1 md:grid-cols-[380px_1fr] h-[calc(100vh-3.5rem)] overflow-hidden">
-      <div className="border-r overflow-y-auto bg-white">
+      
+      {/* LEFT SIDEBAR - Added overflow-y-auto and custom scrollbar padding */}
+      <div className="border-r overflow-y-auto bg-white scrollbar-thin">
         <AnalysisPanel 
           cities={cities} 
           onCityChange={(id) => setSelectedCity(cities.find(c => c.id === id))}
-          onAnalyze={handleAnalyze} // 👈 FIXED: Linked to logic
+          onAnalyze={handleAnalyze} 
           isLoading={isPending}
           isLoadingCities={false}
         />
       </div>
-      <div className="flex flex-col h-full relative">
+  
+      {/* RIGHT SIDE - Main Content Area */}
+      <div className="flex flex-col h-full relative overflow-hidden">
         {progress && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black/80 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-xl animate-pulse">
                 {progress}
             </div>
         )}
-        <Tabs defaultValue="map" className="flex-1 flex flex-col">
-            <div className="px-4 py-2 border-b bg-white flex justify-between items-center">
+  
+        <Tabs defaultValue="map" className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-4 py-2 border-b bg-white flex justify-between items-center shrink-0">
                 <TabsList>
                     <TabsTrigger value="map">🗺️ Map View</TabsTrigger>
                     <TabsTrigger value="table">📊 Results Table</TabsTrigger>
@@ -217,34 +222,48 @@ export default function DashboardPage() {
                   </Badge>
                 )}
             </div>
-            <TabsContent value="map" className="flex-1 p-0 m-0 h-full">
-                <MapView selectedCity={selectedCity} stores={liveAnalysis?.stores || []} analysisData={liveAnalysis} isLoading={false} />
-            </TabsContent>
-            <TabsContent value="table" className="flex-1 overflow-auto p-4">
-               <Card>
-                   <CardHeader className="flex flex-row items-center justify-between">
-                       <CardTitle>Analysis Data</CardTitle>
-                       <Button size="sm" variant="outline" onClick={downloadCSV} disabled={!liveAnalysis}><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
-                   </CardHeader>
-                   <CardContent>
-                       <Table>
-                           <TableHeader><TableRow><TableHead>Zone</TableHead><TableHead>Branch</TableHead><TableHead>KM (Road)</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-                           <TableBody>
-                               {liveAnalysis?.assignments ? Object.entries(liveAnalysis.assignments).map(([name, data]: [string, any]) => (
-                                   <TableRow key={name}>
-                                       <TableCell className="font-medium">{name}</TableCell>
-                                       <TableCell><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{backgroundColor: data.storeColor}}></span>{data.storeName}</span></TableCell>
-                                       <TableCell>{data.distance} km</TableCell>
-                                       <TableCell><Badge className={data.status === 'Green' ? 'bg-green-500' : data.status === 'Yellow' ? 'bg-yellow-500' : 'bg-red-500'}>{data.status}</Badge></TableCell>
-                                   </TableRow>
-                               )) : <TableRow><TableCell colSpan={4} className="text-center py-8">Press "Check Coverage" to begin.</TableCell></TableRow>}
-                           </TableBody>
-                       </Table>
-                   </CardContent>
-               </Card>
-            </TabsContent>
+  
+            <TabsContent value="table" className="flex-1 overflow-hidden p-4 bg-slate-50">
+  <Card className="h-full flex flex-col"> {/* Added h-full and flex-col */}
+    <CardHeader className="flex flex-row items-center justify-between shrink-0 border-b">
+      <CardTitle>Analysis Data</CardTitle>
+      <Button size="sm" variant="outline" onClick={downloadCSV} disabled={!liveAnalysis}>
+        <Download className="mr-2 h-4 w-4" /> Export CSV
+      </Button>
+    </CardHeader>
+    
+    {/* This div becomes the scrollable container for the table */}
+    <div className="flex-1 overflow-y-auto"> 
+      <Table>
+        <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
+          <TableRow>
+            <TableHead>Zone</TableHead>
+            <TableHead>Branch</TableHead>
+            <TableHead>KM (Road)</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {liveAnalysis?.assignments ? (
+            Object.entries(liveAnalysis.assignments).map(([name, data]: [string, any]) => (
+              <TableRow key={name}>
+                {/* ... existing cells ... */}
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={4} className="text-center py-8">
+                Press "Check Coverage" to begin.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  </Card>
+</TabsContent>
         </Tabs>
       </div>
     </main>
   );
-}
+
