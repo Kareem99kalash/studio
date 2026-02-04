@@ -2,11 +2,24 @@
 
 import { useState, useTransition, useContext } from 'react';
 import { AnalysisPanel } from '@/components/dashboard/analysis-panel';
-import { MapView } from '@/components/dashboard/map-view';
 import { analyzeCoverageAction } from '@/lib/actions';
 import type { AnalysisFormValues, AnalysisResult, City } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { CityContext } from '@/context/city-context';
+import dynamic from 'next/dynamic';
+
+const MapView = dynamic(
+  () => import('@/components/dashboard/map-view').then((mod) => mod.MapView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center bg-muted">
+        <p>Loading map...</p>
+      </div>
+    ),
+  }
+);
+
 
 export default function DashboardPage() {
   const [isPending, startTransition] = useTransition();
