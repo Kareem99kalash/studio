@@ -38,3 +38,4 @@ export type AnalysisResult = {
   matchColor?: string;
   assignments?: Record<string, string>; // For the distance logic
 };
+//test
