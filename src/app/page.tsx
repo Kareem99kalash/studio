@@ -10,31 +10,44 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Logo } from '@/components/logo';
-import { useAuth, useUser, initiateEmailSignIn } from '@/firebase';
+import { useAuth, useUser, initiateEmailSignIn, initiateEmailSignUp } from '@/firebase';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address."),
-  password: z.string().min(1, 'Password is required.'),
+  password: z.string().min(6, 'Password must be at least 6 characters.'),
+});
+
+const signupSchema = z.object({
+  username: z.string().min(3, 'Username must be at least 3 characters.'),
+  email: z.string().email("Invalid email address."),
+  password: z.string().min(6, 'Password must be at least 6 characters.'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+type SignupFormValues = z.infer<typeof signupSchema>;
 
-export default function LoginPage() {
+export default function AuthPage() {
   const router = useRouter();
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoginView, setIsLoginView] = useState(true);
 
-  const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
+  const form = useForm<LoginFormValues | SignupFormValues>({
+    resolver: zodResolver(isLoginView ? loginSchema : signupSchema),
     defaultValues: {
       email: '',
       password: '',
+      ...(isLoginView ? {} : { username: '' }),
     },
   });
+
+  useEffect(() => {
+    form.reset();
+  }, [isLoginView, form]);
 
   useEffect(() => {
     if (!isUserLoading && user) {
@@ -42,16 +55,24 @@ export default function LoginPage() {
     }
   }, [user, isUserLoading, router]);
 
-  const onSubmit = (data: LoginFormValues) => {
+  const onSubmit = (data: LoginFormValues | SignupFormValues) => {
     setIsSubmitting(true);
-    initiateEmailSignIn(auth, data.email, data.password, (error) => {
+    const handleError = (error: any) => {
         toast({
             variant: 'destructive',
-            title: 'Login Failed',
-            description: 'Invalid email or password. Please try again.',
+            title: isLoginView ? 'Login Failed' : 'Sign Up Failed',
+            description: error.message || 'An unexpected error occurred. Please try again.',
         });
         setIsSubmitting(false);
-    });
+    };
+
+    if (isLoginView) {
+        const { email, password } = data as LoginFormValues;
+        initiateEmailSignIn(auth, email, password, handleError);
+    } else {
+        const { email, password, username } = data as SignupFormValues;
+        initiateEmailSignUp(auth, email, password, username, handleError);
+    }
   };
 
   if (isUserLoading || (!isUserLoading && user)) {
@@ -70,11 +91,28 @@ export default function LoginPage() {
             <Logo className="h-12 w-12" />
           </div>
           <CardTitle className="font-headline text-2xl">GeoCoverage Analyzer</CardTitle>
-          <CardDescription>Enter your credentials to access your account</CardDescription>
+          <CardDescription>
+            {isLoginView ? 'Enter your credentials to access your account' : 'Create an account to get started'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
+              {!isLoginView && (
+                <FormField
+                  control={form.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem className="grid gap-2">
+                      <Label htmlFor="username">Username</Label>
+                      <FormControl>
+                        <Input id="username" placeholder="e.g., JaneDoe" required {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={form.control}
                 name="email"
@@ -104,10 +142,16 @@ export default function LoginPage() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? 'Logging in...' : 'Login'}
+                {isSubmitting ? (isLoginView ? 'Logging in...' : 'Signing up...') : (isLoginView ? 'Login' : 'Sign Up')}
               </Button>
             </form>
           </Form>
+          <div className="mt-4 text-center text-sm">
+            {isLoginView ? "Don't have an account?" : "Already have an account?"}{' '}
+            <Button variant="link" className="p-0 h-auto" onClick={() => setIsLoginView(!isLoginView)}>
+              {isLoginView ? 'Sign up' : 'Login'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc } from 'firebase/firestore';
+import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -26,6 +27,8 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { LayoutGrid, LogOut, Settings, UploadCloud, Users } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
@@ -39,6 +42,10 @@ export default function DashboardLayout({
   const auth = useAuth();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
+
+  const userProfileRef = useMemoFirebase(() => user ? doc(firestore, 'users', user.uid) : null, [user, firestore]);
+  const { data: userProfile, isLoading: isUserProfileLoading } = useDoc(userProfileRef);
 
   const adminRoleRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -47,7 +54,7 @@ export default function DashboardLayout({
 
   const { data: adminRole, isLoading: isAdminLoading } = useDoc(adminRoleRef);
   const isAdmin = !!adminRole;
-  const isLoading = isUserLoading || isAdminLoading;
+  const isLoading = isUserLoading || isAdminLoading || isUserProfileLoading;
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -57,6 +64,32 @@ export default function DashboardLayout({
 
   const handleLogout = () => {
     auth.signOut();
+  };
+
+  const handleBecomeAdmin = () => {
+    if (!user || !userProfile) {
+        toast({ title: 'Error', description: 'User profile not loaded yet.', variant: 'destructive'});
+        return;
+    }
+
+    const adminRoleDocRef = doc(firestore, 'roles_admin', user.uid);
+    const adminData = {
+        ...userProfile,
+        role: 'Admin'
+    };
+
+    setDoc(adminRoleDocRef, adminData)
+        .then(() => {
+            toast({ title: 'Success', description: 'You are now an admin. The page will refresh to apply changes.'});
+        })
+        .catch(error => {
+            const contextualError = new FirestorePermissionError({
+                operation: 'create',
+                path: adminRoleDocRef.path,
+                requestResourceData: adminData,
+            });
+            errorEmitter.emit('permission-error', contextualError);
+        });
   };
 
   if (isLoading) {
@@ -144,6 +177,21 @@ export default function DashboardLayout({
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
+        {!isAdmin && (
+          <div className="p-4 sm:p-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-headline text-lg">Become an Administrator</CardTitle>
+                <CardDescription>
+                  To access all features of this application, such as user and city management, you need administrator privileges.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={handleBecomeAdmin}>Grant Admin Access</Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
         {children}
       </SidebarInset>
     </SidebarProvider>

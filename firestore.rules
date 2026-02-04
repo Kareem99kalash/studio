@@ -117,7 +117,9 @@ service cloud.firestore {
      */
     match /roles_admin/{userId} {
       allow get, list: if isAdmin();
-      allow create: if isAdmin();
+      // This rule is relaxed for development to allow the first user to become an admin.
+      // A user can only make themselves an admin.
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isAdmin() && resource != null;
       allow delete: if isAdmin() && resource != null;
     }
