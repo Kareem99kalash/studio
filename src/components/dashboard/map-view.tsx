@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON, Polyline, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -9,11 +9,12 @@ import { Route, Navigation, BrainCircuit, Clock, MapPin, Info, CheckCircle2, Ref
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-// --- HELPERS ---
+// --- MATH UTILS ---
 function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
     return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
 }
 
+// Controller to handle re-centering and zooming
 function MapController({ city, resetTrigger }: { city?: any, resetTrigger: number }) {
   const map = useMap();
   useEffect(() => {
@@ -33,38 +34,39 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [routePaths, setRoutePaths] = useState<any[]>([]); 
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
-  const [aiInsights, setAiInsights] = useState<any>(null);
   const [isClient, setIsClient] = useState(false);
   const [resetTrigger, setResetTrigger] = useState(0);
 
-  // Guard against SSR crashes
+  // 🛡️ Prevent SSR Crash
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🤖 AI GLOBAL SUMMARY: Fix for the "0.0%" Intelligence data ---
-  useEffect(() => {
-    if (analysisData?.assignments && Object.keys(analysisData.assignments).length > 0) {
-      const zones = Object.entries(analysisData.assignments);
-      
-      // Flexible status check (handles "in", "IN", "Warning", etc.)
-      const covered = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'in').length;
-      const warning = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'warning').length;
-      
-      let furthest = { name: 'N/A', dist: 0 };
-      zones.forEach(([name, data]: any) => {
-          if (data?.distance > furthest.dist) furthest = { name, dist: data.distance };
-      });
+  // --- 🤖 MARKET INTELLIGENCE CALCULATOR ---
+  // Memoized to ensure it updates exactly when analysisData or selectedCity changes
+  const aiInsights = useMemo(() => {
+    const assignments = analysisData?.assignments;
+    if (!assignments || Object.keys(assignments).length === 0) return null;
 
-      setAiInsights({
-        total: zones.length,
-        covered,
-        warning,
-        out: zones.length - (covered + warning),
-        furthestPolygon: furthest.name,
-        efficiency: (((covered + warning) / zones.length) * 100).toFixed(1)
-      });
-    } else {
-        setAiInsights(null);
-    }
+    const zones = Object.entries(assignments);
+    const total = zones.length;
+    
+    // Case-insensitive status check to catch 'in', 'IN', 'In'
+    const covered = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'in').length;
+    const warning = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'warning').length;
+    
+    let furthest = { name: 'N/A', dist: 0 };
+    zones.forEach(([name, data]: any) => {
+        if ((data?.distance || 0) > furthest.dist) {
+            furthest = { name, dist: data.distance };
+        }
+    });
+
+    return {
+      total,
+      covered,
+      warning,
+      efficiency: total > 0 ? (((covered + warning) / total) * 100).toFixed(1) : "0.0",
+      furthestPolygon: furthest.name
+    };
   }, [analysisData]);
 
   const handleReset = () => {
@@ -73,25 +75,25 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
     setResetTrigger(prev => prev + 1);
   };
 
-  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Initializing Map...</div>;
+  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Loading Map...</div>;
 
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     try {
+        // OSRM expects [lng, lat]
         const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
         const res = await fetch(url);
         const data = await res.json();
-        if (data.routes?.[0]) {
+        if (data.routes && data.routes[0]) {
             const coords = data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]);
             return {
                 positions: coords,
                 color,
                 label,
-                endPoint: end,
                 distanceKm: (data.routes[0].distance / 1000).toFixed(2),
                 durationMin: Math.round(data.routes[0].duration / 60)
             };
         }
-    } catch (e) { console.error("OSRM Error:", e); }
+    } catch (e) { console.error("OSRM Route Error:", e); }
     return null; 
   };
 
@@ -109,6 +111,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       setIsFetchingRoute(true);
       setRoutePaths([]); 
 
+      // Retrieve store ID from current analysis assignments
       const assignment = analysisData?.assignments?.[name];
       const storeId = assignment?.storeId;
       const targetStore = stores.find((s: any) => s.id === storeId);
@@ -117,7 +120,8 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           const storePt: [number, number] = [parseFloat(targetStore.lat), parseFloat(targetStore.lng)];
           const center = feature.properties.centroid;
           
-          // --- Logic for Closest & Furthest Points ---
+          // --- Calculate Closest and Furthest Vertices ---
+          // Assuming single polygon ring
           const vertices = feature.geometry.coordinates[0].map((p: any) => [p[1], p[0]] as [number, number]);
           let closestPt = vertices[0], furthestPt = vertices[0];
           let minVDist = Infinity, maxVDist = -1;
@@ -128,11 +132,11 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             if (d > maxVDist) { maxVDist = d; furthestPt = v; }
           });
 
-          // Fetch 3 Specific Routes: Entrance, Center, Furthest Point
+          // Fetch 3-Route Profile: Closest, Middle (Centroid), and Furthest
           const results = await Promise.all([
               fetchRoutePath(storePt, closestPt, '#22c55e', 'Closest (Entrance)'),
               fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Middle (Center)'),
-              fetchRoutePath(storePt, furthestPt, '#ef4444', 'Furthest Reach')
+              fetchRoutePath(storePt, furthestPt, '#ef4444', 'Furthest Point')
           ]);
 
           setRoutePaths(results.filter(r => r !== null));
@@ -142,14 +146,17 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   return (
     <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
-      {/* --- 🗺️ MAP (70%) --- */}
+      {/* --- 🗺️ MAP ENGINE (70%) --- */}
       <div className="flex-[7] rounded-xl overflow-hidden border relative shadow-md bg-white">
-        
-        <div className="absolute top-4 left-4 z-[1000] bg-white/90 backdrop-blur p-2 px-3 rounded-lg shadow-lg border border-slate-200 flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-8 text-[10px] font-bold text-slate-500 hover:text-blue-600 gap-1" onClick={handleReset}>
-            <RefreshCw className="h-3 w-3" /> Reset View
-          </Button>
-          {(isFetchingRoute || isLoading) && <Loader2 className="h-4 w-4 animate-spin text-purple-600" />}
+        <div className="absolute top-4 left-4 z-[1000] flex items-center gap-2">
+           <Button variant="secondary" size="sm" className="h-8 bg-white/90 backdrop-blur shadow-sm font-bold text-[10px]" onClick={handleReset}>
+              <RefreshCw className="h-3 w-3 mr-1" /> Reset View
+           </Button>
+           {(isFetchingRoute || isLoading) && (
+              <div className="bg-white/90 p-2 rounded-lg shadow-sm border flex items-center gap-2 text-[10px] font-bold text-purple-600">
+                 <Loader2 className="h-3 w-3 animate-spin" /> Analyzing Routes...
+              </div>
+           )}
         </div>
 
         <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
@@ -158,7 +165,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           
           {selectedCity?.polygons && (
             <GeoJSON 
-                key={`${selectedCity.id}-map`} 
+                key={`${selectedCity.id}-layer`} 
                 data={selectedCity.polygons} 
                 style={(f: any) => {
                     const zoneName = f?.properties?.name;
@@ -191,10 +198,10 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
         </MapContainer>
       </div>
 
-      {/* --- 📊 SIDE PANEL (30%) --- */}
+      {/* --- 📊 DATA PANEL (30%) --- */}
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2">
         
-        {/* MARKET INTELLIGENCE */}
+        {/* MARKET INTELLIGENCE CARD */}
         <Card className="border-t-4 border-t-purple-600 shadow-sm bg-purple-50/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold">
@@ -202,7 +209,11 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!aiInsights ? <p className="text-[10px] text-muted-foreground italic">Press "Check Coverage" to see summary.</p> : (
+            {!aiInsights ? (
+               <div className="py-4 text-center border border-dashed rounded bg-white">
+                  <p className="text-[10px] text-muted-foreground italic px-4">Press "Check Coverage" on the left to activate intelligence data.</p>
+               </div>
+            ) : (
               <>
                 <div className="bg-purple-600 p-3 rounded-lg text-white flex justify-between items-center shadow-lg">
                    <div className="flex flex-col">
@@ -222,14 +233,14 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                     </div>
                 </div>
                 <div className="text-[10px] text-slate-500 bg-white p-2 rounded-md border border-purple-100 flex items-center gap-2">
-                    <Navigation className="h-3 w-3 text-purple-500" /> Furthest: <strong className="text-slate-800 truncate">{aiInsights.furthestPolygon}</strong>
+                    <Navigation className="h-3 w-3 text-purple-500" /> Furthest Zone: <strong className="text-slate-800 truncate ml-1">{aiInsights.furthestPolygon}</strong>
                 </div>
               </>
             )}
           </CardContent>
         </Card>
 
-        {/* LOGISTICS INSIGHTS */}
+        {/* LOGISTICS INSIGHTS CARD */}
         <Card className="border-t-4 border-t-blue-600 flex-1 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-blue-700 font-bold">
@@ -240,23 +251,20 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             {!selectedZone ? (
                 <div className="text-center py-10 space-y-2 opacity-30 italic">
                     <Info className="h-8 w-8 mx-auto" />
-                    <p className="text-xs">Click a polygon to view routes</p>
+                    <p className="text-xs">Select a polygon on the map to view detailed road routes.</p>
                 </div>
             ) : (
               <>
                 <div className="space-y-1">
-                  <div className="text-xl font-black text-slate-800 tracking-tight leading-none truncate">{selectedZone}</div>
-                  <div className="text-[10px] font-bold text-blue-500 uppercase">Driving Logistics</div>
+                  <div className="text-lg font-black text-slate-800 tracking-tight leading-none truncate">{selectedZone}</div>
+                  <div className="text-[10px] font-bold text-blue-500 uppercase">Drive Profile Analysis</div>
                 </div>
                 
                 <div className="space-y-2">
-                  {routePaths.length === 0 && isFetchingRoute && (
-                    <div className="text-center py-4 text-[10px] text-slate-400">Calculating Road Network...</div>
-                  )}
                   {routePaths.map((r, i) => (
-                    <div key={i} className="bg-white p-2.5 border rounded-lg shadow-sm flex justify-between items-center border-blue-100">
+                    <div key={i} className="bg-white p-2.5 border rounded-lg shadow-sm flex justify-between items-center border-blue-50">
                       <div className="flex flex-col">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
                           <div className="h-1.5 w-1.5 rounded-full" style={{backgroundColor: r.color}} />
                           {r.label}
                         </span>
@@ -265,7 +273,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Distance</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Distance</span>
                         <div className="text-sm font-black text-slate-800">{r.distanceKm} km</div>
                       </div>
                     </div>
@@ -273,7 +281,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                 </div>
 
                 <div className="p-3 bg-blue-50 border border-blue-100 rounded text-[10px] text-blue-800 leading-relaxed italic">
-                  <strong>Analysis:</strong> Green line shows the road path to the closest entrance. Red shows the maximum travel distance within the zone.
+                   The **closest** route (green) represents the ideal entrance point, while the **furthest** route (red) indicates the maximum delivery distance for this zone.
                 </div>
               </>
             )}
