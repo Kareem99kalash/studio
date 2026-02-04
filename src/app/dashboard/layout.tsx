@@ -6,7 +6,6 @@ import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal } from "lucid
 import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/logo";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -16,15 +15,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAuth, setIsAuth] = useState(false);
 
   useEffect(() => {
-    // 1. Check local storage for the user session saved during login
     const stored = localStorage.getItem('geo_user');
     if (!stored) {
-      // If no session is found, force redirect to the login page
+      // If no session found, force redirect to root login page
       window.location.href = '/'; 
     } else {
       try {
-        const parsedUser = JSON.parse(stored);
-        setUser(parsedUser);
+        setUser(JSON.parse(stored));
         setIsAuth(true);
       } catch (e) {
         window.location.href = '/';
@@ -33,12 +30,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   const handleLogout = () => {
-    // 2. Clear the session and redirect to the entry page
     localStorage.removeItem('geo_user');
     window.location.href = '/'; 
   };
 
-  // Show a loading spinner until authorization is confirmed to prevent flickering
   if (!isAuth || !user) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
@@ -66,7 +61,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            {/* Admin-only links are hidden from Agents using RBAC */}
             {isAdmin && (
               <>
                 <SidebarMenuItem>
@@ -89,13 +83,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </SidebarMenu>
         </SidebarContent>
         
-        {/* 🚪 RESTORED LOGOUT BUTTON SECTION */}
+        {/* FOOTER WITH LOGOUT */}
         <SidebarFooter className="p-4 border-t">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton 
                 onClick={handleLogout} 
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
               >
                 <LogOut className="size-4" />
                 <span>Logout</span>
