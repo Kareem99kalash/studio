@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 export default function UserManagementPage() {
   const { toast } = useToast();
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,12 @@ export default function UserManagementPage() {
   const [newPassword, setNewPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    const stored = localStorage.getItem('geo_user');
+    if (stored) setCurrentUser(JSON.parse(stored));
+    fetchData();
+  }, []);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -48,7 +55,7 @@ export default function UserManagementPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const isAdmin = currentUser?.role === 'Admin';
 
   const handleCityToggle = (cityName: string) => {
     setFormData(prev => ({
@@ -63,7 +70,6 @@ export default function UserManagementPage() {
     if (!formData.username || !formData.password) return;
     setIsSaving(true);
     try {
-      // Use username as the Document ID for easy lookup during login
       const userRef = doc(db, 'users', formData.username.trim());
       await setDoc(userRef, {
         username: formData.username.trim(),
@@ -86,6 +92,7 @@ export default function UserManagementPage() {
   };
 
   const handleUpdatePassword = async (id: string) => {
+    if (!isAdmin) return; // Guard for Managers
     try {
       await updateDoc(doc(db, 'users', id), { password: newPassword });
       toast({ title: "Updated", description: "Password changed successfully." });
@@ -96,7 +103,7 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete user?")) return;
+    if (!isAdmin || !confirm("Delete user?")) return; // Guard for Managers
     await deleteDoc(doc(db, 'users', id));
     fetchData();
   };
@@ -108,11 +115,11 @@ export default function UserManagementPage() {
           <UserCog className="h-6 w-6 text-purple-600" />
           <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
         </div>
-        <Badge variant="outline" className="bg-white">Admin Control</Badge>
+        <Badge variant="outline" className="bg-white">{currentUser?.role} View</Badge>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* WIZARD CARD */}
+        {/* WIZARD CARD - MANAGERS & ADMINS CAN USE THIS */}
         <Card className="md:col-span-1 border-t-4 border-t-purple-600 shadow-md h-fit">
           <CardHeader>
             <CardTitle className="text-lg">Create New User</CardTitle>
@@ -120,7 +127,6 @@ export default function UserManagementPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             
-            {/* STEP 1: IDENTITY */}
             <div className={`space-y-2 p-3 rounded-lg border transition-all ${step === 1 ? 'border-purple-200 bg-purple-50' : 'bg-white opacity-50'}`}>
               <div className="flex items-center gap-2 font-semibold text-sm">
                 <Badge className="h-5 w-5 p-0 flex items-center justify-center rounded-full">1</Badge>
@@ -138,7 +144,6 @@ export default function UserManagementPage() {
               )}
             </div>
 
-            {/* STEP 2: ROLE */}
             <div className={`space-y-2 p-3 rounded-lg border transition-all ${step === 2 ? 'border-purple-200 bg-purple-50' : 'bg-white opacity-50'}`}>
               <div className="flex items-center gap-2 font-semibold text-sm">
                 <Badge className="h-5 w-5 p-0 flex items-center justify-center rounded-full">2</Badge>
@@ -150,6 +155,7 @@ export default function UserManagementPage() {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Agent">Agent (View Only)</SelectItem>
+                      <SelectItem value="Manager">Manager (Create/Tickets)</SelectItem>
                       <SelectItem value="Admin">Admin (Full Access)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -160,7 +166,6 @@ export default function UserManagementPage() {
               )}
             </div>
 
-            {/* STEP 3: CITIES */}
             <div className={`space-y-2 p-3 rounded-lg border transition-all ${step === 3 ? 'border-purple-200 bg-purple-50' : 'bg-white opacity-50'}`}>
               <div className="flex items-center gap-2 font-semibold text-sm">
                 <Badge className="h-5 w-5 p-0 flex items-center justify-center rounded-full">3</Badge>
@@ -211,25 +216,37 @@ export default function UserManagementPage() {
                         <div className="text-[10px] text-muted-foreground">@{user.username}</div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={user.role === 'Admin' ? 'default' : 'secondary'} className="text-[10px]">
+                        <Badge variant={user.role === 'Admin' ? 'default' : user.role === 'Manager' ? 'outline' : 'secondary'} className="text-[10px]">
                           {user.role}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {editingId === user.id ? (
+                        {editingId === user.id && isAdmin ? (
                           <div className="flex gap-1">
                             <Input className="h-7 text-xs w-24" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
                             <Button size="icon" className="h-7 w-7 bg-green-600" onClick={() => handleUpdatePassword(user.id)}><Check className="size-3" /></Button>
                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setEditingId(null)}><X className="size-3" /></Button>
                           </div>
                         ) : (
-                          <Button variant="ghost" size="sm" className="h-7 text-[10px]" onClick={() => setEditingId(user.id)}>
-                            <Key className="mr-1 size-3" /> Reset
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 text-[10px]" 
+                            disabled={!isAdmin}
+                            onClick={() => setEditingId(user.id)}
+                          >
+                            <Key className="mr-1 size-3" /> {isAdmin ? "Reset" : "Locked"}
                           </Button>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)} className="text-red-500"><Trash2 className="size-4" /></Button>
+                        {isAdmin ? (
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)} className="text-red-500">
+                             <Trash2 className="size-4" />
+                          </Button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Restricted</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
