@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON, Polyline, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import type { City } from '@/lib/types';
 
+// --- ICONS & STYLES ---
 const iconUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png';
 const iconRetinaUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png';
 const shadowUrl = 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png';
@@ -31,36 +32,40 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
   const [routePaths, setRoutePaths] = useState<any[]>([]); 
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
 
+  // --- 🔄 SESSION RESET ---
+  // When the analysis results change (new timestamp), clear old paths and selection
+  useEffect(() => {
+    setRoutePaths([]);
+    setSelectedZone(null);
+  }, [analysisData?.timestamp]);
+
   const centerPosition: [number, number] = selectedCity?.center 
     ? [selectedCity.center.lat, selectedCity.center.lng] 
     : [36.19, 44.01];
 
-  // --- STYLE LOGIC (Border = Branch, Fill = Status) ---
+  // --- 🎨 STYLE LOGIC ---
   const getZoneStyle = (feature: any) => {
     const zoneName = feature.properties.name;
     const isSelected = zoneName === selectedZone;
     
-    // Default blue if no analysis
     if (!analysisData || !analysisData.assignments) {
       return { color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.1 };
     }
 
     const data = analysisData.assignments[zoneName];
-    
-    // If we have data, use it
     if (data) {
         return {
-            color: data.storeColor || '#000000', // Border color = Assigned Store
+            color: data.storeColor || '#000000', 
             weight: isSelected ? 4 : 2,
-            fillColor: data.fillColor || '#ef4444', // Fill color = Status (Green/Red)
+            fillColor: data.fillColor || '#ef4444', 
             fillOpacity: isSelected ? 0.3 : 0.5
         };
     }
 
-    // Fallback
     return { color: '#ef4444', weight: 1, fillColor: '#ef4444', fillOpacity: 0.5 };
   };
 
+  // --- 🛣️ ROUTING ENGINE ---
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     try {
         const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
@@ -70,7 +75,7 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
             const coords = data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]);
             return { positions: coords, color, label, endPoint: end };
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Routing Error:", e); }
     return null; 
   };
 
@@ -87,15 +92,15 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
       setRoutePaths([]); 
 
       const center = feature.properties.centroid;
-      
-      // Find Store assigned in the data (if exists) or calc nearest
       let targetStore = null;
-      if (analysisData && analysisData.assignments && analysisData.assignments[name]) {
+
+      // 1. Prioritize store assigned in current analysis
+      if (analysisData?.assignments?.[name]) {
           const storeId = analysisData.assignments[name].storeId;
           targetStore = stores.find(s => s.id === storeId);
       }
 
-      // Fallback if no analysis data
+      // 2. Fallback to closest if no analysis data exists
       if (!targetStore) {
         let minDst = Infinity;
         stores.forEach(store => {
@@ -122,6 +127,8 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
       });
 
       const centerPt: [number, number] = [center.lat, center.lng];
+      
+      // Parallel fetch for speed
       const newRoutes = await Promise.all([
           fetchRoutePath(storePt, centerPt, 'blue', 'Center'),
           fetchRoutePath(storePt, closestPt, 'green', 'Entrance'),
@@ -138,7 +145,8 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
       {(isLoading || isFetchingRoute) && (
         <div className="absolute inset-0 z-[1000] bg-white/50 flex items-center justify-center backdrop-blur-sm pointer-events-none">
            <div className="bg-white p-3 rounded shadow-lg text-sm font-semibold flex items-center gap-2">
-             {isFetchingRoute ? "Calculating Route..." : "Loading Map..."}
+             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+             {isFetchingRoute ? "Calculating Road Route..." : "Updating Map..."}
            </div>
         </div>
       )}
@@ -147,13 +155,13 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
         center={centerPosition} 
         zoom={12} 
         style={{ height: '100%', width: '100%' }}
-        key={selectedCity?.id} 
+        key={`${selectedCity?.id}-${analysisData?.timestamp || 'initial'}`} 
       >
         <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         {selectedCity?.polygons && (
           <GeoJSON 
-            key={`${selectedCity.id}-${analysisData ? 'done' : 'init'}`} 
+            key={`${selectedCity.id}-${analysisData?.timestamp || 'init'}`} 
             data={selectedCity.polygons} 
             style={getZoneStyle}
             onEachFeature={(feature, layer) => {
@@ -164,7 +172,7 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
         )}
 
         {routePaths.map((route, i) => (
-            <div key={i}>
+            <div key={`${selectedZone}-route-${i}`}>
                 <Polyline positions={route.positions} pathOptions={{ color: route.color, weight: 4, opacity: 0.8 }} />
                 <CircleMarker center={route.endPoint} radius={4} pathOptions={{ color: route.color, fillColor: route.color, fillOpacity: 1 }}>
                     <Tooltip direction="top" permanent>{route.label}</Tooltip>
@@ -180,7 +188,7 @@ export function MapView({ selectedCity, stores, analysisData, isLoading }: MapVi
               pathOptions={{ 
                   color: '#ffffff', 
                   weight: 2, 
-                  fillColor: store.borderColor || '#2563eb', // Use the store's assigned brand color
+                  fillColor: store.borderColor || '#2563eb', 
                   fillOpacity: 1 
               }}
             >
