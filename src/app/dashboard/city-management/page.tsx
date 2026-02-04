@@ -91,18 +91,85 @@ export default function CityManagementPage() {
   reader.readAsText(file);
 };
 
+// --- ROBUST WKT PARSER ---
 const parseWKT = (wkt: string) => {
   try {
-    // 📐 Clean WKT: Removes "POLYGON ((" and "))" to extract just the numbers
-    const cleanWkt = wkt.replace(/^[^(]*\(\s*\(/i, "").replace(/\s*\)\s*\)[^)]*$/, "");
-    const pairs = cleanWkt.split(",");
+    if (!wkt) return [];
+    // This regex extracts all number pairs regardless of "POLYGON" or "MULTIPOLYGON" labels
+    const matches = wkt.match(/(-?\d+\.?\d+)\s+(-?\d+\.?\d+)/g);
+    if (!matches) return [];
+
+    return matches.map(pair => {
+      const [lngStr, latStr] = pair.trim().split(/\s+/);
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      if (isNaN(lat) || isNaN(lng)) return null;
+      return { lat, lng };
+    }).filter((p): p is {lat: number, lng: number} => p !== null);
+  } catch (e) {
+    console.error("WKT Parse Error:", e);
+    return [];
+  }
+};
+
+// --- BATCH CHUNKED SAVER ---
+const handleFinalSave = async () => {
+  if (!cityName.trim() || csvData.length === 0) {
+    toast({ variant: "destructive", title: "Error", description: "Missing City Name or Zone data." });
+    return;
+  }
+
+  setIsSaving(true);
+  try {
+    // 1. Create the City Parent Document
+    const cityRef = await addDoc(collection(db, 'cities'), {
+      name: cityName,
+      thresholds: thresholds,
+      createdAt: new Date().toISOString()
+    });
+
+    // 2. Upload Zones in Chunks (Firestore limit is 500 per batch)
+    const CHUNK_SIZE = 400; 
+    for (let i = 0; i < csvData.length; i += CHUNK_SIZE) {
+      const batch = writeBatch(db);
+      const chunk = csvData.slice(i, i + CHUNK_SIZE);
+
+      chunk.forEach(cols => {
+        // Adjust index if your CSV columns are different: [city, id, name, wkt]
+        const [,, name, wkt] = cols; 
+        const positions = parseWKT(wkt);
+
+        if (positions.length > 2) {
+          const zoneRef = doc(collection(db, "zones"));
+          batch.set(zoneRef, {
+            city: cityName,
+            name: name || "Unnamed Zone",
+            positions: positions,
+            type: "Feature"
+          });
+        }
+      });
+
+      await batch.commit();
+      console.log(`Uploaded chunk ${i / CHUNK_SIZE + 1}`);
+    }
+
+    toast({ title: "Success!", description: `${cityName} created with ${csvData.length} zones.` });
     
-    return pairs.map(pair => {
-      const [lng, lat] = pair.trim().split(/\s+/);
-      return { lat: parseFloat(lat), lng: parseFloat(lng) };
-    }).filter(p => !isNaN(p.lat) && !isNaN(p.lng));
-  } catch (e) { 
-    return []; 
+    // Reset the Wizard
+    setStep(1);
+    setCityName('');
+    setCsvData([]);
+    fetchCities();
+  } catch (e: any) {
+    console.error("Full Save Error:", e);
+    toast({ 
+      variant: "destructive", 
+      title: "Save Failed", 
+      description: e.message || "Database connection error." 
+    });
+  } finally {
+    setIsSaving(false);
   }
 };
 
