@@ -246,3 +246,4 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
     </Card>
   );
 }
+// Identity fix
