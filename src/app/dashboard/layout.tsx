@@ -28,11 +28,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setUser(parsedUser);
       setIsAuth(true);
 
-      // 🛡️ SECURITY KILL-SWITCH: Real-time listener
       const userRef = doc(db, 'users', parsedUser.username);
       const unsub = onSnapshot(userRef, (docSnap) => {
         if (!docSnap.exists()) {
-          console.warn("User account no longer exists. Terminating session...");
           localStorage.removeItem('geo_user');
           window.location.href = '/'; 
         }
@@ -72,14 +70,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
-            {/* Dashboard Access */}
+            {/* Dashboard Access - Everyone */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
                 <Link href="/dashboard"><LayoutGrid className="size-4" /><span>Dashboard</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            {/* Admin or Manager Access: User Management */}
+            {/* User Management - Admin & Manager */}
             {(isAdmin || isManager) && (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === '/dashboard/user-management'}>
@@ -88,7 +86,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarMenuItem>
             )}
 
-            {/* Admin Exclusive Sections */}
+            {/* Admin Exclusive */}
             {isAdmin && (
               <>
                 <SidebarMenuItem>
@@ -101,24 +99,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <Link href="/dashboard/city-management"><UploadCloud className="size-4" /><span>Cities</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                {/* 📜 STEP 3: ACTIVITY LOGS (ADMIN ONLY) */}
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === '/dashboard/audit-logs'}>
-                    <Link href="/dashboard/audit-logs">
-                      <History className="size-4" />
-                      <span>Activity Logs</span>
-                    </Link>
+                    <Link href="/dashboard/audit-logs"><History className="size-4" /><span>Activity Logs</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </>
             )}
 
-            {/* Global Access: Ticket System */}
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname === '/dashboard/tickets'}>
-                <Link href="/dashboard/tickets"><Ticket className="size-4" /><span>Tickets</span></Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {/* 🎟️ Ticket System - Admin & Manager ONLY (Agent Restricted) */}
+            {(isAdmin || isManager) && (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === '/dashboard/tickets'}>
+                  <Link href="/dashboard/tickets"><Ticket className="size-4" /><span>Tickets</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         </SidebarContent>
 
