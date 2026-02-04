@@ -1,43 +1,40 @@
 import { z } from 'zod';
-import type { analysisSchema as analysisSchemaType } from './actions';
+import type { FeatureCollection } from 'geojson'; // We need this type!
 
 export const analysisSchema = z.object({
-  cityId: z.string().min(1, 'City is required.'),
-  stores: z
-    .array(
-      z.object({
-        id: z.string(),
-        name: z.string().min(1, 'Store name is required.'),
-        lat: z.string().refine((val) => !isNaN(parseFloat(val)), {
-          message: 'Must be a number.',
-        }),
-        lng: z.string().refine((val) => !isNaN(parseFloat(val)), {
-          message: 'Must be a number.',
-        }),
-      })
-    )
-    .min(1, 'At least one store is required.'),
+  cityId: z.string().min(1, 'Please select a city'),
+  stores: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string().min(1, 'Name is required'),
+      lat: z.string().min(1, 'Latitude is required'),
+      lng: z.string().min(1, 'Longitude is required'),
+      coords: z.string().optional(), // We added this field recently
+    })
+  ).min(1, 'Add at least one store'),
 });
+
+export type AnalysisFormValues = z.infer<typeof analysisSchema>;
 
 export type City = {
   id: string;
   name: string;
-  center: { lat: number; lng: number };
-  polygons: GeoJSON.FeatureCollection<GeoJSON.Polygon>;
+  center: {
+    lat: number;
+    lng: number;
+  };
+  polygons: FeatureCollection; // The map now expects standard GeoJSON
+  thresholds?: {
+    green: number;
+    yellow: number;
+  };
 };
 
 export type AnalysisResult = {
-  store: { id: string; name: string; color: string };
-  coverage: Record<string, string>[];
-  polygonStyles: Record<
-    string,
-    {
-      fillColor: string;
-      strokeColor: string;
-      fillOpacity: number;
-      strokeWeight: number;
-    }
-  >;
+  storeId?: string;
+  storeName?: string;
+  status?: string;
+  zoneName?: string;
+  matchColor?: string;
+  assignments?: Record<string, string>; // For the distance logic
 };
-
-export type AnalysisFormValues = z.infer<typeof analysisSchema>;
