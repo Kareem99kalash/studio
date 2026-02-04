@@ -16,10 +16,12 @@ const getHeatmapColor = (density: number) => {
   return density > 0.8 ? '#ef4444' : density > 0.6 ? '#f97316' : density > 0.4 ? '#eab308' : density > 0.2 ? '#22c55e' : '#3b82f6';
 };
 
-// Component to handle map movement
+function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
+    return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
+}
+
 function MapController({ city, resetTrigger }: { city?: any, resetTrigger: number }) {
   const map = useMap();
-  
   useEffect(() => {
     if (city?.polygons?.features?.length) {
       try {
@@ -29,7 +31,7 @@ function MapController({ city, resetTrigger }: { city?: any, resetTrigger: numbe
         }
       } catch (e) { console.error("Map control error:", e); }
     }
-  }, [city, map, resetTrigger]); // Moves map when city changes OR reset is clicked
+  }, [city, map, resetTrigger]);
   return null;
 }
 
@@ -45,9 +47,10 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🤖 AI GLOBAL SUMMARY ---
+  // --- 🤖 AI GLOBAL SUMMARY: Ensures data displays in the Market Intelligence Card ---
   useEffect(() => {
-    if (analysisData?.assignments) {
+    // Check if analysisData and its assignments exist
+    if (analysisData && analysisData.assignments) {
       const zones = Object.entries(analysisData.assignments);
       if (zones.length === 0) return;
 
@@ -79,6 +82,26 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Initializing Map Engine...</div>;
 
+  const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
+    try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.routes?.[0]) {
+            const coords = data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]);
+            return {
+                positions: coords,
+                color,
+                label,
+                endPoint: end,
+                distanceKm: (data.routes[0].distance / 1000).toFixed(2),
+                durationMin: Math.round(data.routes[0].duration / 60)
+            };
+        }
+    } catch (e) { console.error("Routing error:", e); }
+    return null; 
+  };
+
   const handleZoneClick = async (feature: any) => {
       const name = feature?.properties?.name;
       if (!name) return;
@@ -102,21 +125,22 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           const storePt: [number, number] = [parseFloat(targetStore.lat), parseFloat(targetStore.lng)];
           const center = feature.properties.centroid;
           
-          try {
-            const url = `https://router.project-osrm.org/route/v1/driving/${storePt[1]},${storePt[0]};${center.lng},${center.lat}?overview=full&geometries=geojson`;
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data.routes?.[0]) {
-                const coords = data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]);
-                setRoutePaths([{
-                    positions: coords,
-                    color: '#3b82f6',
-                    label: 'Drive Path',
-                    distanceKm: (data.routes[0].distance / 1000).toFixed(2),
-                    durationMin: Math.round(data.routes[0].duration / 60)
-                }]);
-            }
-          } catch (e) { console.error("Routing error:", e); }
+          // --- Logic to find the Closest Entrance Point (Vertex) ---
+          const vertices = feature.geometry.coordinates[0].map((p: any) => [p[1], p[0]] as [number, number]);
+          let closestPt = vertices[0];
+          let minVDist = Infinity;
+          vertices.forEach((v: [number, number]) => {
+            const d = getDistSq(v[0], v[1], storePt[0], storePt[1]);
+            if (d < minVDist) { minVDist = d; closestPt = v; }
+          });
+
+          // Fetch both routes: Centroid and Entrance
+          const results = await Promise.all([
+              fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Center Path'),
+              fetchRoutePath(storePt, closestPt, '#22c55e', 'Entrance Path')
+          ]);
+
+          setRoutePaths(results.filter(r => r !== null));
       }
 
       const areaFactor = feature.properties?.area || 0.5; 
@@ -131,23 +155,14 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   return (
     <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
-      {/* --- MAP SECTION --- */}
       <div className="flex-[7] rounded-xl overflow-hidden border relative shadow-md bg-white">
-        
-        {/* CONTROLS OVERLAY */}
         <div className="absolute top-4 left-4 z-[1000] bg-white/90 backdrop-blur p-2 px-3 rounded-lg shadow-lg border border-slate-200 flex items-center gap-4">
           <div className="flex items-center space-x-2 border-r pr-4">
             <Flame className={`h-4 w-4 ${showHeatmap ? 'text-orange-500' : 'text-slate-400'}`} />
             <Switch id="heatmap-mode" checked={showHeatmap} onCheckedChange={setShowHeatmap} />
             <Label htmlFor="heatmap-mode" className="text-xs font-bold text-slate-700">Density Map</Label>
           </div>
-          
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-8 text-[10px] font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all gap-1"
-            onClick={handleReset}
-          >
+          <Button variant="ghost" size="sm" className="h-8 text-[10px] font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all gap-1" onClick={handleReset}>
             <RefreshCw className="h-3 w-3" /> Reset View
           </Button>
         </div>
@@ -164,14 +179,8 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                     const zoneName = f?.properties?.name;
                     const data = analysisData?.assignments?.[zoneName];
                     const area = f?.properties?.area || 0.5;
-                    
                     if (showHeatmap) return { color: 'white', weight: 0.5, fillColor: getHeatmapColor(area / 2), fillOpacity: 0.7 };
-                    return { 
-                        color: data?.storeColor || '#cbd5e1', 
-                        weight: zoneName === selectedZone ? 4 : 1, 
-                        fillColor: data?.fillColor || '#f1f5f9', 
-                        fillOpacity: 0.6 
-                    };
+                    return { color: data?.storeColor || '#cbd5e1', weight: zoneName === selectedZone ? 4 : 1, fillColor: data?.fillColor || '#f1f5f9', fillOpacity: 0.6 };
                 }} 
                 onEachFeature={(f, l) => {
                     l.bindTooltip(f.properties.name, { sticky: true });
@@ -186,12 +195,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
           {stores?.map((s: any) => (
             s.lat && s.lng && (
-              <CircleMarker 
-                key={s.id} 
-                center={[parseFloat(s.lat), parseFloat(s.lng)]} 
-                radius={8} 
-                pathOptions={{ color: 'white', weight: 2, fillColor: s.borderColor || '#2563eb', fillOpacity: 1 }}
-              >
+              <CircleMarker key={s.id} center={[parseFloat(s.lat), parseFloat(s.lng)]} radius={8} pathOptions={{ color: 'white', weight: 2, fillColor: s.borderColor || '#2563eb', fillOpacity: 1 }}>
                 <Popup><div className="font-bold text-xs p-1">{s.name}</div></Popup>
               </CircleMarker>
             )
@@ -199,24 +203,14 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
         </MapContainer>
       </div>
 
-      {/* --- SIDE PANEL --- */}
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2">
-        
-        {/* AI SUMMARY */}
         <Card className="border-t-4 border-t-purple-600 shadow-sm bg-purple-50/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold">
-              <BrainCircuit className="h-4 w-4" /> Market Intelligence
-            </CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold"><BrainCircuit className="h-4 w-4" /> Market Intelligence</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {!aiInsights ? <p className="text-[10px] text-muted-foreground italic">Run coverage check to see summary.</p> : (
               <>
                 <div className="bg-purple-600 p-3 rounded-lg text-white flex justify-between items-center shadow-lg">
-                   <div className="flex flex-col">
-                     <span className="text-[9px] font-bold uppercase opacity-80 tracking-wider">Network Efficiency</span>
-                     <span className="text-xl font-black">{aiInsights.efficiency}%</span>
-                   </div>
+                   <div className="flex flex-col"><span className="text-[9px] font-bold uppercase opacity-80 tracking-wider">Network Efficiency</span><span className="text-xl font-black">{aiInsights.efficiency}%</span></div>
                    <CheckCircle2 className="h-6 w-6 opacity-40" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -237,51 +231,26 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           </CardContent>
         </Card>
 
-        {/* ZONE DETAILS */}
         <Card className="border-t-4 border-t-blue-600 flex-1 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2 text-blue-700 font-bold">
-              {showHeatmap ? <Flame className="h-4 w-4 text-orange-500" /> : <MapPin className="h-4 w-4 text-blue-600" />} 
-              Zone Analysis
-            </CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-blue-700 font-bold">{showHeatmap ? <Flame className="h-4 w-4 text-orange-500" /> : <MapPin className="h-4 w-4 text-blue-600" />} Zone Insights</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {!selectedZone ? (
-                <div className="text-center py-10 space-y-2 opacity-30 italic">
-                    <Info className="h-8 w-8 mx-auto" />
-                    <p className="text-xs">Select a polygon for AI details</p>
-                </div>
-            ) : (
+            {!selectedZone ? <div className="text-center py-10 space-y-2 opacity-30 italic"><Info className="h-8 w-8 mx-auto" /><p className="text-xs">Select a polygon for AI details</p></div> : (
               <>
                 <div className="space-y-3">
                   <div className="text-xl font-black text-slate-800 tracking-tight leading-none">{selectedZone}</div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="flex flex-col p-2 bg-slate-50 rounded border">
-                      <span className="text-slate-400 font-bold uppercase block text-[8px]">Est. Population</span>
-                      <div className="flex items-center gap-1 text-sm font-bold text-slate-700"><Users className="h-3 w-3 text-blue-500" /> {zoneStats?.population?.toLocaleString()}</div>
-                    </div>
-                    <div className="flex flex-col p-2 bg-slate-50 rounded border">
-                      <span className="text-slate-400 font-bold uppercase block text-[8px]">Businesses</span>
-                      <div className="flex items-center gap-1 text-sm font-bold text-slate-700"><Building2 className="h-3 w-3 text-blue-500" /> {zoneStats?.businesses}</div>
-                    </div>
+                    <div className="flex flex-col p-2 bg-slate-50 rounded border"><span className="text-slate-400 font-bold uppercase block text-[8px]">Est. Population</span><div className="flex items-center gap-1 text-sm font-bold text-slate-700"><Users className="h-3 w-3 text-blue-500" /> {zoneStats?.population?.toLocaleString()}</div></div>
+                    <div className="flex flex-col p-2 bg-slate-50 rounded border"><span className="text-slate-400 font-bold uppercase block text-[8px]">Businesses</span><div className="flex items-center gap-1 text-sm font-bold text-slate-700"><Building2 className="h-3 w-3 text-blue-500" /> {zoneStats?.businesses}</div></div>
                   </div>
                 </div>
-                
                 {routePaths.map((r, i) => (
                     <div key={i} className="bg-white p-2.5 border rounded-lg shadow-sm flex justify-between items-center border-blue-100">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Driving Time</span>
-                        <span className="font-bold text-slate-700 flex items-center gap-1 text-sm"><Clock className="h-3 w-3 text-blue-600" /> {r.durationMin} mins</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Road Distance</span>
-                        <div className="text-sm font-black text-slate-800">{r.distanceKm} km</div>
-                      </div>
+                      <div className="flex flex-col"><span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{r.label}</span><span className="font-bold text-slate-700 flex items-center gap-1 text-sm"><Clock className="h-3 w-3 text-blue-600" /> {r.durationMin} mins</span></div>
+                      <div className="text-right"><span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Distance</span><div className="text-sm font-black text-slate-800">{r.distanceKm} km</div></div>
                     </div>
                 ))}
-
                 <div className="p-3 bg-amber-50 border border-amber-100 rounded text-[10px] text-amber-800 leading-relaxed italic">
-                  <strong>AI Analysis:</strong> This sector is primarily {zoneStats?.population > 3000 ? 'High-Density Residential' : 'Secondary Commercial'}.
+                  <strong>AI Note:</strong> This sector is identified as {zoneStats?.population > 3000 ? 'High-Priority Residential' : 'Secondary Commercial'}.
                 </div>
               </>
             )}
