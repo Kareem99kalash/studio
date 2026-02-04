@@ -1,130 +1,244 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Key, Check, X, UserCog } from 'lucide-react';
+import { Trash2, UserPlus, Key, ShieldCheck, MapPinned, ChevronRight, Loader2, Check, X, UserCog } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function UserManagementPage() {
+  const { toast } = useToast();
   const [users, setUsers] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Wizard State
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    username: '',
+    name: '',
+    password: '',
+    role: 'Agent',
+    allowedCities: [] as string[]
+  });
+  
+  // Edit Password State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
-  const { toast } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
 
-  const fetchUsers = async () => {
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const snap = await getDocs(collection(db, 'users'));
-      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (error) {
-      toast({ variant: "destructive", title: "Error", description: "Could not load users." });
+      const userSnap = await getDocs(collection(db, 'users'));
+      const citySnap = await getDocs(collection(db, 'cities'));
+      setUsers(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCities(citySnap.docs.map(d => ({ id: d.id, name: d.data().name })));
+    } catch (e) {
+      toast({ variant: "destructive", title: "Load Error" });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const handleUpdatePassword = async (username: string) => {
-    if (!newPassword.trim()) return;
+  const handleCityToggle = (cityName: string) => {
+    setFormData(prev => ({
+      ...prev,
+      allowedCities: prev.allowedCities.includes(cityName)
+        ? prev.allowedCities.filter(c => c !== cityName)
+        : [...prev.allowedCities, cityName]
+    }));
+  };
+
+  const handleCreateUser = async () => {
+    if (!formData.username || !formData.password) return;
+    setIsSaving(true);
     try {
-      const userRef = doc(db, 'users', username);
-      await updateDoc(userRef, { password: newPassword });
-      toast({ title: "Success", description: `Password updated for ${username}` });
+      // Use username as the Document ID for easy lookup during login
+      const userRef = doc(db, 'users', formData.username.trim());
+      await setDoc(userRef, {
+        username: formData.username.trim(),
+        name: formData.name,
+        password: formData.password,
+        role: formData.role,
+        allowedCities: formData.allowedCities,
+        createdAt: new Date().toISOString()
+      });
+
+      toast({ title: "User Created", description: `${formData.username} is now active.` });
+      setStep(1);
+      setFormData({ username: '', name: '', password: '', role: 'Agent', allowedCities: [] });
+      fetchData();
+    } catch (e) {
+      toast({ variant: "destructive", title: "Creation Failed" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdatePassword = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'users', id), { password: newPassword });
+      toast({ title: "Updated", description: "Password changed successfully." });
       setEditingId(null);
       setNewPassword('');
-      fetchUsers();
-    } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to update password." });
-    }
+      fetchData();
+    } catch (e) { toast({ variant: "destructive", title: "Update Failed" }); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this user?")) return;
-    try {
-      await deleteDoc(doc(db, 'users', id));
-      fetchUsers();
-      toast({ title: "Deleted", description: "User removed." });
-    } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to delete user." });
-    }
+    if (!confirm("Delete user?")) return;
+    await deleteDoc(doc(db, 'users', id));
+    fetchData();
   };
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-full">
-      <div className="flex items-center gap-2">
-        <UserCog className="h-6 w-6 text-purple-600" />
-        <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
+    <div className="p-6 space-y-8 bg-slate-50 min-h-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <UserCog className="h-6 w-6 text-purple-600" />
+          <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
+        </div>
+        <Badge variant="outline" className="bg-white">Admin Control</Badge>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle>System Users</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Full Name</TableHead>
-                <TableHead>Username</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Password Management</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow><TableCell colSpan={5} className="text-center">Loading users...</TableCell></TableRow>
-              ) : (
-                users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{user.username}</TableCell>
-                    <TableCell>
-                      <Badge variant={user.role === 'Admin' ? 'default' : 'secondary'}>
-                        {user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {editingId === user.id ? (
-                        <div className="flex items-center gap-2">
-                          <Input 
-                            type="text" 
-                            placeholder="New password" 
-                            className="h-8 text-xs w-32"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                          />
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleUpdatePassword(user.id)}>
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400" onClick={() => { setEditingId(null); setNewPassword(''); }}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setEditingId(user.id)}>
-                          <Key className="mr-2 h-3 w-3" /> Change Password
-                        </Button>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)} className="hover:text-red-600">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+      <div className="grid gap-6 md:grid-cols-3">
+        {/* WIZARD CARD */}
+        <Card className="md:col-span-1 border-t-4 border-t-purple-600 shadow-md h-fit">
+          <CardHeader>
+            <CardTitle className="text-lg">Create New User</CardTitle>
+            <CardDescription>Setup account access and permissions.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            
+            {/* STEP 1: IDENTITY */}
+            <div className={`space-y-2 p-3 rounded-lg border transition-all ${step === 1 ? 'border-purple-200 bg-purple-50' : 'bg-white opacity-50'}`}>
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <Badge className="h-5 w-5 p-0 flex items-center justify-center rounded-full">1</Badge>
+                <UserPlus className="h-4 w-4" /> Account Info
+              </div>
+              {step === 1 && (
+                <div className="pt-2 space-y-3">
+                  <Input placeholder="Username (login ID)" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
+                  <Input placeholder="Full Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                  <Input type="password" placeholder="Initial Password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                  <Button size="sm" className="w-full" disabled={!formData.username || !formData.password} onClick={() => setStep(2)}>
+                    Next <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
               )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            </div>
+
+            {/* STEP 2: ROLE */}
+            <div className={`space-y-2 p-3 rounded-lg border transition-all ${step === 2 ? 'border-purple-200 bg-purple-50' : 'bg-white opacity-50'}`}>
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <Badge className="h-5 w-5 p-0 flex items-center justify-center rounded-full">2</Badge>
+                <ShieldCheck className="h-4 w-4" /> Permission Role
+              </div>
+              {step === 2 && (
+                <div className="pt-2 space-y-3">
+                  <Select value={formData.role} onValueChange={(val) => setFormData({...formData, role: val})}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Agent">Agent (View Only)</SelectItem>
+                      <SelectItem value="Admin">Admin (Full Access)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" className="w-full" onClick={() => setStep(3)}>
+                    Next <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* STEP 3: CITIES */}
+            <div className={`space-y-2 p-3 rounded-lg border transition-all ${step === 3 ? 'border-purple-200 bg-purple-50' : 'bg-white opacity-50'}`}>
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <Badge className="h-5 w-5 p-0 flex items-center justify-center rounded-full">3</Badge>
+                <MapPinned className="h-4 w-4" /> Assigned Cities
+              </div>
+              {step === 3 && (
+                <div className="pt-2 space-y-3">
+                  <div className="max-h-40 overflow-y-auto space-y-2 border rounded p-2 bg-white">
+                    {cities.map(city => (
+                      <div key={city.id} className="flex items-center space-x-2">
+                        <Checkbox 
+                          id={city.id} 
+                          checked={formData.allowedCities.includes(city.name)}
+                          onCheckedChange={() => handleCityToggle(city.name)}
+                        />
+                        <label htmlFor={city.id} className="text-xs font-medium cursor-pointer">{city.name}</label>
+                      </div>
+                    ))}
+                  </div>
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700" disabled={isSaving} onClick={handleCreateUser}>
+                    {isSaving ? <Loader2 className="animate-spin" /> : "Finalize User"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* USER LIST TABLE */}
+        <Card className="md:col-span-2 shadow-sm">
+          <CardHeader><CardTitle>Existing Users</CardTitle></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Password</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? <TableRow><TableCell colSpan={4} className="text-center">Loading...</TableCell></TableRow> : 
+                  users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        <div className="font-bold text-sm">{user.name}</div>
+                        <div className="text-[10px] text-muted-foreground">@{user.username}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={user.role === 'Admin' ? 'default' : 'secondary'} className="text-[10px]">
+                          {user.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {editingId === user.id ? (
+                          <div className="flex gap-1">
+                            <Input className="h-7 text-xs w-24" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                            <Button size="icon" className="h-7 w-7 bg-green-600" onClick={() => handleUpdatePassword(user.id)}><Check className="size-3" /></Button>
+                            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setEditingId(null)}><X className="size-3" /></Button>
+                          </div>
+                        ) : (
+                          <Button variant="ghost" size="sm" className="h-7 text-[10px]" onClick={() => setEditingId(user.id)}>
+                            <Key className="mr-1 size-3" /> Reset
+                          </Button>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)} className="text-red-500"><Trash2 className="size-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                }
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
