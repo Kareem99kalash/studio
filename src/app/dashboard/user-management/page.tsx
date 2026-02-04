@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, UserPlus, Key, ShieldCheck, MapPinned, ChevronRight, Loader2, Check, X, UserCog } from 'lucide-react';
+import { Trash2, UserPlus, Key, ShieldCheck, MapPinned, ChevronRight, Loader2, Check, X, UserCog, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,6 +19,7 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState(''); // Search State
   
   // Wizard State
   const [step, setStep] = useState(1);
@@ -70,9 +71,23 @@ export default function UserManagementPage() {
     if (!formData.username || !formData.password) return;
     setIsSaving(true);
     try {
-      const userRef = doc(db, 'users', formData.username.trim());
+      // 🛡️ NORMALIZE & CHECK FOR DUPLICATES
+      const normalizedUsername = formData.username.trim().toLowerCase();
+      const userRef = doc(db, 'users', normalizedUsername);
+      const docSnap = await getDoc(userRef);
+
+      if (docSnap.exists()) {
+        toast({ 
+          variant: "destructive", 
+          title: "Account Exists", 
+          description: `The username "${normalizedUsername}" is already taken.` 
+        });
+        setIsSaving(false);
+        return;
+      }
+
       await setDoc(userRef, {
-        username: formData.username.trim(),
+        username: normalizedUsername,
         name: formData.name,
         password: formData.password,
         role: formData.role,
@@ -80,7 +95,7 @@ export default function UserManagementPage() {
         createdAt: new Date().toISOString()
       });
 
-      toast({ title: "User Created", description: `${formData.username} is now active.` });
+      toast({ title: "User Created", description: `${normalizedUsername} is now active.` });
       setStep(1);
       setFormData({ username: '', name: '', password: '', role: 'Agent', allowedCities: [] });
       fetchData();
@@ -92,7 +107,7 @@ export default function UserManagementPage() {
   };
 
   const handleUpdatePassword = async (id: string) => {
-    if (!isAdmin) return; // Guard for Managers
+    if (!isAdmin) return; 
     try {
       await updateDoc(doc(db, 'users', id), { password: newPassword });
       toast({ title: "Updated", description: "Password changed successfully." });
@@ -103,10 +118,16 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!isAdmin || !confirm("Delete user?")) return; // Guard for Managers
+    if (!isAdmin || !confirm("Delete user?")) return; 
     await deleteDoc(doc(db, 'users', id));
     fetchData();
   };
+
+  // 🔍 Filtered User List
+  const filteredUsers = users.filter(u => 
+    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    u.username?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="p-6 space-y-8 bg-slate-50 min-h-full">
@@ -119,7 +140,7 @@ export default function UserManagementPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* WIZARD CARD - MANAGERS & ADMINS CAN USE THIS */}
+        {/* WIZARD CARD */}
         <Card className="md:col-span-1 border-t-4 border-t-purple-600 shadow-md h-fit">
           <CardHeader>
             <CardTitle className="text-lg">Create New User</CardTitle>
@@ -155,8 +176,6 @@ export default function UserManagementPage() {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Agent">Agent (View Only)</SelectItem>
-                      
-                      {/* 🛡️ RBAC GUARD: Only Admins can create Managers or other Admins */}
                       {isAdmin && (
                         <>
                           <SelectItem value="Manager">Manager (Create/Tickets)</SelectItem>
@@ -165,14 +184,7 @@ export default function UserManagementPage() {
                       )}
                     </SelectContent>
                   </Select>
-
-                  {/* Visual feedback for Managers */}
-                  {!isAdmin && (
-                    <p className="text-[10px] text-amber-600 font-medium">
-                      Managers are restricted to creating Agent accounts.
-                    </p>
-                  )}
-
+                  {!isAdmin && <p className="text-[10px] text-amber-600 font-medium">Managers can only create Agents.</p>}
                   <Button size="sm" className="w-full" onClick={() => setStep(3)}>
                     Next <ChevronRight className="ml-1 h-4 w-4" />
                   </Button>
@@ -209,11 +221,24 @@ export default function UserManagementPage() {
         </Card>
 
         {/* USER LIST TABLE */}
-        <Card className="md:col-span-2 shadow-sm">
-          <CardHeader><CardTitle>Existing Users</CardTitle></CardHeader>
-          <CardContent>
+        <Card className="md:col-span-2 shadow-sm flex flex-col overflow-hidden">
+          <CardHeader className="border-b bg-white">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle>Existing Users</CardTitle>
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Filter users..." 
+                  className="pl-8 h-9 text-sm" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0 overflow-y-auto max-h-[600px]">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-slate-50 sticky top-0 z-10">
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead>Role</TableHead>
@@ -222,12 +247,12 @@ export default function UserManagementPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? <TableRow><TableCell colSpan={4} className="text-center">Loading...</TableCell></TableRow> : 
-                  users.map((user) => (
-                    <TableRow key={user.id}>
+                {loading ? <TableRow><TableCell colSpan={4} className="text-center py-8"><Loader2 className="animate-spin h-6 w-6 mx-auto text-muted-foreground" /></TableCell></TableRow> : 
+                  filteredUsers.map((user) => (
+                    <TableRow key={user.id} className="hover:bg-slate-50/50">
                       <TableCell>
                         <div className="font-bold text-sm">{user.name}</div>
-                        <div className="text-[10px] text-muted-foreground">@{user.username}</div>
+                        <div className="text-[10px] text-muted-foreground uppercase">@{user.username}</div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={user.role === 'Admin' ? 'default' : user.role === 'Manager' ? 'outline' : 'secondary'} className="text-[10px]">
@@ -255,11 +280,11 @@ export default function UserManagementPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         {isAdmin ? (
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)} className="text-red-500">
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)} className="text-red-500 hover:bg-red-50">
                              <Trash2 className="size-4" />
                           </Button>
                         ) : (
-                          <span className="text-[10px] text-slate-400">Restricted</span>
+                          <span className="text-[10px] text-slate-400 font-medium italic">Admin Only</span>
                         )}
                       </TableCell>
                     </TableRow>

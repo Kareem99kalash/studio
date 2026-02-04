@@ -2,10 +2,10 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket } from "lucide-react";
+import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket, History } from "lucide-react";
 import Link from "next/link";
-import { doc, onSnapshot } from 'firebase/firestore'; // Added for real-time check
-import { db } from '@/firebase'; // Ensure this points to your firebase config
+import { doc, onSnapshot } from 'firebase/firestore'; 
+import { db } from '@/firebase'; 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { Logo } from "@/components/logo";
@@ -29,7 +29,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setIsAuth(true);
 
       // 🛡️ SECURITY KILL-SWITCH: Real-time listener
-      // This monitors the specific user document. If it's deleted, they are logged out.
       const userRef = doc(db, 'users', parsedUser.username);
       const unsub = onSnapshot(userRef, (docSnap) => {
         if (!docSnap.exists()) {
@@ -39,7 +38,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
       });
 
-      return () => unsub(); // Cleanup listener when component unmounts
+      return () => unsub(); 
     } catch (e) {
       window.location.href = '/';
     }
@@ -89,7 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarMenuItem>
             )}
 
-            {/* Admin Exclusive: Thresholds and Cities */}
+            {/* Admin Exclusive Sections */}
             {isAdmin && (
               <>
                 <SidebarMenuItem>
@@ -100,6 +99,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === '/dashboard/city-management'}>
                     <Link href="/dashboard/city-management"><UploadCloud className="size-4" /><span>Cities</span></Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                {/* 📜 STEP 3: ACTIVITY LOGS (ADMIN ONLY) */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={pathname === '/dashboard/audit-logs'}>
+                    <Link href="/dashboard/audit-logs">
+                      <History className="size-4" />
+                      <span>Activity Logs</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </>
