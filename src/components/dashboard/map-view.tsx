@@ -34,7 +34,7 @@ export function MapView({ selectedCity, stores, analysisResults, isLoading }: Ma
             <TabsTrigger value="ai-analysis">AI Analysis</TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value="map" className="flex-grow mt-0">
+        <TabsContent value="map" className="flex-grow mt-0" forceMount>
           <CoverageMap selectedCity={selectedCity} stores={stores} analysisResults={analysisResults} />
         </TabsContent>
         <TabsContent value="ai-analysis" className="flex-grow mt-0 overflow-y-auto">
