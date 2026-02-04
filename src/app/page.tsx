@@ -39,15 +39,15 @@ export default function AuthPage() {
   const form = useForm<LoginFormValues | SignupFormValues>({
     resolver: zodResolver(isLoginView ? loginSchema : signupSchema),
     defaultValues: {
+      username: '',
       email: '',
       password: '',
-      ...(isLoginView ? {} : { username: '' }),
     },
   });
 
   useEffect(() => {
     form.reset();
-  }, [isLoginView, form]);
+  }, [isLoginView, form.reset]);
 
   useEffect(() => {
     if (!isUserLoading && user) {
