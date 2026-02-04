@@ -1,16 +1,16 @@
 'use client';
-import { useContext, useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { CityContext } from '@/context/city-context';
-import type { City } from '@/lib/types';
-import type { FeatureCollection, Polygon } from 'geojson';
+import type { FeatureCollection, Polygon, Feature } from 'geojson';
+import { useFirestore } from '@/firebase';
+import { collection, doc, writeBatch } from 'firebase/firestore';
 
 export default function CityManagementPage() {
-  const { addCity } = useContext(CityContext);
+  const firestore = useFirestore();
   const { toast } = useToast();
   const [cityName, setCityName] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -22,7 +22,7 @@ export default function CityManagementPage() {
     }
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!cityName || !file) {
       toast({
@@ -34,44 +34,60 @@ export default function CityManagementPage() {
     }
     setIsLoading(true);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const content = e.target?.result;
         if (typeof content !== 'string') {
-            throw new Error("Could not read file.")
+          throw new Error("Could not read file.");
         }
         const geojson = JSON.parse(content) as FeatureCollection<Polygon>;
-        
-        // Basic validation
+
         if (geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
-            throw new Error("Invalid GeoJSON format. Must be a FeatureCollection.");
+          throw new Error("Invalid GeoJSON format. Must be a FeatureCollection.");
         }
 
         for (const feature of geojson.features) {
-            if (feature.type !== 'Feature' || !feature.properties || typeof feature.properties.id === 'undefined' || typeof feature.properties.name === 'undefined') {
-                throw new Error("Each feature in the GeoJSON must have 'id' and 'name' in its properties.");
-            }
+          if (feature.type !== 'Feature' || !feature.properties || typeof feature.properties.id === 'undefined' || typeof feature.properties.name === 'undefined') {
+            throw new Error("Each feature in the GeoJSON must have 'id' and 'name' in its properties.");
+          }
         }
 
-        const newCity: City = {
-          id: cityName.toLowerCase().replace(/\s+/g, '-'),
-          name: cityName,
-          // A default center, can be improved to calculate from polygons
-          center: { lat: 36.1911, lng: 44.0094 }, 
-          polygons: geojson,
-        };
-        addCity(newCity);
+        const cityId = cityName.toLowerCase().replace(/\s+/g, '-');
+        const cityRef = doc(firestore, 'cities', cityId);
+
+        const batch = writeBatch(firestore);
+
+        batch.set(cityRef, { id: cityId, name: cityName });
+
+        geojson.features.forEach((feature: Feature<Polygon>) => {
+          const polygonId = feature.properties!.id as string;
+          const polygonName = feature.properties!.name as string;
+          const polygonRef = doc(firestore, `cities/${cityId}/polygons`, polygonId);
+          batch.set(polygonRef, {
+            id: polygonId,
+            cityId: cityId,
+            polygonName: polygonName,
+            wkt: JSON.stringify(feature.geometry), // Store GeoJSON geometry as a string in the 'wkt' field
+          });
+        });
+
+        await batch.commit();
+
         toast({
           title: 'City Added',
-          description: `${cityName} with its polygons has been successfully uploaded.`,
+          description: `${cityName} with its polygons has been successfully uploaded to Firestore.`,
         });
         setCityName('');
         setFile(null);
+        // This is a workaround to clear the file input
+        const fileInput = document.getElementById('geojson-file') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+
       } catch (error: any) {
         toast({
           variant: 'destructive',
           title: 'Upload Failed',
-          description: error.message || 'Could not parse the GeoJSON file.',
+          description: error.message || 'Could not parse file or save to database. Check permissions.',
         });
       } finally {
         setIsLoading(false);
@@ -85,7 +101,7 @@ export default function CityManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline text-xl">City Management</CardTitle>
-          <CardDescription>Upload new city polygon data using a GeoJSON file.</CardDescription>
+          <CardDescription>Upload new city polygon data using a GeoJSON file. This will be saved to Firestore.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">

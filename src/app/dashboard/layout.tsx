@@ -1,3 +1,10 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -19,8 +26,7 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar";
-import { CityProvider } from "@/context/city-context";
-import { Home, LayoutGrid, LogOut, Settings, UploadCloud, Users } from "lucide-react";
+import { LayoutGrid, LogOut, Settings, UploadCloud, Users } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 
@@ -29,85 +35,117 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = { name: "Admin User", email: "admin@geocoverage.com", role: "admin", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026024d" };
+  const router = useRouter();
+  const auth = useAuth();
+  const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
 
+  const adminRoleRef = useMemoFirebase(() => {
+    if (!user) return null;
+    return doc(firestore, 'roles_admin', user.uid);
+  }, [user, firestore]);
+
+  const { data: adminRole, isLoading: isAdminLoading } = useDoc(adminRoleRef);
+  const isAdmin = !!adminRole;
+  const isLoading = isUserLoading || isAdminLoading;
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/');
+    }
+  }, [user, isLoading, router]);
+
+  const handleLogout = () => {
+    auth.signOut();
+  };
+
+  if (isLoading) {
+    return (
+        <div className="flex h-screen w-full items-center justify-center bg-background">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      );
+  }
+
+  if (!user) {
+    return null;
+  }
+  
   return (
-    <CityProvider>
-      <SidebarProvider>
-        <Sidebar>
-          <SidebarHeader>
-            <div className="flex items-center gap-2">
-              <Logo className="size-8" />
-              <span className="text-lg font-headline font-semibold">GeoCoverage</span>
-            </div>
-          </SidebarHeader>
-          <SidebarContent>
-            <SidebarMenu>
+    <SidebarProvider>
+      <Sidebar>
+        <SidebarHeader>
+          <div className="flex items-center gap-2">
+            <Logo className="size-8" />
+            <span className="text-lg font-headline font-semibold">GeoCoverage</span>
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton href="/dashboard" isActive>
+                <LayoutGrid />
+                Dashboard
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {isAdmin && (
+              <>
               <SidebarMenuItem>
-                <SidebarMenuButton href="/dashboard" isActive>
-                  <LayoutGrid />
-                  Dashboard
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {user.role === 'admin' && (
-                <>
-                <SidebarMenuItem>
-                  <SidebarMenuButton href="#">
-                    <Users />
-                    User Management
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton href="/dashboard/city-management">
-                    <UploadCloud />
-                    City Management
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                </>
-              )}
-            </SidebarMenu>
-          </SidebarContent>
-          <SidebarFooter>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton href="#">
-                  <Settings />
-                  Settings
+                <SidebarMenuButton href="/dashboard/user-management">
+                  <Users />
+                  User Management
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton href="/">
-                  <LogOut />
-                  Logout
+                <SidebarMenuButton href="/dashboard/city-management">
+                  <UploadCloud />
+                  City Management
                 </SidebarMenuButton>
               </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
-        </Sidebar>
-        <SidebarInset>
-          <header className="flex h-14 items-center justify-between border-b bg-card px-4 lg:px-6">
-            <SidebarTrigger />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Avatar className="h-8 w-8 cursor-pointer">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{user.name}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>Settings</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/">Logout</Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </header>
-          {children}
-        </SidebarInset>
-      </SidebarProvider>
-    </CityProvider>
+              </>
+            )}
+          </SidebarMenu>
+        </SidebarContent>
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton href="#">
+                <Settings />
+                Settings
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={handleLogout}>
+                <LogOut />
+                Logout
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+      <SidebarInset>
+        <header className="flex h-14 items-center justify-between border-b bg-card px-4 lg:px-6">
+          <SidebarTrigger />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Avatar className="h-8 w-8 cursor-pointer">
+                <AvatarImage src={user.photoURL || undefined} alt={user.displayName || user.email || 'User'} />
+                <AvatarFallback>{user.email?.charAt(0).toUpperCase()}</AvatarFallback>
+              </Avatar>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{user.displayName || user.email}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>Settings</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout}>
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

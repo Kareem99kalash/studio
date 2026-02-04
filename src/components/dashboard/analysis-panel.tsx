@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useContext } from 'react';
+import { useRef, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -8,26 +8,26 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CityContext } from '@/context/city-context';
-import type { AnalysisFormValues } from '@/lib/types';
+import type { AnalysisFormValues, City } from '@/lib/types';
 import { analysisSchema } from '@/lib/types';
 import { Plus, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 type AnalysisPanelProps = {
+  cities: City[];
+  isLoadingCities: boolean;
   onAnalyze: (data: AnalysisFormValues) => void;
   isLoading: boolean;
   onCityChange: (cityId: string) => void;
 };
 
-export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPanelProps) {
-  const { cities } = useContext(CityContext);
+export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, onCityChange }: AnalysisPanelProps) {
   const storeIdCounter = useRef(1);
 
   const form = useForm<AnalysisFormValues>({
     resolver: zodResolver(analysisSchema),
     defaultValues: {
-      cityId: cities[0]?.id || '',
+      cityId: '',
       stores: [{ id: `store-0`, name: 'Store 1', lat: '36.19', lng: '44.00' }],
     },
   });
@@ -36,6 +36,17 @@ export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPa
     control: form.control,
     name: 'stores',
   });
+
+  useEffect(() => {
+    if (cities.length > 0 && !form.getValues('cityId')) {
+        const defaultCityId = cities[0].id;
+        form.reset({
+            ...form.getValues(),
+            cityId: defaultCityId,
+        });
+        onCityChange(defaultCityId);
+    }
+  }, [cities, form, onCityChange]);
 
   const onSubmit = (data: AnalysisFormValues) => {
     onAnalyze(data);
@@ -62,12 +73,12 @@ export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPa
                         field.onChange(value);
                         onCityChange(value);
                       }}
-                      defaultValue={field.value}
                       value={field.value}
+                      disabled={isLoadingCities || cities.length === 0}
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a city" />
+                          <SelectValue placeholder={isLoadingCities ? "Loading cities..." : "Select a city"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -148,7 +159,7 @@ export function AnalysisPanel({ onAnalyze, isLoading, onCityChange }: AnalysisPa
                 </Button>
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || isLoadingCities}>
                 {isLoading ? 'Analyzing...' : 'Analyze Coverage'}
               </Button>
             </form>
