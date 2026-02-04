@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket } from "lucide-react"; // Added Ticket icon
+import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket } from "lucide-react";
 import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
@@ -38,7 +38,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return <div className="h-screen w-full flex items-center justify-center bg-slate-50">Loading Dashboard...</div>;
   }
 
-  // Define Role Permissions
   const isAdmin = user.role === 'Admin';
   const isManager = user.role === 'Manager';
 
@@ -53,13 +52,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
-            {/* Global Access: Dashboard */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
-                <Link href="/dashboard">
-                  <LayoutGrid className="size-4" />
-                  <span>Dashboard</span>
-                </Link>
+                <Link href="/dashboard"><LayoutGrid className="size-4" /><span>Dashboard</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
@@ -67,10 +62,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {(isAdmin || isManager) && (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === '/dashboard/user-management'}>
-                  <Link href="/dashboard/user-management">
-                    <Users className="size-4" />
-                    <span>Users</span>
-                  </Link>
+                  <Link href="/dashboard/user-management"><Users className="size-4" /><span>Users</span></Link>
                 </SidebarMenuItem>
               </SidebarMenuItem>
             )}
@@ -80,30 +72,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === '/dashboard/city-thresholds'}>
-                    <Link href="/dashboard/city-thresholds">
-                      <SlidersHorizontal className="size-4" />
-                      <span>Thresholds</span>
-                    </Link>
+                    <Link href="/dashboard/city-thresholds"><SlidersHorizontal className="size-4" /><span>Thresholds</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === '/dashboard/city-management'}>
-                    <Link href="/dashboard/city-management">
-                      <UploadCloud className="size-4" />
-                      <span>Cities</span>
-                    </Link>
+                    <Link href="/dashboard/city-management"><UploadCloud className="size-4" /><span>Cities</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </>
             )}
 
-            {/* Global Access: Ticket System */}
+            {/* Ticket System */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard/tickets'}>
-                <Link href="/dashboard/tickets">
-                  <Ticket className="size-4" />
-                  <span>Tickets</span>
-                </Link>
+                <Link href="/dashboard/tickets"><Ticket className="size-4" /><span>Tickets</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
