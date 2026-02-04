@@ -38,28 +38,25 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🤖 AI GLOBAL SUMMARY ---
+  // --- 🤖 MARKET INTELLIGENCE ---
   const aiInsights = useMemo(() => {
-    const assignments = analysisData?.assignments;
-    if (!assignments || Object.keys(assignments).length === 0) return null;
+    if (!analysisData?.assignments) return null;
+    const zones = Object.entries(analysisData.assignments);
+    if (zones.length === 0) return null;
 
-    const zones = Object.entries(assignments);
-    const total = zones.length;
     const covered = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'in').length;
     const warning = zones.filter(([_, v]: any) => v?.status?.toLowerCase() === 'warning').length;
     
     let furthest = { name: 'N/A', dist: 0 };
     zones.forEach(([name, data]: any) => {
-        if ((data?.distance || 0) > furthest.dist) {
-            furthest = { name, dist: data.distance };
-        }
+        if ((data?.distance || 0) > furthest.dist) furthest = { name, dist: data.distance };
     });
 
     return {
-      total,
+      total: zones.length,
       covered,
       warning,
-      efficiency: total > 0 ? (((covered + warning) / total) * 100).toFixed(1) : "0.0",
+      efficiency: (((covered + warning) / zones.length) * 100).toFixed(1),
       furthestPolygon: furthest.name
     };
   }, [analysisData]);
@@ -70,7 +67,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
     setResetTrigger(prev => prev + 1);
   };
 
-  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Initializing Map Engine...</div>;
+  if (!isClient) return null;
 
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     try {
@@ -78,16 +75,14 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
         const res = await fetch(url);
         const data = await res.json();
         if (data.routes?.[0]) {
-            const coords = data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]);
             return {
-                positions: coords,
-                color,
-                label,
+                positions: data.routes[0].geometry.coordinates.map((p: number[]) => [p[1], p[0]]),
+                color, label,
                 distanceKm: (data.routes[0].distance / 1000).toFixed(2),
                 durationMin: Math.round(data.routes[0].duration / 60)
             };
         }
-    } catch (e) { console.error("OSRM Error:", e); }
+    } catch (e) { console.error("OSRM Error", e); }
     return null; 
   };
 
@@ -105,59 +100,41 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       setIsFetchingRoute(true);
       setRoutePaths([]); 
 
-      // 🎯 STRICT STORE RESOLUTION
-      // 1. First, check if there is an assignment in the latest analysis
-      const assignment = analysisData?.assignments?.[name];
-      const assignedStoreId = assignment?.storeId;
+      const center = feature.properties?.centroid;
+      if (!center || stores.length === 0) { setIsFetchingRoute(false); return; }
+
+      // 🎯 DIRECT FIND: Find the closest store from the current list
+      let closestStore = stores[0];
+      let minDist = Infinity;
+      stores.forEach((s: any) => {
+          const d = getDistSq(parseFloat(s.lat), parseFloat(s.lng), center.lat, center.lng);
+          if (d < minDist) { minDist = d; closestStore = s; }
+      });
+
+      const storePt: [number, number] = [parseFloat(closestStore.lat), parseFloat(closestStore.lng)];
+      const vertices = feature.geometry.coordinates[0].map((p: any) => [p[1], p[0]] as [number, number]);
       
-      // 2. Find the store. We prioritize the store that matches the ID from analysis.
-      let finalStore = stores.find((s: any) => s.id === assignedStoreId);
+      let closestVertex = vertices[0], furthestVertex = vertices[0];
+      let minVD = Infinity, maxVD = -1;
 
-      // 3. Fallback: ONLY search stores in the same city if analysis hasn't run yet
-      if (!finalStore && stores.length > 0) {
-          const center = feature.properties?.centroid;
-          if (center) {
-              let minDist = Infinity;
-              stores.forEach((s: any) => {
-                  const d = getDistSq(parseFloat(s.lat), parseFloat(s.lng), center.lat, center.lng);
-                  // We only accept stores within a reasonable range (e.g., 50km) to prevent city-jumping
-                  if (d < minDist && d < 0.5) { // 0.5 deg sq is roughly 50-60km
-                      minDist = d;
-                      finalStore = s;
-                  }
-              });
-          }
-      }
+      vertices.forEach((v: [number, number]) => {
+          const d = getDistSq(v[0], v[1], storePt[0], storePt[1]);
+          if (d < minVD) { minVD = d; closestVertex = v; }
+          if (d > maxVD) { maxVD = d; furthestVertex = v; }
+      });
 
-      // 4. If we have a valid store, fetch the 3-Route profile
-      if (finalStore?.lat && finalStore?.lng && feature.properties?.centroid) {
-          const storePt: [number, number] = [parseFloat(finalStore.lat), parseFloat(finalStore.lng)];
-          const center = feature.properties.centroid;
-          const vertices = feature.geometry.coordinates[0].map((p: any) => [p[1], p[0]] as [number, number]);
-          
-          let closestPt = vertices[0], furthestPt = vertices[0];
-          let minVDist = Infinity, maxVDist = -1;
+      const results = await Promise.all([
+          fetchRoutePath(storePt, closestVertex, '#22c55e', 'Closest (Entrance)'),
+          fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Middle (Center)'),
+          fetchRoutePath(storePt, furthestVertex, '#ef4444', 'Furthest Reach')
+      ]);
 
-          vertices.forEach((v: [number, number]) => {
-            const d = getDistSq(v[0], v[1], storePt[0], storePt[1]);
-            if (d < minVDist) { minVDist = d; closestPt = v; }
-            if (d > maxVDist) { maxVDist = d; furthestPt = v; }
-          });
-
-          const results = await Promise.all([
-              fetchRoutePath(storePt, closestPt, '#22c55e', 'Closest (Entrance)'),
-              fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Middle (Center)'),
-              fetchRoutePath(storePt, furthestPt, '#ef4444', 'Furthest Reach')
-          ]);
-
-          setRoutePaths(results.filter(r => r !== null));
-      }
+      setRoutePaths(results.filter(r => r !== null));
       setIsFetchingRoute(false);
   };
 
   return (
     <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
-      {/* MAP */}
       <div className="flex-[7] rounded-xl overflow-hidden border relative shadow-md bg-white">
         <div className="absolute top-4 left-4 z-[1000] flex items-center gap-2">
            <Button variant="secondary" size="sm" className="h-8 bg-white/90 shadow-sm font-bold text-[10px]" onClick={handleReset}>
@@ -172,14 +149,13 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           
           {selectedCity?.polygons && (
             <GeoJSON 
-                key={`${selectedCity.id}-layer`} 
+                key={`${selectedCity.id}-geojson`} 
                 data={selectedCity.polygons} 
                 style={(f: any) => {
-                    const zoneName = f?.properties?.name;
-                    const data = analysisData?.assignments?.[zoneName];
+                    const data = analysisData?.assignments?.[f.properties.name];
                     return { 
                         color: data?.storeColor || '#cbd5e1', 
-                        weight: zoneName === selectedZone ? 4 : 1, 
+                        weight: f.properties.name === selectedZone ? 4 : 1, 
                         fillColor: data?.fillColor || '#f1f5f9', 
                         fillOpacity: 0.6 
                     };
@@ -193,25 +169,18 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           ))}
 
           {stores?.map((s: any) => (
-            s.lat && s.lng && (
-              <CircleMarker key={s.id} center={[parseFloat(s.lat), parseFloat(s.lng)]} radius={8} pathOptions={{ color: 'white', weight: 2, fillColor: s.borderColor || '#2563eb', fillOpacity: 1 }}>
-                <Popup><div className="font-bold text-xs p-1">{s.name}</div></Popup>
-              </CircleMarker>
-            )
+            <CircleMarker key={s.id} center={[parseFloat(s.lat), parseFloat(s.lng)]} radius={8} pathOptions={{ color: 'white', weight: 2, fillColor: s.borderColor || '#2563eb', fillOpacity: 1 }}>
+              <Popup><div className="font-bold text-xs p-1">{s.name}</div></Popup>
+            </CircleMarker>
           ))}
         </MapContainer>
       </div>
 
-      {/* SIDE PANEL */}
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2">
         <Card className="border-t-4 border-t-purple-600 shadow-sm bg-purple-50/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold">
-              <BrainCircuit className="h-4 w-4" /> Market Intelligence
-            </CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold"><BrainCircuit className="h-4 w-4" /> Market Intelligence</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {!aiInsights ? <p className="text-[10px] text-muted-foreground italic">Press "Check Coverage" to sync data.</p> : (
+            {!aiInsights ? <p className="text-[10px] text-muted-foreground italic">Press "Check Coverage" to see data.</p> : (
               <>
                 <div className="bg-purple-600 p-3 rounded-lg text-white flex justify-between items-center shadow-lg">
                    <div className="flex flex-col"><span className="text-[9px] font-bold uppercase opacity-80">Network Efficiency</span><span className="text-xl font-black">{aiInsights.efficiency}%</span></div>
@@ -227,6 +196,9 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                         <div className="text-sm font-bold text-amber-500">{aiInsights.warning} Zones</div>
                     </div>
                 </div>
+                <div className="text-[10px] text-slate-500 bg-white p-2 rounded-md border border-purple-100 flex items-center gap-2">
+                    <Navigation className="h-3 w-3 text-purple-500" /> Furthest: <strong className="text-slate-800 truncate ml-1">{aiInsights.furthestPolygon}</strong>
+                </div>
               </>
             )}
           </CardContent>
@@ -236,10 +208,9 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-blue-700 font-bold"><Route className="h-4 w-4" /> Logistics Insights</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             {!selectedZone ? <div className="text-center py-10 opacity-30 italic text-xs">Select a polygon...</div> : (
-              <>
+              <div className="space-y-3">
                 <div className="text-lg font-black text-slate-800 leading-none truncate">{selectedZone}</div>
-                <div className="space-y-2">
-                  {routePaths.map((r, i) => (
+                {routePaths.map((r, i) => (
                     <div key={i} className="bg-white p-2.5 border rounded-lg shadow-sm flex justify-between items-center border-blue-50">
                       <div className="flex flex-col">
                         <span className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
@@ -253,8 +224,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                       </div>
                     </div>
                   ))}
-                </div>
-              </>
+              </div>
             )}
           </CardContent>
         </Card>
