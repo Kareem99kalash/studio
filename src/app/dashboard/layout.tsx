@@ -16,9 +16,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAuth, setIsAuth] = useState(false);
 
   useEffect(() => {
-    // Check local storage for the user session
+    // 1. Check local storage for the user session saved during login
     const stored = localStorage.getItem('geo_user');
     if (!stored) {
+      // If no session is found, force redirect to the login page
       window.location.href = '/'; 
     } else {
       try {
@@ -32,10 +33,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   const handleLogout = () => {
+    // 2. Clear the session and redirect to the entry page
     localStorage.removeItem('geo_user');
-    window.location.href = '/'; // Hard redirect to clear any state
+    window.location.href = '/'; 
   };
 
+  // Show a loading spinner until authorization is confirmed to prevent flickering
   if (!isAuth || !user) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
@@ -63,6 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarMenuButton>
             </SidebarMenuItem>
 
+            {/* Admin-only links are hidden from Agents using RBAC */}
             {isAdmin && (
               <>
                 <SidebarMenuItem>
@@ -85,7 +89,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </SidebarMenu>
         </SidebarContent>
         
-        {/* 🚪 RESTORED LOGOUT BUTTON */}
+        {/* 🚪 RESTORED LOGOUT BUTTON SECTION */}
         <SidebarFooter className="p-4 border-t">
           <SidebarMenu>
             <SidebarMenuItem>
