@@ -13,15 +13,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 
-// Dynamic Import for Map
 const MapView = dynamic(
   () => import('@/components/dashboard/map-view').then((mod) => mod.MapView),
   { ssr: false, loading: () => <div className="h-full w-full flex items-center justify-center bg-muted">Loading map...</div> }
 );
 
-// --- 🧮 DISTANCE HELPERS ---
+// --- HELPERS ---
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
   const R = 6371; 
@@ -46,7 +45,6 @@ async function getRoadDistance(lat1: number, lon1: number, lat2: number, lon2: n
 }
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
 const STORE_COLORS = ['#7c3aed', '#2563eb', '#db2777', '#ea580c', '#059669', '#0891b2', '#4f46e5', '#be123c'];
 
 export default function DashboardPage() {
@@ -59,7 +57,6 @@ export default function DashboardPage() {
   const [liveAnalysis, setLiveAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. Initial Load of Cities
   useEffect(() => {
     const fetchCitiesAndZones = async () => {
       try {
@@ -67,19 +64,20 @@ export default function DashboardPage() {
         const fullCities = await Promise.all(citySnap.docs.map(async (cDoc) => {
           const cData = cDoc.data();
           const zonesSnap = await getDocs(query(collection(db, 'zones'), where('city', '==', cData.name)));
-          
           const features = zonesSnap.docs.map(zDoc => {
             const zData = zDoc.data();
             const coords = (zData.positions || []).map((p:any) => [parseFloat(p.lng), parseFloat(p.lat)]);
             if (coords.length) coords.push(coords[0]); 
-            
+            let latSum=0, lngSum=0;
+            zData.positions?.forEach((p:any) => { latSum+=parseFloat(p.lat); lngSum+=parseFloat(p.lng); });
+            const centroid = zData.positions?.length ? { lat: latSum/zData.positions.length, lng: lngSum/zData.positions.length } : {lat:0, lng:0};
+
             return {
               type: 'Feature',
-              properties: { name: zData.name, centroid: calculateCentroid(zData.positions) },
+              properties: { name: zData.name, centroid },
               geometry: { type: "Polygon", coordinates: [coords] }
             };
           });
-
           return { id: cDoc.id, name: cData.name, polygons: { type: 'FeatureCollection', features }, center: { lat: 36.19, lng: 44.01 } };
         }));
         setCities(fullCities as any);
@@ -90,7 +88,6 @@ export default function DashboardPage() {
     fetchCitiesAndZones();
   }, []);
 
-  // 2. Real-time Analysis Listener
   useEffect(() => {
     if (!selectedCity) return;
     const unsub = onSnapshot(doc(db, `cities/${selectedCity.id}/analysis/current`), (doc) => {
@@ -99,21 +96,12 @@ export default function DashboardPage() {
     return () => unsub();
   }, [selectedCity]);
 
-  const calculateCentroid = (pts: any[]) => {
-    if (!pts?.length) return { lat: 0, lng: 0 };
-    let lat = 0, lng = 0;
-    pts.forEach(p => { lat += parseFloat(p.lat); lng += parseFloat(p.lng); });
-    return { lat: lat / pts.length, lng: lng / pts.length };
-  };
-
-  // 3. ANALYSIS LOGIC (Road Batching)
   const handleAnalyze = async (data: AnalysisFormValues) => {
     const cityToAnalyze = cities.find(c => c.id === data.cityId);
     if (!cityToAnalyze || !data.stores.length) return;
 
     startTransition(async () => {
         try {
-            // A. Thresholds
             let limits = { green: 2.0, yellow: 5.0 }; 
             const cityDoc = await getDoc(doc(db, 'cities', cityToAnalyze.id));
             if (cityDoc.exists() && cityDoc.data().thresholds) limits = cityDoc.data().thresholds;
@@ -126,49 +114,35 @@ export default function DashboardPage() {
             const zones = cityToAnalyze.polygons.features as any[];
             const results: Record<string, any> = {}; 
             let processed = 0;
-            const BATCH_SIZE = 5;
-            
-            for (let i = 0; i < zones.length; i += BATCH_SIZE) {
-                const chunk = zones.slice(i, i + BATCH_SIZE);
+            for (let i = 0; i < zones.length; i += 5) {
+                const chunk = zones.slice(i, i + 5);
                 await Promise.all(chunk.map(async (zone) => {
                     const center = zone.properties.centroid;
-                    
-                    // Pick nearest branch via math first
-                    let closestStore = stores[0];
-                    let minStraightDist = Infinity;
-                    for (const store of stores) {
-                        const dist = getDistanceKm(center.lat, center.lng, store.lat, store.lng);
-                        if (dist < minStraightDist) { minStraightDist = dist; closestStore = store; }
+                    let closestStore = stores[0], minStr = Infinity;
+                    for (const s of stores) {
+                        const d = getDistanceKm(center.lat, center.lng, s.lat, s.lng);
+                        if (d < minStr) { minStr = d; closestStore = s; }
                     }
-
-                    // Get Road distance for the nearest branch
-                    let finalDist = minStraightDist;
-                    if (minStraightDist < 20) finalDist = await getRoadDistance(center.lat, center.lng, closestStore.lat, closestStore.lng);
-
+                    let finalDist = minStr;
+                    if (minStr < 20) finalDist = await getRoadDistance(center.lat, center.lng, closestStore.lat, closestStore.lng);
                     let status = 'Red', fillColor = '#ef4444';
                     if (finalDist <= limits.green) { status = 'Green'; fillColor = '#22c55e'; }
                     else if (finalDist <= limits.yellow) { status = 'Yellow'; fillColor = '#eab308'; }
-
                     results[zone.properties.name] = {
                         storeId: closestStore.id, storeName: closestStore.name, storeColor: closestStore.borderColor,
-                        distance: finalDist.toFixed(2), status: status, fillColor: fillColor
+                        distance: finalDist.toFixed(2), status, fillColor
                     };
                 }));
-
                 processed += chunk.length;
                 setProgress(`Calculating... ${Math.round((processed / zones.length) * 100)}%`);
                 await delay(30); 
             }
-
             await setDoc(doc(db, `cities/${cityToAnalyze.id}/analysis/current`), {
                 timestamp: new Date().toISOString(), stores, assignments: results, totalZones: zones.length
             });
             setProgress(""); 
-            toast({ title: "Check Complete", description: "Shared results have been updated." });
-        } catch (err) {
-            setProgress("");
-            toast({ variant: "destructive", title: "Error", description: "Calculation failed." });
-        }
+            toast({ title: "Check Complete" });
+        } catch (err) { setProgress(""); toast({ variant: "destructive", title: "Error" }); }
     });
   };
 
@@ -186,13 +160,11 @@ export default function DashboardPage() {
     link.click();
   };
 
-  if (loading) return <div className="p-8 flex items-center gap-2"><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div> Loading...</div>;
+  if (loading) return <div className="p-8 flex items-center gap-2"><Loader2 className="animate-spin h-4 w-4" /> Loading Dashboard...</div>;
 
   return (
     <main className="grid grid-cols-1 md:grid-cols-[380px_1fr] h-[calc(100vh-3.5rem)] overflow-hidden">
-      
-      {/* LEFT SIDEBAR - Added overflow-y-auto and custom scrollbar padding */}
-      <div className="border-r overflow-y-auto bg-white scrollbar-thin">
+      <div className="border-r overflow-y-auto bg-white shrink-0">
         <AnalysisPanel 
           cities={cities} 
           onCityChange={(id) => setSelectedCity(cities.find(c => c.id === id))}
@@ -201,69 +173,45 @@ export default function DashboardPage() {
           isLoadingCities={false}
         />
       </div>
-  
-      {/* RIGHT SIDE - Main Content Area */}
-      <div className="flex flex-col h-full relative overflow-hidden">
+      <div className="flex flex-col h-full relative overflow-hidden bg-slate-50">
         {progress && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black/80 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-xl animate-pulse">
-                {progress}
-            </div>
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black/80 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-xl animate-pulse">{progress}</div>
         )}
-  
         <Tabs defaultValue="map" className="flex-1 flex flex-col overflow-hidden">
             <div className="px-4 py-2 border-b bg-white flex justify-between items-center shrink-0">
-                <TabsList>
-                    <TabsTrigger value="map">🗺️ Map View</TabsTrigger>
-                    <TabsTrigger value="table">📊 Results Table</TabsTrigger>
-                </TabsList>
-                {liveAnalysis && (
-                  <Badge variant="outline" className="text-[10px] uppercase">
-                    Updated: {new Date(liveAnalysis.timestamp).toLocaleTimeString()}
-                  </Badge>
-                )}
+                <TabsList><TabsTrigger value="map">🗺️ Map</TabsTrigger><TabsTrigger value="table">📊 Table</TabsTrigger></TabsList>
+                {liveAnalysis && <Badge variant="outline" className="text-[10px] uppercase">Updated: {new Date(liveAnalysis.timestamp).toLocaleTimeString()}</Badge>}
             </div>
-  
-            <TabsContent value="table" className="flex-1 overflow-hidden p-4 bg-slate-50">
-  <Card className="h-full flex flex-col"> {/* Added h-full and flex-col */}
-    <CardHeader className="flex flex-row items-center justify-between shrink-0 border-b">
-      <CardTitle>Analysis Data</CardTitle>
-      <Button size="sm" variant="outline" onClick={downloadCSV} disabled={!liveAnalysis}>
-        <Download className="mr-2 h-4 w-4" /> Export CSV
-      </Button>
-    </CardHeader>
-    
-    {/* This div becomes the scrollable container for the table */}
-    <div className="flex-1 overflow-y-auto"> 
-      <Table>
-        <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
-          <TableRow>
-            <TableHead>Zone</TableHead>
-            <TableHead>Branch</TableHead>
-            <TableHead>KM (Road)</TableHead>
-            <TableHead>Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {liveAnalysis?.assignments ? (
-            Object.entries(liveAnalysis.assignments).map(([name, data]: [string, any]) => (
-              <TableRow key={name}>
-                {/* ... existing cells ... */}
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={4} className="text-center py-8">
-                Press "Check Coverage" to begin.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
-  </Card>
-</TabsContent>
+            <TabsContent value="map" className="flex-1 p-0 m-0 h-full overflow-hidden">
+                <MapView selectedCity={selectedCity} stores={liveAnalysis?.stores || []} analysisData={liveAnalysis} isLoading={false} />
+            </TabsContent>
+            <TabsContent value="table" className="flex-1 overflow-y-auto p-4">
+               <Card className="flex flex-col min-h-fit">
+                   <CardHeader className="flex flex-row items-center justify-between border-b sticky top-0 bg-white z-10">
+                       <CardTitle>Analysis Data</CardTitle>
+                       <Button size="sm" variant="outline" onClick={downloadCSV} disabled={!liveAnalysis}><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
+                   </CardHeader>
+                   <CardContent className="p-0">
+                       <Table>
+                           <TableHeader className="bg-slate-50 sticky top-[73px] z-10 shadow-sm">
+                               <TableRow><TableHead>Zone</TableHead><TableHead>Branch</TableHead><TableHead>Road KM</TableHead><TableHead>Status</TableHead></TableRow>
+                           </TableHeader>
+                           <TableBody>
+                               {liveAnalysis?.assignments ? Object.entries(liveAnalysis.assignments).map(([name, data]: [string, any]) => (
+                                   <TableRow key={name}>
+                                       <TableCell className="font-medium">{name}</TableCell>
+                                       <TableCell><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{backgroundColor: data.storeColor}}></span>{data.storeName}</span></TableCell>
+                                       <TableCell>{data.distance} km</TableCell>
+                                       <TableCell><Badge className={data.status === 'Green' ? 'bg-green-500' : data.status === 'Yellow' ? 'bg-yellow-500' : 'bg-red-500'}>{data.status}</Badge></TableCell>
+                                   </TableRow>
+                               )) : <TableRow><TableCell colSpan={4} className="text-center py-8">Press "Check Coverage" to begin.</TableCell></TableRow>}
+                           </TableBody>
+                       </Table>
+                   </CardContent>
+               </Card>
+            </TabsContent>
         </Tabs>
       </div>
     </main>
   );
-
+}
