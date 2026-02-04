@@ -1,238 +1,97 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/firebase';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
-import { Logo } from '@/components/logo';
-import { useAuth, useUser, initiateEmailSignIn, initiateEmailSignUp } from '@/firebase';
-import { useEffect, useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast'; // or from "@/components/ui/use-toast" depending on your setup
+import { Loader2, MapPin } from 'lucide-react';
 
-// ... imports and state ...
-
-  // Helper: Haversine Distance (KM)
-  function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-    const R = 6371; 
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * (Math.PI/180)) * Math.cos(lat2 * (Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-}
-
-const handleAnalyze = (data: AnalysisFormValues) => {
-  const cityToAnalyze = cities.find(c => c.id === data.cityId);
-  if (!cityToAnalyze || !data.stores.length) return;
-
-  setSubmittedStores(data.stores);
-  
-  startTransition(async () => {
-      try {
-          // 1. FETCH THRESHOLDS (KM)
-          let limits = { green: 2, yellow: 5 }; // Defaults
-          try {
-              const cityDocRef = doc(firestore, 'cities', cityToAnalyze.id);
-              const citySnapshot = await getDoc(cityDocRef);
-              if (citySnapshot.exists()) {
-                  const d = citySnapshot.data();
-                  if (d.thresholds) limits = d.thresholds;
-              }
-          } catch (e) { console.log("Using defaults"); }
-
-          // 2. PREPARE STORES
-          const stores = data.stores.map(s => ({
-              id: s.id,
-              name: s.name,
-              lat: parseFloat(s.lat),
-              lng: parseFloat(s.lng),
-          }));
-
-          // 3. CHECK EACH POLYGON DISTANCE
-          const assignments: Record<string, string> = {}; // ZoneName -> Color
-          const zones = cityToAnalyze.polygons.features as any[];
-          
-          let coveredCount = 0;
-
-          zones.forEach(zone => {
-              const center = zone.properties.centroid;
-              
-              // Find MINIMUM distance to ANY store
-              let minKm = Infinity;
-              stores.forEach(store => {
-                  const km = getDistanceKm(center.lat, center.lng, store.lat, store.lng);
-                  if (km < minKm) minKm = km;
-              });
-
-              // Apply Colors
-              if (minKm <= limits.green) {
-                  assignments[zone.properties.name] = '#22c55e'; // Green
-                  coveredCount++;
-              } else if (minKm <= limits.yellow) {
-                  assignments[zone.properties.name] = '#eab308'; // Yellow
-                  coveredCount++;
-              } else {
-                  assignments[zone.properties.name] = '#ef4444'; // Red (Too far)
-              }
-          });
-
-          // Pass strictly the Color Map to the View
-          setAnalysisResults({
-              assignments, // { "Zone A": "#22c55e", "Zone B": "#ef4444" }
-              stats: { covered: coveredCount, total: zones.length }
-          });
-
-          toast({ title: "Coverage Checked", description: `${coveredCount} zones are within valid range.` });
-
-      } catch (err) {
-          console.error("Error:", err);
-      }
-  });
-};
-const loginSchema = z.object({
-  email: z.string().email("Invalid email address."),
-  password: z.string().min(6, 'Password must be at least 6 characters.'),
-});
-
-const signupSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters.'),
-  email: z.string().email("Invalid email address."),
-  password: z.string().min(6, 'Password must be at least 6 characters.'),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
-type SignupFormValues = z.infer<typeof signupSchema>;
-
-export default function AuthPage() {
+export default function LoginPage() {
   const router = useRouter();
-  const auth = useAuth();
-  const { user, isUserLoading } = useUser();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoginView, setIsLoginView] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const form = useForm<LoginFormValues | SignupFormValues>({
-    resolver: zodResolver(isLoginView ? loginSchema : signupSchema),
-    defaultValues: {
-      username: '',
-      email: '',
-      password: '',
-    },
-  });
-
+  // Safety: If already logged in, go to dashboard
   useEffect(() => {
-    form.reset();
-  }, [isLoginView, form.reset]);
-
-  useEffect(() => {
-    if (!isUserLoading && user) {
+    if (localStorage.getItem('geo_user')) {
       router.push('/dashboard');
     }
-  }, [user, isUserLoading, router]);
+  }, [router]);
 
-  const onSubmit = (data: LoginFormValues | SignupFormValues) => {
-    setIsSubmitting(true);
-    const handleError = (error: any) => {
-        toast({
-            variant: 'destructive',
-            title: isLoginView ? 'Login Failed' : 'Sign Up Failed',
-            description: error.message || 'An unexpected error occurred. Please try again.',
-        });
-        setIsSubmitting(false);
-    };
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
 
-    if (isLoginView) {
-        const { email, password } = data as LoginFormValues;
-        initiateEmailSignIn(auth, email, password, handleError);
-    } else {
-        const { email, password, username } = data as SignupFormValues;
-        initiateEmailSignUp(auth, email, password, username, handleError);
+    try {
+      // 1. Check Firestore
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('username', '==', username), where('password', '==', password));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        toast({ variant: "destructive", title: "Login Failed", description: "Invalid username or password." });
+        setLoading(false);
+        return;
+      }
+
+      // 2. Save Session
+      const userData = snapshot.docs[0].data();
+      localStorage.setItem('geo_user', JSON.stringify(userData));
+      
+      toast({ title: "Success", description: "Redirecting..." });
+      
+      // 3. Force Redirect
+      window.location.href = '/dashboard';
+
+    } catch (error) {
+      console.error(error);
+      toast({ variant: "destructive", title: "Error", description: "Connection failed." });
+      setLoading(false);
     }
   };
 
-  if (isUserLoading || (!isUserLoading && user)) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
-        </div>
-      );
-  }
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="mx-auto w-full max-w-sm">
-        <CardHeader className="text-center">
-          <div className="mb-4 flex justify-center">
-            <Logo className="h-12 w-12" />
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="text-center space-y-2">
+          <div className="mx-auto bg-primary/10 w-12 h-12 rounded-full flex items-center justify-center mb-2">
+            <MapPin className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="font-headline text-2xl">GeoCoverage Analyzer</CardTitle>
-          <CardDescription>
-            {isLoginView ? 'Enter your credentials to access your account' : 'Create an account to get started'}
-          </CardDescription>
+          <CardTitle className="text-2xl font-bold">GeoCoverage Login</CardTitle>
+          <CardDescription>Enter your username and password</CardDescription>
         </CardHeader>
         <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
-              {!isLoginView && (
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem className="grid gap-2">
-                      <Label htmlFor="username">Username</Label>
-                      <FormControl>
-                        <Input id="username" placeholder="e.g., JaneDoe" required {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem className="grid gap-2">
-                    <Label htmlFor="email">Email</Label>
-                    <FormControl>
-                      <Input id="email" type="email" placeholder="m@example.com" required {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Username</label>
+              <Input 
+                value={username} 
+                onChange={(e) => setUsername(e.target.value)} 
+                placeholder="admin" 
+                required 
               />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem className="grid gap-2">
-                    <div className="flex items-center">
-                      <Label htmlFor="password">Password</Label>
-                    </div>
-                    <FormControl>
-                      <Input id="password" type="password" required {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Password</label>
+              <Input 
+                type="password"
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                placeholder="admin123" 
+                required 
               />
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? (isLoginView ? 'Logging in...' : 'Signing up...') : (isLoginView ? 'Login' : 'Sign Up')}
-              </Button>
-            </form>
-          </Form>
-          <div className="mt-4 text-center text-sm">
-            {isLoginView ? "Don't have an account?" : "Already have an account?"}{' '}
-            <Button variant="link" className="p-0 h-auto" onClick={() => setIsLoginView(!isLoginView)}>
-              {isLoginView ? 'Sign up' : 'Login'}
+            </div>
+            
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Sign In"}
             </Button>
-          </div>
+          </form>
         </CardContent>
       </Card>
     </div>
