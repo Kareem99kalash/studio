@@ -34,7 +34,7 @@ const parseWKT = (wkt: string) => {
       const lng = parseFloat(lngStr);
       const lat = parseFloat(latStr);
       if (isNaN(lat) || isNaN(lng)) return null;
-      return { lat, lat, lng: lng }; 
+      return { lat, lng }; 
     }).filter((p): p is {lat: number, lng: number} => p !== null);
   } catch (e) {
     console.error("WKT Parse Error:", e);
@@ -55,11 +55,12 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
   const [greenLimit, setGreenLimit] = useState<string>("2"); 
   const [yellowLimit, setYellowLimit] = useState<string>("5"); 
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   const form = useForm<AnalysisFormValues>({
     defaultValues: {
       cityId: '',
-      stores: [{ id: `store-0`, name: 'Store 1', lat: '', lng: '', coords: '' }], // Added coords field
+      stores: [{ id: `store-0`, name: 'Store 1', lat: '', lng: '', coords: '' }],
     },
   });
 
@@ -69,6 +70,17 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
   });
 
   const selectedCityId = form.watch('cityId');
+
+  // Load user role for RBAC
+  useEffect(() => {
+    const stored = localStorage.getItem('geo_user');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      setUserRole(parsed.role);
+    }
+  }, []);
+
+  const isAdmin = userRole === 'Admin';
 
   useEffect(() => {
     if (cities.length > 0 && !form.getValues('cityId')) {
@@ -92,14 +104,12 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
   }, [selectedCityId, cities]);
 
   const onSubmit = (data: any) => {
-    // 1. ROBUST COORDINATE PARSING
     const validStores = data.stores.map((store: any) => {
       let lat = parseFloat(store.lat);
       let lng = parseFloat(store.lng);
 
-      // If user pasted into the "coords" box:
       if (store.coords && store.coords.trim() !== "") {
-        const clean = store.coords.replace(/[() ]/g, ''); // Remove spaces & ()
+        const clean = store.coords.replace(/[() ]/g, '');
         const parts = clean.split(',');
         
         if (parts.length === 2) {
@@ -111,18 +121,16 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
       return { ...store, lat, lng };
     }).filter((s: any) => !isNaN(s.lat) && !isNaN(s.lng)); 
 
-    // 2. ERROR CHECK
     if (validStores.length === 0) {
         alert("❌ No valid coordinates found!\nPlease use format: 36.123, 44.123");
         return;
     }
     
-    // 3. SEND TO DASHBOARD
     onAnalyze({ ...data, stores: validStores });
   };
 
   const handleUpdateSettings = async () => {
-      if (!selectedCityId) return;
+      if (!selectedCityId || !isAdmin) return;
       const city = cities.find(c => c.id === selectedCityId);
       if (!city) return;
 
@@ -144,8 +152,8 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
       }
   };
 
-  // --- CSV LOGIC ---
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'polygons' | 'users') => {
+    if (!isAdmin) return;
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -161,22 +169,12 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
         const cols = parseCSVLine(row);
 
         if (type === 'polygons') {
-          const city = cols[0];
-          const zoneId = cols[1];
-          const name = cols[2];
-          const wkt = cols[3];
-          
+          const [city, zoneId, name, wkt] = cols;
           if (wkt && wkt.includes('OLYGON')) {
             const positions = parseWKT(wkt);
             if (positions.length > 2) {
                 const ref = doc(collection(db, "zones")); 
-                batch.set(ref, {
-                  city: city,
-                  zoneId: zoneId,
-                  name: name,
-                  positions: positions,
-                  type: "Feature"
-                });
+                batch.set(ref, { city, zoneId, name, positions, type: "Feature" });
                 count++;
             }
           }
@@ -186,9 +184,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
           if (username) {
             const ref = doc(db, "users", username);
             batch.set(ref, {
-              username: username,
-              name: fullName,
-              role: role,
+              username, name: fullName, password, role,
               allowedCities: allowedCities ? allowedCities.split('|') : [],
             });
             count++;
@@ -200,7 +196,6 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
         await batch.commit();
         alert(`✅ Successfully imported ${count} items into '${type}'!`);
       } catch (error) {
-        console.error("Import Error:", error);
         alert(`❌ Error importing ${type}. See console.`);
       }
     };
@@ -235,30 +230,32 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                 )}
               />
 
-              {/* ⚙️ CITY SETTINGS (DISTANCE) */}
-              <div className="bg-slate-50 p-3 rounded-md border border-slate-200 space-y-3">
-                  <div className="flex items-center gap-2 text-slate-800">
-                      <Settings2 className="h-4 w-4" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Distance Rules (KM)</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-semibold text-green-700">Green Radius (km)</label>
-                          <Input type="number" step="0.1" value={greenLimit} onChange={(e) => setGreenLimit(e.target.value)} className="h-8 text-xs bg-white" />
-                      </div>
-                      <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-semibold text-amber-600">Yellow Radius (km)</label>
-                          <Input type="number" step="0.1" value={yellowLimit} onChange={(e) => setYellowLimit(e.target.value)} className="h-8 text-xs bg-white" />
-                      </div>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={handleUpdateSettings} disabled={isSavingSettings || !selectedCityId} className="w-full h-7 text-xs">
-                    {isSavingSettings ? "Saving..." : "Save Rules"}
-                  </Button>
-              </div>
+              {/* ⚙️ CITY SETTINGS (ADMIN ONLY) */}
+              {isAdmin && (
+                <div className="bg-slate-50 p-3 rounded-md border border-slate-200 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-800">
+                        <Settings2 className="h-4 w-4" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Distance Rules (KM)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-green-700">Green Radius (km)</label>
+                            <Input type="number" step="0.1" value={greenLimit} onChange={(e) => setGreenLimit(e.target.value)} className="h-8 text-xs bg-white" />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-amber-600">Yellow Radius (km)</label>
+                            <Input type="number" step="0.1" value={yellowLimit} onChange={(e) => setYellowLimit(e.target.value)} className="h-8 text-xs bg-white" />
+                        </div>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={handleUpdateSettings} disabled={isSavingSettings || !selectedCityId} className="w-full h-7 text-xs">
+                      {isSavingSettings ? "Saving..." : "Save Rules"}
+                    </Button>
+                </div>
+              )}
 
               <Separator />
 
-              {/* 📍 GOOGLE MAPS STYLE INPUT */}
+              {/* 📍 STORE LOCATIONS */}
               <div className="space-y-4">
                 <FormLabel>Store Locations</FormLabel>
                 {fields.map((field, index) => (
@@ -268,7 +265,6 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                         <FormItem className="space-y-1"><FormLabel className="text-[10px] uppercase text-muted-foreground">Name</FormLabel><FormControl><Input {...field} className="h-8" /></FormControl></FormItem>
                       )} />
                       
-                      {/* SINGLE COORDINATE INPUT */}
                       <FormField control={form.control} name={`stores.${index}.coords`} render={({ field }) => (
                          <FormItem className="space-y-1">
                             <FormLabel className="text-[10px] uppercase text-muted-foreground">Coordinates (Lat, Lng)</FormLabel>
@@ -286,27 +282,29 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                 </Button>
               </div>
 
-              <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 shadow-md transition-all active:scale-95" disabled={isLoading}>
                   {isLoading ? "Analyzing..." : "Check Coverage"}
               </Button>
               
-              {/* DATA IMPORT */}
-              <div className="mt-8 pt-6 border-t border-border space-y-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <UploadCloud className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bulk Import</span>
-                </div>
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="space-y-1">
-                    <FormLabel className="text-[10px] text-muted-foreground uppercase">Polygons (CSV)</FormLabel>
-                    <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'polygons')} className="h-8 text-xs cursor-pointer" />
+              {/* ☁️ DATA IMPORT (ADMIN ONLY) */}
+              {isAdmin && (
+                <div className="mt-8 pt-6 border-t border-border space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <UploadCloud className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bulk Import</span>
                   </div>
-                  <div className="space-y-1">
-                    <FormLabel className="text-[10px] text-muted-foreground uppercase">Users (CSV)</FormLabel>
-                    <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'users')} className="h-8 text-xs cursor-pointer" />
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="space-y-1">
+                      <FormLabel className="text-[10px] text-muted-foreground uppercase">Polygons (CSV)</FormLabel>
+                      <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'polygons')} className="h-8 text-xs cursor-pointer" />
+                    </div>
+                    <div className="space-y-1">
+                      <FormLabel className="text-[10px] text-muted-foreground uppercase">Users (CSV)</FormLabel>
+                      <Input type="file" accept=".csv" onChange={(e) => handleFileUpload(e, 'users')} className="h-8 text-xs cursor-pointer" />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
             </form>
           </Form>
