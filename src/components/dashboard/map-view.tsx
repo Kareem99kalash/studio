@@ -100,13 +100,18 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       setIsFetchingRoute(true);
       setRoutePaths([]); 
 
+      // 🎯 THE FIX: Force re-sync with the CURRENT city and its LATEST stores
       const center = feature.properties?.centroid;
       if (!center || stores.length === 0) { setIsFetchingRoute(false); return; }
 
-      // 🎯 DIRECT FIND: Find the closest store from the current list
-      let closestStore = stores[0];
+      // Filter stores to only those that match the current city context
+      // This prevents the Najaf/Erbil crossover bug.
+      const currentCityStores = stores.filter((s: any) => s.cityId === selectedCity?.id || !s.cityId);
+
+      // Find the closest store among only the CURRENT relevant stores
+      let closestStore = currentCityStores[0] || stores[0];
       let minDist = Infinity;
-      stores.forEach((s: any) => {
+      currentCityStores.forEach((s: any) => {
           const d = getDistSq(parseFloat(s.lat), parseFloat(s.lng), center.lat, center.lng);
           if (d < minDist) { minDist = d; closestStore = s; }
       });
@@ -149,7 +154,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           
           {selectedCity?.polygons && (
             <GeoJSON 
-                key={`${selectedCity.id}-geojson`} 
+                key={`${selectedCity.id}-geojson-v2`} 
                 data={selectedCity.polygons} 
                 style={(f: any) => {
                     const data = analysisData?.assignments?.[f.properties.name];
@@ -178,7 +183,11 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2">
         <Card className="border-t-4 border-t-purple-600 shadow-sm bg-purple-50/20">
-          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold"><BrainCircuit className="h-4 w-4" /> Market Intelligence</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold">
+                <BrainCircuit className="h-4 w-4" /> Market Intelligence
+            </CardTitle>
+          </CardHeader>
           <CardContent className="space-y-3">
             {!aiInsights ? <p className="text-[10px] text-muted-foreground italic">Press "Check Coverage" to see data.</p> : (
               <>
@@ -195,9 +204,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                         <div className="text-[8px] font-bold text-slate-400 uppercase">Warning</div>
                         <div className="text-sm font-bold text-amber-500">{aiInsights.warning} Zones</div>
                     </div>
-                </div>
-                <div className="text-[10px] text-slate-500 bg-white p-2 rounded-md border border-purple-100 flex items-center gap-2">
-                    <Navigation className="h-3 w-3 text-purple-500" /> Furthest: <strong className="text-slate-800 truncate ml-1">{aiInsights.furthestPolygon}</strong>
                 </div>
               </>
             )}
