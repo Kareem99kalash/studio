@@ -14,6 +14,18 @@ function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
     return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
 }
 
+// Simple distance function for the "Geographic Lock" (approx km)
+function getDistKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371; // Radius of earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
 function MapController({ city, resetTrigger }: { city?: any, resetTrigger: number }) {
   const map = useMap();
   useEffect(() => {
@@ -38,7 +50,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🤖 MARKET INTELLIGENCE ---
+  // --- 🤖 MARKET INTELLIGENCE SYNC ---
   const aiInsights = useMemo(() => {
     if (!analysisData?.assignments) return null;
     const zones = Object.entries(analysisData.assignments);
@@ -67,7 +79,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
     setResetTrigger(prev => prev + 1);
   };
 
-  if (!isClient) return null;
+  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Initializing Map...</div>;
 
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     try {
@@ -100,18 +112,34 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       setIsFetchingRoute(true);
       setRoutePaths([]); 
 
-      // 🎯 THE FIX: Force re-sync with the CURRENT city and its LATEST stores
       const center = feature.properties?.centroid;
-      if (!center || stores.length === 0) { setIsFetchingRoute(false); return; }
+      
+      // Safety check: Filter out invalid stores
+      const validStores = stores.filter((s: any) => {
+          const lat = parseFloat(s.lat);
+          const lng = parseFloat(s.lng);
+          return !isNaN(lat) && !isNaN(lng);
+      });
 
-      // Filter stores to only those that match the current city context
-      // This prevents the Najaf/Erbil crossover bug.
-      const currentCityStores = stores.filter((s: any) => s.cityId === selectedCity?.id || !s.cityId);
+      if (!center || validStores.length === 0) { setIsFetchingRoute(false); return; }
 
-      // Find the closest store among only the CURRENT relevant stores
-      let closestStore = currentCityStores[0] || stores[0];
+      // 🛑 GEOGRAPHIC LOCK: Filter out "Ghost" stores from other cities
+      const nearbyStores = validStores.filter((s: any) => {
+          const dist = getDistKm(parseFloat(s.lat), parseFloat(s.lng), center.lat, center.lng);
+          return dist < 100; // 100km safety radius
+      });
+
+      if (nearbyStores.length === 0) {
+          console.warn("No stores found within 100km of this zone.");
+          setIsFetchingRoute(false);
+          return;
+      }
+
+      // 🎯 Find the Closest Valid Store
+      let closestStore = nearbyStores[0];
       let minDist = Infinity;
-      currentCityStores.forEach((s: any) => {
+      
+      nearbyStores.forEach((s: any) => {
           const d = getDistSq(parseFloat(s.lat), parseFloat(s.lng), center.lat, center.lng);
           if (d < minDist) { minDist = d; closestStore = s; }
       });
@@ -128,6 +156,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
           if (d > maxVD) { maxVD = d; furthestVertex = v; }
       });
 
+      // Fetch 3-Point Profile
       const results = await Promise.all([
           fetchRoutePath(storePt, closestVertex, '#22c55e', 'Closest (Entrance)'),
           fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Middle (Center)'),
@@ -148,13 +177,18 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
            {isFetchingRoute && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
         </div>
 
-        <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
+        <MapContainer 
+            key={selectedCity?.id || 'default-map'} 
+            center={[36.19, 44.01]} 
+            zoom={12} 
+            style={{ height: '100%', width: '100%' }}
+        >
           <MapController city={selectedCity} resetTrigger={resetTrigger} />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           
           {selectedCity?.polygons && (
             <GeoJSON 
-                key={`${selectedCity.id}-geojson-v2`} 
+                key={`${selectedCity.id}-geojson`} 
                 data={selectedCity.polygons} 
                 style={(f: any) => {
                     const data = analysisData?.assignments?.[f.properties.name];
@@ -173,21 +207,25 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             <Polyline key={i} positions={r.positions} pathOptions={{ color: r.color, weight: 4, opacity: 0.8 }} />
           ))}
 
-          {stores?.map((s: any) => (
-            <CircleMarker key={s.id} center={[parseFloat(s.lat), parseFloat(s.lng)]} radius={8} pathOptions={{ color: 'white', weight: 2, fillColor: s.borderColor || '#2563eb', fillOpacity: 1 }}>
-              <Popup><div className="font-bold text-xs p-1">{s.name}</div></Popup>
-            </CircleMarker>
-          ))}
+          {/* 🛡️ CRASH FIX: Only render stores with VALID coordinates */}
+          {stores?.map((s: any) => {
+            const lat = parseFloat(s.lat);
+            const lng = parseFloat(s.lng);
+            // If Lat/Lng is NaN (empty or invalid), do NOT render this marker
+            if (isNaN(lat) || isNaN(lng)) return null;
+
+            return (
+              <CircleMarker key={s.id} center={[lat, lng]} radius={8} pathOptions={{ color: 'white', weight: 2, fillColor: s.borderColor || '#2563eb', fillOpacity: 1 }}>
+                <Popup><div className="font-bold text-xs p-1">{s.name}</div></Popup>
+              </CircleMarker>
+            );
+          })}
         </MapContainer>
       </div>
 
       <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2">
         <Card className="border-t-4 border-t-purple-600 shadow-sm bg-purple-50/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold">
-                <BrainCircuit className="h-4 w-4" /> Market Intelligence
-            </CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2 text-purple-700 font-bold"><BrainCircuit className="h-4 w-4" /> Market Intelligence</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {!aiInsights ? <p className="text-[10px] text-muted-foreground italic">Press "Check Coverage" to see data.</p> : (
               <>

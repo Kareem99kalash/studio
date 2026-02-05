@@ -17,7 +17,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      {/* 🛑 FIX: Added suppressHydrationWarning to body. 
+         This tells React to ignore attributes added by browser extensions 
+         (like Grammarly, LastPass, etc.) to prevent the hydration error.
+      */}
+      <body className={inter.className} suppressHydrationWarning={true}>
         {children}
         <Toaster />
       </body>

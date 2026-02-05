@@ -1,241 +1,329 @@
 'use client';
 
-import { useState, useTransition, useEffect } from 'react';
-import { AnalysisPanel } from '@/components/dashboard/analysis-panel';
-import type { AnalysisFormValues, City } from '@/lib/types';
+import { useState, useEffect } from 'react';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { db } from '@/firebase';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { db } from '@/firebase'; 
-import { collection, getDocs, query, where, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Download, Loader2 } from "lucide-react";
 
-const MapView = dynamic(
-  () => import('@/components/dashboard/map-view').then((mod) => mod.MapView),
-  { ssr: false, loading: () => <div className="h-full w-full flex items-center justify-center bg-muted">Loading map...</div> }
-);
-
-const STORE_COLORS = ['#7c3aed', '#2563eb', '#db2777', '#ea580c', '#059669', '#0891b2', '#4f46e5', '#be123c'];
+// 🛡️ DYNAMIC IMPORT (Prevents Server-Side Render Crash)
+const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-slate-50 animate-pulse flex items-center justify-center text-slate-400 font-bold">Loading Map Engine...</div>
+});
 
 export default function DashboardPage() {
-  const [isPending, startTransition] = useTransition();
-  const [progress, setProgress] = useState(""); 
   const { toast } = useToast();
+  const [cities, setCities] = useState<any[]>([]);
+  const [selectedCity, setSelectedCity] = useState<any>(null);
   
-  const [cities, setCities] = useState<City[]>([]);
-  const [selectedCity, setSelectedCity] = useState<City | undefined>(undefined);
-  const [liveAnalysis, setLiveAnalysis] = useState<any>(null);
+  // 🧹 STATE: Initialize as EMPTY
+  const [stores, setStores] = useState<any[]>([]);
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [greenRadius, setGreenRadius] = useState(2);
+  const [yellowRadius, setYellowRadius] = useState(5);
 
+  // 1. Fetch Cities on Load
   useEffect(() => {
-    const fetchCitiesAndZones = async () => {
+    const fetchCities = async () => {
       try {
-        const citySnap = await getDocs(collection(db, 'cities'));
-        const fullCities = await Promise.all(citySnap.docs.map(async (cDoc) => {
-          const cData = cDoc.data();
-          const zonesSnap = await getDocs(query(collection(db, 'zones'), where('city', '==', cData.name)));
-          const features = zonesSnap.docs.map(zDoc => {
-            const zData = zDoc.data();
-            const coords = (zData.positions || []).map((p:any) => [parseFloat(p.lng), parseFloat(p.lat)]);
-            if (coords.length) coords.push(coords[0]); 
-            let latSum=0, lngSum=0;
-            zData.positions?.forEach((p:any) => { latSum+=parseFloat(p.lat); lngSum+=parseFloat(p.lng); });
-            const centroid = zData.positions?.length ? { lat: latSum/zData.positions.length, lng: lngSum/zData.positions.length } : {lat:0, lng:0};
-            return { type: 'Feature', properties: { name: zData.name, centroid }, geometry: { type: "Polygon", coordinates: [coords] } };
-          });
-          return { id: cDoc.id, name: cData.name, polygons: { type: 'FeatureCollection', features }, center: { lat: 36.19, lng: 44.01 } };
-        }));
-        setCities(fullCities as any);
-        if (fullCities.length) setSelectedCity(fullCities[0] as any);
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+        // Clear old cache to prevent ghosts
+        localStorage.removeItem('geo_analysis_cache'); 
+        
+        const snap = await getDocs(collection(db, 'cities'));
+        const cityList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setCities(cityList);
+        
+        // Default to first city if available
+        if (cityList.length > 0) {
+            setSelectedCity(cityList[0]);
+        }
+      } catch (e) { 
+          console.error("City Fetch Error:", e);
+          toast({ variant: "destructive", title: "Connection Error", description: "Could not load cities." });
+      } finally { 
+          setLoading(false); 
+      }
     };
-    fetchCitiesAndZones();
+    fetchCities();
   }, []);
 
-  useEffect(() => {
-    if (!selectedCity) return;
-    const unsub = onSnapshot(doc(db, `cities/${selectedCity.id}/analysis/current`), (doc) => {
-      setLiveAnalysis(doc.exists() ? doc.data() : null);
-    });
-    return () => unsub();
-  }, [selectedCity]);
-
-  const handleAnalyze = async (data: AnalysisFormValues) => {
-    const cityToAnalyze = cities.find(c => c.id === data.cityId);
-    if (!cityToAnalyze || !data.stores.length) return;
-
-    startTransition(async () => {
-      try {
-        setProgress("Analyzing Road Network...");
-        
-        // 1. ENSURE NUMBERS: Explicitly parse thresholds to avoid string comparison bugs
-        let limits = { green: 2.0, yellow: 5.0 };
-        const cityDoc = await getDoc(doc(db, 'cities', cityToAnalyze.id));
-        if (cityDoc.exists() && cityDoc.data().thresholds) {
-            limits = {
-                green: Number(cityDoc.data().thresholds.green),
-                yellow: Number(cityDoc.data().thresholds.yellow)
-            };
-        }
-
-        const stores = data.stores.map((s, idx) => ({
-          ...s, borderColor: STORE_COLORS[idx % STORE_COLORS.length]
-        }));
-
-        // 2. MATRIX API CALL
-        const storeCoordsStr = stores.map(s => `${s.lng},${s.lat}`).join(';');
-        const zones = cityToAnalyze.polygons.features as any[];
-        const zoneCoordsStr = zones.map(z => `${z.properties.centroid.lng},${z.properties.centroid.lat}`).join(';');
-
-        const matrixUrl = `https://router.project-osrm.org/table/v1/driving/${storeCoordsStr};${zoneCoordsStr}?sources=${Array.from({length: stores.length}, (_, i) => i).join(';')}&annotations=distance`;
-        
-        const response = await fetch(matrixUrl);
-        const matrixData = await response.json();
-        const assignments: Record<string, any> = {};
-
-        // 3. COLOR LOGIC
-        zones.forEach((zone, zIdx) => {
-          let minKm = Infinity;
-          let bestIdx = 0;
-
-          matrixData.distances.forEach((storeDistances: number[], sIdx: number) => {
-            const dKm = storeDistances[stores.length + zIdx] / 1000;
-            if (dKm < minKm) { minKm = dKm; bestIdx = sIdx; }
-          });
-
-          // 🛡️ Double Check: Ensure comparison is between Numbers
-          let status = 'Red', fillColor = '#ef4444'; // Default to Red
-          
-          if (minKm <= limits.green) { 
-              status = 'Green'; 
-              fillColor = '#22c55e'; 
-          } else if (minKm <= limits.yellow) { 
-              status = 'Yellow'; 
-              fillColor = '#eab308'; 
-          }
-
-          assignments[zone.properties.name] = {
-            storeId: stores[bestIdx].id, 
-            storeName: stores[bestIdx].name, 
-            storeColor: stores[bestIdx].borderColor,
-            distance: minKm.toFixed(2), 
-            status, 
-            fillColor
-          };
-        });
-
-        // 4. PERSIST
-        await setDoc(doc(db, `cities/${cityToAnalyze.id}/analysis/current`), {
-          timestamp: new Date().toISOString(), 
-          stores, 
-          assignments, 
-          totalZones: zones.length
-        });
-        
-        setProgress("");
-        toast({ title: "Analysis Updated", description: "Thresholds applied successfully." });
-      } catch (err) {
-        setProgress("");
-        toast({ variant: "destructive", title: "Logic Error", description: "Check console for details." });
-      }
-    });
+  // 2. Handle City Change -> WIPE EVERYTHING
+  const handleCityChange = (cityId: string) => {
+    const city = cities.find(c => c.id === cityId);
+    if (city) {
+        setSelectedCity(city);
+        setStores([]); // Delete old stores
+        setAnalysisData(null); // Clear old colors
+    }
   };
 
-  const downloadCSV = () => {
-    if (!liveAnalysis?.assignments) return;
-    const headers = ['Zone', 'Branch', 'Road KM', 'Status'];
-    const rows = Object.entries(liveAnalysis.assignments).map(([name, d]: [string, any]) => 
-      [`"${name}"`, `"${d.storeName}"`, d.distance, d.status]
-    );
-    const blob = new Blob([[headers.join(','), ...rows.map(r => r.join(','))].join('\n')], { type: 'text/csv' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Analysis_${selectedCity?.name}.csv`;
-    link.click();
+  const addStore = () => {
+    setStores([...stores, { id: Date.now(), name: `Store ${stores.length + 1}`, lat: '', lng: '', cityId: selectedCity?.id }]);
+  };
+
+  const updateStore = (id: number, field: string, value: string) => {
+    setStores(stores.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const removeStore = (id: number) => {
+    setStores(stores.filter(s => s.id !== id));
+  };
+
+  // 3. The "Check Coverage" Logic
+  const handleAnalyze = () => {
+    if (!selectedCity || stores.length === 0) {
+        toast({ variant: "destructive", title: "Missing Data", description: "Please select a city and add a store." });
+        return;
+    }
+
+    // 🛑 CRASH FIX: Check if polygons actually exist before running loop
+    if (!selectedCity.polygons || !selectedCity.polygons.features) {
+        toast({ 
+            variant: "destructive", 
+            title: "Map Data Missing", 
+            description: `The city "${selectedCity.name}" has no polygon data uploaded.` 
+        });
+        return;
+    }
+
+    setAnalyzing(true);
+    
+    setTimeout(() => {
+        const assignments: any = {};
+        
+        // Filter out empty/invalid stores
+        const validStores = stores.filter(s => {
+            const lat = parseFloat(s.lat);
+            const lng = parseFloat(s.lng);
+            return !isNaN(lat) && !isNaN(lng);
+        });
+
+        if (validStores.length === 0) {
+             setAnalyzing(false);
+             toast({ variant: "destructive", title: "Invalid Coordinates", description: "Please enter valid numbers for Lat/Lng." });
+             return;
+        }
+
+        try {
+            // Safe Loop over features
+            selectedCity.polygons.features.forEach((feature: any) => {
+                if (!feature.properties || !feature.properties.centroid) return; // Skip bad polygons
+
+                const center = feature.properties.centroid;
+                let minDist = Infinity;
+                let closestStore = null;
+
+                validStores.forEach((store: any) => {
+                    // Simple Euclidean for color calculation (approx)
+                    const d = Math.sqrt(Math.pow(parseFloat(store.lat) - center.lat, 2) + Math.pow(parseFloat(store.lng) - center.lng, 2));
+                    const dKm = d * 111; // Approx conversion to KM
+                    if (dKm < minDist) { minDist = dKm; closestStore = store; }
+                });
+
+                if (closestStore) {
+                    let status = 'out';
+                    let color = '#ef4444'; // Red
+                    let opacity = 0.3;
+
+                    if (minDist <= greenRadius) {
+                        status = 'in';
+                        color = '#22c55e'; // Green
+                        opacity = 0.6;
+                    } else if (minDist <= yellowRadius) {
+                        status = 'warning';
+                        color = '#eab308'; // Yellow
+                        opacity = 0.5;
+                    }
+
+                    assignments[feature.properties.name] = {
+                        status,
+                        fillColor: color,
+                        storeColor: '#ffffff',
+                        storeId: (closestStore as any).id,
+                        distance: minDist.toFixed(2)
+                    };
+                }
+            });
+
+            setAnalysisData({ timestamp: Date.now(), assignments });
+            toast({ title: "Coverage Calculated", description: `Analyzed ${validStores.length} stores against map zones.` });
+        } catch (e) {
+            console.error("Analysis Crash:", e);
+            toast({ variant: "destructive", title: "Analysis Failed", description: "Something went wrong calculating coverage." });
+        } finally {
+            setAnalyzing(false);
+        }
+
+    }, 800);
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-purple-600" /></div>;
 
   return (
-    <main className="grid grid-cols-1 md:grid-cols-[380px_1fr] h-[calc(100vh-3.5rem)] overflow-hidden">
-      <div className="border-r overflow-y-auto bg-white">
-        <AnalysisPanel cities={cities} onCityChange={(id) => setSelectedCity(cities.find(c => c.id === id))} onAnalyze={handleAnalyze} isLoading={isPending} isLoadingCities={false} />
-      </div>
-      <div className="flex flex-col h-full relative overflow-hidden">
-        {progress && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black text-white px-4 py-2 rounded-full text-sm animate-pulse">{progress}</div>}
-        <Tabs defaultValue="map" className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 py-2 border-b bg-white flex justify-between items-center shrink-0">
-            <TabsList><TabsTrigger value="map">Map</TabsTrigger><TabsTrigger value="table">Table</TabsTrigger></TabsList>
-            {liveAnalysis && (
-                <Badge variant="outline" className="text-[10px] uppercase">
-                    Updated: {new Date(liveAnalysis.timestamp).toLocaleTimeString()}
-                </Badge>
-            )}
-          </div>
-          <TabsContent value="map" className="flex-1 p-0 m-0 h-full overflow-hidden">
-            <MapView selectedCity={selectedCity} stores={liveAnalysis?.stores || []} analysisData={liveAnalysis} isLoading={false} />
-          </TabsContent>
-          <TabsContent value="table" className="flex-1 overflow-y-auto p-4 bg-slate-50">
-            <Card className="flex flex-col min-h-fit">
-              <CardHeader className="flex flex-row items-center justify-between border-b sticky top-0 bg-white z-10">
-                <CardTitle>Results</CardTitle>
-                <Button size="sm" variant="outline" onClick={downloadCSV} disabled={!liveAnalysis}>
-                    <Download className="mr-2 h-4 w-4" /> Export CSV
+    <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
+      {/* HEADER */}
+      <header className="h-16 border-b bg-white flex items-center px-6 justify-between shrink-0">
+        <div className="flex items-center gap-2">
+            <div className="bg-purple-600 p-2 rounded-lg"><MapIcon className="text-white h-5 w-5" /></div>
+            <h1 className="font-bold text-xl tracking-tight text-slate-900">Coverage Analysis</h1>
+        </div>
+      </header>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex overflow-hidden">
+        
+        {/* SIDEBAR */}
+        <div className="w-96 bg-white border-r flex flex-col shrink-0 overflow-y-auto z-20 shadow-xl">
+            <div className="p-6 space-y-8">
+                
+                {/* 1. CITY SELECTOR */}
+                <div className="space-y-3">
+                    <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Select Region</Label>
+                    <Select onValueChange={handleCityChange} value={selectedCity?.id}>
+                        <SelectTrigger className="h-12 border-slate-200 text-lg font-medium">
+                            <SelectValue placeholder="Choose a city..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {cities.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    
+                    {/* Warning if city is broken */}
+                    {selectedCity && (!selectedCity.polygons || !selectedCity.polygons.features) && (
+                        <div className="bg-red-50 p-3 rounded-md flex items-start gap-2 border border-red-100">
+                            <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                            <p className="text-xs text-red-700 leading-snug">
+                                <strong>No Map Data:</strong> This city has no polygons uploaded. Please go to City Management and re-upload the GeoJSON file.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. THRESHOLDS */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <span className="h-2 w-2 rounded-full bg-green-500" /> Coverage Rules
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <Label className="text-[10px] text-slate-400 uppercase">Green Radius (km)</Label>
+                            <Input type="number" value={greenRadius} onChange={e => setGreenRadius(Number(e.target.value))} className="bg-white h-9" />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] text-slate-400 uppercase">Yellow Radius (km)</Label>
+                            <Input type="number" value={yellowRadius} onChange={e => setYellowRadius(Number(e.target.value))} className="bg-white h-9" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. STORE INPUTS */}
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Store Locations</Label>
+                        <Button variant="ghost" size="sm" onClick={addStore} className="h-7 text-xs text-purple-600 hover:bg-purple-50">
+                            <Plus className="h-3 w-3 mr-1" /> Add Branch
+                        </Button>
+                    </div>
+                    
+                    <div className="space-y-3 min-h-[100px]">
+                        {stores.length === 0 && (
+                            <div className="text-center py-8 border-2 border-dashed rounded-lg text-slate-300 text-sm">
+                                No stores added.
+                            </div>
+                        )}
+                        {stores.map((store, idx) => (
+                            <Card key={store.id} className="relative group border-l-4 border-l-purple-500 shadow-sm">
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="absolute top-1 right-1 h-6 w-6 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => removeStore(store.id)}
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </Button>
+                                <CardContent className="p-3 space-y-2">
+                                    <Input 
+                                        placeholder="Branch Name" 
+                                        className="h-8 text-sm font-semibold border-none shadow-none px-0 focus-visible:ring-0" 
+                                        value={store.name} 
+                                        onChange={e => updateStore(store.id, 'name', e.target.value)} 
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Input placeholder="Lat" className="h-8 text-xs bg-slate-50 font-mono" value={store.lat} onChange={e => updateStore(store.id, 'lat', e.target.value)} />
+                                        <Input placeholder="Lng" className="h-8 text-xs bg-slate-50 font-mono" value={store.lng} onChange={e => updateStore(store.id, 'lng', e.target.value)} />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 4. ANALYZE BUTTON */}
+                <Button 
+                    className="w-full h-12 text-base font-bold bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-200" 
+                    onClick={handleAnalyze} 
+                    disabled={analyzing || !selectedCity || !selectedCity.polygons}
+                >
+                    {analyzing ? <Loader2 className="animate-spin mr-2" /> : "Check Coverage"}
                 </Button>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader className="bg-slate-50 sticky top-[73px] z-10 shadow-sm">
-                    <TableRow>
-                      <TableHead>Zone Name</TableHead>
-                      <TableHead>Branch</TableHead>
-                      <TableHead>Distance</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {liveAnalysis?.assignments ? Object.entries(liveAnalysis.assignments).map(([name, data]: [string, any]) => (
-                      <TableRow key={name} className="hover:bg-slate-50/50">
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <span 
-                              className="w-2 h-2 rounded-full shrink-0" 
-                              style={{ backgroundColor: data.fillColor }} 
+
+            </div>
+        </div>
+
+        {/* MAP AREA */}
+        <div className="flex-1 bg-slate-100 relative">
+            {!selectedCity ? (
+                <div className="h-full w-full flex flex-col items-center justify-center text-slate-400">
+                    <MapIcon className="h-16 w-16 mb-4 opacity-20" />
+                    <p>Select a region to begin analysis</p>
+                </div>
+            ) : (
+                <Tabs defaultValue="map" className="h-full flex flex-col">
+                    <div className="absolute top-4 left-4 z-10 bg-white/90 p-1 rounded-lg border shadow-sm">
+                        <TabsList className="h-8">
+                            <TabsTrigger value="map" className="text-xs h-7"><MapIcon className="h-3 w-3 mr-1" /> Map</TabsTrigger>
+                            <TabsTrigger value="table" className="text-xs h-7"><TableIcon className="h-3 w-3 mr-1" /> Data</TabsTrigger>
+                        </TabsList>
+                    </div>
+                    
+                    <TabsContent value="map" className="flex-1 m-0 p-0 h-full">
+                        {/* Only render MapView if city data is valid */}
+                        {selectedCity.polygons ? (
+                            <MapView 
+                                selectedCity={selectedCity} 
+                                stores={stores} 
+                                analysisData={analysisData} 
+                                isLoading={analyzing} 
                             />
-                            {name}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="flex items-center gap-2">
-                            <span 
-                              className="w-2 h-2 rounded-full" 
-                              style={{ backgroundColor: data.storeColor }} 
-                            />
-                            {data.storeName}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{data.distance} km</TableCell>
-                        <TableCell>
-                          <Badge 
-                            className="text-white border-none shadow-sm"
-                            style={{ backgroundColor: data.fillColor }}
-                          >
-                            {data.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    )) : <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Press "Check Coverage" to see real road results.</TableCell></TableRow>}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                        ) : (
+                            <div className="h-full w-full flex flex-col items-center justify-center text-slate-400">
+                                <AlertTriangle className="h-12 w-12 mb-2 text-amber-400" />
+                                <p className="font-bold text-slate-600">No Map Data Available</p>
+                                <p className="text-xs">Please re-upload polygons for {selectedCity.name}.</p>
+                            </div>
+                        )}
+                    </TabsContent>
+                    
+                    <TabsContent value="table" className="flex-1 m-0 p-6 overflow-auto">
+                        <div className="bg-white rounded-lg border shadow-sm p-8 text-center text-slate-400">
+                            Table view not implemented in this demo.
+                        </div>
+                    </TabsContent>
+                </Tabs>
+            )}
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
