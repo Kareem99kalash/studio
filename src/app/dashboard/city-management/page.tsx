@@ -76,12 +76,15 @@ export default function CityManagementPage() {
             const wktStart = line.toUpperCase().indexOf('POLYGON');
             if (wktStart === -1) continue;
 
+            // Split Metadata and Geometry
             const metaPart = line.substring(0, wktStart);
             const wktPart = line.substring(wktStart);
 
-            const metaCols = metaPart.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || metaPart.split(',');
-            const cols = metaCols.map(c => c.replace(/^"|"$/g, '').replace(/,$/, '').trim());
+            // 🛠️ FIX: Simple split by comma to preserve spaces in names
+            // This handles "1, 21229, Sami Abdulrahman Park-Erbil26," correctly
+            const cols = metaPart.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
 
+            // Column Mapping: 0=Index, 1=ID, 2=Name (Adjust if your CSV is different)
             const zoneID = cols[1] || `ID_${i}`;
             const name = cols[2] || cols[1] || `Zone ${i}`;
 
@@ -152,7 +155,7 @@ export default function CityManagementPage() {
         createdAt: new Date().toISOString()
       });
 
-      toast({ title: "Success", description: `City created with correct centroids.` });
+      toast({ title: "Success", description: `City created with correct names & centroids.` });
       setStep(1); setCityName(''); setCsvData([]); fetchCities();
 
     } catch (e: any) {

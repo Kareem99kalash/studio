@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket, History } from "lucide-react";
+import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket, History, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { doc, onSnapshot } from 'firebase/firestore'; 
 import { db } from '@/firebase'; 
@@ -115,6 +115,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
+
+            {/* 🛡️ Admin Tools - Admin & Manager ONLY */}
+            {(isAdmin || isManager) && (
+              <div className="mt-4">
+                 <h4 className="px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Admin Zone
+                  </h4>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={pathname.startsWith('/dashboard/admin-tools')}>
+                    <Link href="/dashboard/admin-tools">
+                      <ShieldCheck className="size-4 text-purple-600" />
+                      <span>Admin Utilities</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </div>
+            )}
+
           </SidebarMenu>
         </SidebarContent>
 
