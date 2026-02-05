@@ -2,12 +2,12 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket, History, ShieldCheck } from "lucide-react";
+import { Users, LayoutGrid, LogOut, UploadCloud, SlidersHorizontal, Ticket, History, ShieldCheck, UserCog } from "lucide-react";
 import Link from "next/link";
 import { doc, onSnapshot } from 'firebase/firestore'; 
 import { db } from '@/firebase'; 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarTrigger } from "@/components/ui/sidebar";
 import { Logo } from "@/components/logo";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -28,11 +28,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setUser(parsedUser);
       setIsAuth(true);
 
-      const userRef = doc(db, 'users', parsedUser.username);
+      const userRef = doc(db, 'users', parsedUser.uid);
       const unsub = onSnapshot(userRef, (docSnap) => {
         if (!docSnap.exists()) {
           localStorage.removeItem('geo_user');
           window.location.href = '/'; 
+        } else {
+             const data = docSnap.data();
+             if (data?.role !== parsedUser.role) {
+                 const updated = { ...parsedUser, ...data };
+                 localStorage.setItem('geo_user', JSON.stringify(updated));
+                 setUser(updated);
+             }
         }
       });
 
@@ -56,8 +63,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  const isAdmin = user.role === 'Admin';
-  const isManager = user.role === 'Manager';
+  const userRole = (user.role || '').toLowerCase();
+  const isSuperAdmin = userRole === 'super_admin';
+  const isAdmin = isSuperAdmin || userRole === 'admin';
+  const isManager = userRole === 'manager';
+  
+  const hasManagementAccess = isAdmin || isManager;
 
   return (
     <SidebarProvider>
@@ -70,23 +81,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
-            {/* Dashboard Access - Everyone */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
                 <Link href="/dashboard"><LayoutGrid className="size-4" /><span>Dashboard</span></Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            {/* User Management - Admin & Manager */}
-            {(isAdmin || isManager) && (
+            {hasManagementAccess && (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === '/dashboard/user-management'}>
-                  <Link href="/dashboard/user-management"><Users className="size-4" /><span>Users</span></Link>
+                  <Link href="/dashboard/user-management"><UserCog className="size-4" /><span>User Roles</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
 
-            {/* Admin Exclusive */}
             {isAdmin && (
               <>
                 <SidebarMenuItem>
@@ -107,8 +115,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </>
             )}
 
-            {/* 🎟️ Ticket System - Admin & Manager ONLY (Agent Restricted) */}
-            {(isAdmin || isManager) && (
+            {hasManagementAccess && (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === '/dashboard/tickets'}>
                   <Link href="/dashboard/tickets"><Ticket className="size-4" /><span>Tickets</span></Link>
@@ -116,8 +123,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SidebarMenuItem>
             )}
 
-            {/* 🛡️ Admin Tools - Admin & Manager ONLY */}
-            {(isAdmin || isManager) && (
+            {hasManagementAccess && (
               <div className="mt-4">
                  <h4 className="px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                     Admin Zone
@@ -148,25 +154,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset>
-        <header className="flex h-14 items-center border-b px-4 bg-white sticky top-0 z-10">
-          <SidebarTrigger />
+      <div className="flex-1 flex flex-col md:ml-[var(--sidebar-width)] transition-all duration-200 group-data-[sidebar-state=collapsed]:md:ml-[var(--sidebar-width-icon)]">
+        <header className="flex h-14 items-center border-b px-4 bg-white sticky top-0 z-30">
+          <div className="md:hidden">
+            <SidebarTrigger />
+          </div>
           <div className="ml-auto flex items-center gap-3">
             <div className="text-right">
-              <p className="text-sm font-medium leading-none">{user.name}</p>
-              <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">{user.role}</p>
+              <p className="text-sm font-medium leading-none">{user.name || user.email}</p>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
+                  {user.role.replace('_', ' ')}
+              </p>
             </div>
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-purple-100 text-purple-700 font-bold">
-                {user.username?.[0]?.toUpperCase()}
+                {user.username?.[0]?.toUpperCase() || "U"}
               </AvatarFallback>
             </Avatar>
           </div>
         </header>
-        <div className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-auto">
           {children}
-        </div>
-      </SidebarInset>
+        </main>
+      </div>
     </SidebarProvider>
   );
 }

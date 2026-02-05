@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Map, RefreshCw, Layers, PenTool, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Map, RefreshCw, Layers, PenTool, ArrowRight, ShieldCheck, Users } from 'lucide-react';
 
 export default function AdminToolsPage() {
   const tools = [
@@ -29,6 +29,14 @@ export default function AdminToolsPage() {
       color: "text-purple-600",
       bg: "bg-purple-100",
       href: "/dashboard/admin-tools/map-architect"
+    },
+    {
+      title: "Team Access Manager",
+      desc: "Promote staff to Admins. Restricts deletion of Super Admin accounts.",
+      icon: Users,
+      color: "text-indigo-600",
+      bg: "bg-indigo-100",
+      href: "/dashboard/admin-tools/team-manager"
     },
     {
       title: "Coordinate Flipper",

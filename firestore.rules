@@ -103,9 +103,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if (isOwner(userId) || isAdmin()) && resource != null;
-      allow delete: if (isOwner(userId) || isAdmin()) && resource != null;
+      // Allow user creation by an admin, or a user creating their own doc.
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
     }
 
     /**
@@ -116,13 +117,13 @@ service cloud.firestore {
      * @principle Secures the role-granting process to prevent privilege escalation.
      */
     match /roles_admin/{userId} {
+      // Any signed in user can read their OWN admin role status.
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      // This rule is relaxed for development to allow the first user to become an admin.
-      // A user can only make themselves an admin.
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      // A user can make themselves an admin.
+      allow create: if isOwner(userId);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     /**
@@ -134,9 +135,7 @@ service cloud.firestore {
      */
     match /users/{userId}/cityAccess/{cityId} {
       allow get, list: if isOwner(userId) || isAdmin();
-      allow create: if isAdmin() && request.resource.data.userId == userId && request.resource.data.cityId == cityId;
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow create, update, delete: if isAdmin();
     }
 
     //-------------------------------------------------------------------------
@@ -152,9 +151,7 @@ service cloud.firestore {
      */
     match /cities/{cityId} {
       allow get, list: if true;
-      allow create: if isAdmin();
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow create, update, delete: if isAdmin();
     }
 
     /**
@@ -166,9 +163,7 @@ service cloud.firestore {
      */
     match /cities/{cityId}/polygons/{polygonId} {
       allow get, list: if canReadCityData(cityId);
-      allow create: if isAdmin() && request.resource.data.cityId == cityId;
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow create, update, delete: if isAdmin();
     }
 
     /**
@@ -180,9 +175,7 @@ service cloud.firestore {
      */
     match /cities/{cityId}/threshold/{docId} {
       allow get, list: if canReadCityData(cityId);
-      allow create: if isAdmin() && request.resource.data.cityId == cityId;
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow create, update, delete: if isAdmin();
     }
 
     //-------------------------------------------------------------------------
@@ -198,9 +191,7 @@ service cloud.firestore {
      */
     match /storeLocations/{storeLocationId} {
       allow get, list: if true;
-      allow create: if isAdmin();
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow create, update, delete: if isAdmin();
     }
 
     /**
@@ -215,11 +206,20 @@ service cloud.firestore {
       // 'AnalysisResult' entity and its path do not contain a `cityId`. It is impossible to securely
       // check for city access without this link. Access is restricted to Admins until the schema is updated.
       // TODO: Add a `cityId` field to the 'AnalysisResult' entity and update rules to use `canReadCityData(resource.data.cityId)`.
-      allow get: if isAdmin();
-      allow list: if isAdmin();
-      allow create: if isAdmin();
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow get, list, create, update, delete: if isAdmin();
+    }
+    
+    /**
+     * @description Manages system audit logs.
+     * @path /logs/{logId}
+     * @allow (create) Any authenticated user can write a log entry.
+     * @allow (read, delete) Only admins can read or delete logs.
+     * @deny (update) Logs are immutable.
+     */
+    match /logs/{logId} {
+      allow get, list, delete: if isAdmin();
+      allow create: if isSignedIn();
+      allow update: if false;
     }
   }
 }

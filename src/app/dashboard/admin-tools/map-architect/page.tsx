@@ -21,6 +21,7 @@ if (typeof window !== 'undefined') {
 // Dynamic Components
 const MapContainer = dynamic(() => import('react-leaflet').then(m => m.MapContainer), { ssr: false });
 const TileLayer = dynamic(() => import('react-leaflet').then(m => m.TileLayer), { ssr: false });
+// ✅ FIXED: Renamed to avoid TS conflict with global GeoJSON types
 const LeafletGeoJSON = dynamic(() => import('react-leaflet').then(m => m.GeoJSON), { ssr: false });
 
 // OSRM Endpoint
@@ -50,7 +51,7 @@ function DrawControl({
         map.addLayer(drawnItems);
         drawnItemsRef.current = drawnItems;
 
-        // 🛠️ FIX 1: Cast L.Control to any to fix "Property Draw does not exist"
+        // ✅ FIXED: Cast L.Control to any to fix "Property Draw does not exist"
         const drawControl = new (L.Control as any).Draw({
             edit: {
                 featureGroup: drawnItems, 
@@ -71,7 +72,7 @@ function DrawControl({
 
         // --- EVENTS ---
         
-        // 🛠️ FIX 2: Cast L to any for the Event constants
+        // ✅ FIXED: Cast L to any for the Event constants
         map.on((L as any).Draw.Event.CREATED, async (e: any) => {
             const layer = e.layer;
             let geoJson = layer.toGeoJSON();
@@ -92,7 +93,7 @@ function DrawControl({
                         const newLatLngs = routeCoords.map((c: any) => [c[1], c[0]]);
                         layer.setLatLngs(newLatLngs);
                     }
-                } catch(e) { console.warn("Road snap failed", e); }
+                } catch(err) { console.warn("Road snap failed", err); }
                 setProcessing(false);
             }
 
@@ -110,7 +111,7 @@ function DrawControl({
              map.removeLayer(drawnItems);
         };
 
-    }, [map]); // Init once
+    }, [map, roadMode, snapMode, setProcessing, setPolygons]); 
 
     return null;
 }
@@ -162,17 +163,18 @@ export default function MapArchitectPage() {
                   const diff = turf.difference(turf.featureCollection([targetPoly, masterPoly] as any));
                   
                   if (diff) {
-                      // 🛠️ FIX 3: Ensure properties object exists before assigning
-                      diff.properties = diff.properties || {};
-                      diff.properties = { ...targetPoly.properties }; // Copy old props
-                      diff.properties.area = Math.round(turf.area(diff));
+                      // ✅ FIXED: Ensure properties object exists and copy old props safely
+                      const newProperties = { ...targetPoly.properties };
+                      diff.properties = newProperties;
+                if (diff) { (diff as any).properties = { ...targetPoly.properties, area: Math.round(turf.area(diff)) }; }
                       
                       setPolygons(prev => prev.map(p => p.properties.id === clickedId ? diff : p));
                       toast({ title: "Trim Successful", description: `Updated ${targetPoly.properties.name}` });
                   } else {
                       toast({ variant: "destructive", title: "Complete Overlap", description: "Target is completely inside Master." });
                   }
-              } catch (e) {
+              } catch (err) {
+                  console.error(err);
                   toast({ variant: "destructive", title: "Trim Error", description: "Geometry complexity error." });
               }
           }
@@ -181,7 +183,7 @@ export default function MapArchitectPage() {
   };
 
   const downloadCSV = () => {
-     const rows = polygons.map((p, i) => ({
+     const rows = polygons.map((p) => ({
          PolygonName: p.properties.name,
          Area_M2: p.properties.area,
          WKT: `POLYGON ((${p.geometry.coordinates[0].map((c: any) => `${c[0]} ${c[1]}`).join(', ')}))`
@@ -206,7 +208,6 @@ export default function MapArchitectPage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-             {/* 1. MAGNET */}
              <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-lg border border-slate-200">
                 <Magnet className={`h-4 w-4 ${snapMode ? 'text-blue-600' : 'text-slate-400'}`} />
                 <span className="text-xs font-bold text-slate-600 hidden md:inline">Magnet</span>
@@ -215,7 +216,6 @@ export default function MapArchitectPage() {
                 </Button>
              </div>
 
-             {/* 2. ROAD SNAP */}
              <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-lg border border-slate-200">
                 <Car className={`h-4 w-4 ${roadMode ? 'text-green-600' : 'text-slate-400'}`} />
                 <span className="text-xs font-bold text-slate-600 hidden md:inline">Road Snap</span>
@@ -224,7 +224,6 @@ export default function MapArchitectPage() {
                 </Button>
              </div>
 
-             {/* 3. INTERACTIVE TRIM */}
              <Button 
                 onClick={() => { setTrimMode(!trimMode); setCutterId(null); }} 
                 variant={trimMode ? "destructive" : "secondary"} 
@@ -263,12 +262,11 @@ export default function MapArchitectPage() {
                     <div className="text-center text-slate-400 text-sm mt-10">
                         <MousePointerClick className="h-10 w-10 mx-auto mb-2 opacity-20"/>
                         Select the <b>Pentagon Tool</b> on the map.
-                        {roadMode && <div className="mt-2 text-green-600 text-xs font-bold">🚗 Road Snap Active: Draw points, we'll route them!</div>}
                     </div>
                 ) : (
                     <div className="space-y-3">
                         {polygons.map((p, i) => (
-                            <div key={i} className={`p-3 border rounded-lg transition group relative ${cutterId === p.properties.id ? 'bg-green-50 border-green-500 ring-1 ring-green-500' : 'bg-slate-50 hover:border-purple-300'}`}>
+                            <div key={p.properties.id} className={`p-3 border rounded-lg transition group relative ${cutterId === p.properties.id ? 'bg-green-50 border-green-500 ring-1 ring-green-500' : 'bg-slate-50 hover:border-purple-300'}`}>
                                 <div className="mb-2">
                                     <Input 
                                         className="h-7 text-xs font-bold bg-white" 
@@ -309,7 +307,6 @@ export default function MapArchitectPage() {
                 <MapContainer center={[36.19, 44.01]} zoom={13} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
                     
-                    {/* Draw Control: Re-mounts if roadMode changes to update listeners */}
                     <DrawControl 
                         key={roadMode ? 'road' : 'normal'}
                         setPolygons={setPolygons} 
@@ -318,12 +315,11 @@ export default function MapArchitectPage() {
                         setProcessing={setProcessing}
                     />
 
-                    {/* Rendered Polygons (Source of Truth) */}
                     {polygons.map((geo, i) => {
                         const isMaster = cutterId === geo.properties.id;
                         return (
                             <LeafletGeoJSON 
-                                key={`poly-${i}-${geo.properties.area}`} 
+                                key={`poly-${geo.properties.id}-${geo.properties.area}`} 
                                 data={geo} 
                                 style={{ 
                                     color: isMaster ? '#22c55e' : '#7c3aed', 

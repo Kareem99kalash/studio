@@ -21,8 +21,9 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
     if (stored) {
       try { 
         localUser = JSON.parse(stored); 
-        // 🛠️ FIX: Check role immediately from local storage (Case Insensitive)
-        if (localUser.role && ['admin', 'manager'].includes(localUser.role.toLowerCase())) {
+        // 🛠️ FIX: Added 'super_admin' to allowed roles
+        const role = localUser.role ? localUser.role.toLowerCase() : '';
+        if (['super_admin', 'admin', 'manager'].includes(role)) {
              setAuthorized(true);
              setLoading(false); // Allow immediate access while verifying
         }
@@ -38,10 +39,10 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
         const userDoc = await getDoc(doc(db, 'users', docId));
         if (userDoc.exists()) {
           const userData = userDoc.data();
-          // 🛠️ FIX: Normalize to lowercase
+          // 🛠️ FIX: Normalize to lowercase and check for super_admin
           const role = userData?.role?.toLowerCase(); 
 
-          if (role === 'admin' || role === 'manager') {
+          if (['super_admin', 'admin', 'manager'].includes(role)) {
             setAuthorized(true);
           } else {
             setAuthorized(false); // Revoke if DB says no
