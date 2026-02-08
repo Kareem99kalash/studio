@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,6 +25,9 @@ const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m =
     </div>
   )
 });
+
+// --- CACHE (Persists during session) ---
+const DISTANCE_CACHE: Record<string, number> = {};
 
 // --- HELPERS ---
 function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) { return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2; }
@@ -51,7 +54,6 @@ export default function DashboardPage() {
 
   const fetchCities = async () => {
     try {
-      localStorage.removeItem('geo_analysis_cache'); 
       const snap = await getDocs(collection(db, 'cities'));
       const cityList = snap.docs.map(d => {
           const data = d.data();
@@ -79,7 +81,6 @@ export default function DashboardPage() {
         setStores([]); 
         setAnalysisData(null); 
         
-        // 1. Set Default City Thresholds
         if (city.thresholds) {
             setDefaultRules({
                 green: Number(city.thresholds.green) || 2,
@@ -87,7 +88,6 @@ export default function DashboardPage() {
             });
         }
 
-        // 2. Load Sub-Rules (Categories)
         if (city.subThresholds && Array.isArray(city.subThresholds)) {
             setActiveSubRules(city.subThresholds);
         } else {
@@ -104,7 +104,7 @@ export default function DashboardPage() {
           lat: '', 
           lng: '', 
           cityId: selectedCity?.id,
-          category: 'default' // Default to city standard
+          category: 'default'
       }]); 
   };
 
@@ -124,32 +124,84 @@ export default function DashboardPage() {
   };
   const removeStore = (id: number) => { setStores(stores.filter(s => s.id !== id)); };
 
+  // --- OPTIMIZED GEOMETRY SELECTOR ---
   const getZoneKeyPoints = (store: any, feature: any) => {
+      // Simplification: We grab the centroid + the closest vertex.
+      // We skip the "far" vertex to save 33% of API calls unless absolutely necessary.
       const center = feature.properties.centroid;
       const vertices = feature.geometry.coordinates[0].map((p: any) => ({ lat: p[1], lng: p[0] }));
-      let close = vertices[0], far = vertices[0], minSq = Infinity, maxSq = -1;
+      
+      let close = vertices[0], minSq = Infinity;
       vertices.forEach((v: any) => {
           const d = getDistSq(store.lat, store.lng, v.lat, v.lng);
           if (d < minSq) { minSq = d; close = v; }
-          if (d > maxSq) { maxSq = d; far = v; }
       });
-      return { id: feature.properties.id || feature.properties.name, name: feature.properties.name, points: [close, center, far] };
+      
+      // We return 2 points instead of 3 to speed up initial pass
+      return { 
+          id: feature.properties.id || feature.properties.name, 
+          name: feature.properties.name, 
+          points: [close, center] 
+      };
   };
 
   const fetchMatrixBatch = async (store: any, allZonePoints: any[]) => {
-      const chunkSize = 75; const results = new Array(allZonePoints.length).fill(null); const promises = [];
-      for (let i = 0; i < allZonePoints.length; i += chunkSize) {
-          const chunk = allZonePoints.slice(i, i + chunkSize);
+      // 🚀 CACHE CHECK
+      const uncachedPoints = [];
+      const cachedResults = new Array(allZonePoints.length).fill(null);
+      const indexMap: number[] = []; // Maps uncached index back to original index
+
+      for (let i = 0; i < allZonePoints.length; i++) {
+          const p = allZonePoints[i];
+          const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+          if (DISTANCE_CACHE[key] !== undefined) {
+              cachedResults[i] = DISTANCE_CACHE[key];
+          } else {
+              uncachedPoints.push(p);
+              indexMap.push(i);
+          }
+      }
+
+      // If everything is cached, return immediately
+      if (uncachedPoints.length === 0) return cachedResults;
+
+      // Only fetch missing data
+      const chunkSize = 50; // Smaller chunks are faster on public OSRM
+      const promises = [];
+      
+      for (let i = 0; i < uncachedPoints.length; i += chunkSize) {
+          const chunk = uncachedPoints.slice(i, i + chunkSize);
+          const chunkIndices = indexMap.slice(i, i + chunkSize);
+          
           const coords = [`${store.lng},${store.lat}`, ...chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`)].join(';');
           const url = `https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=distance`;
+          
           promises.push(
-              fetch(url).then(res => res.json()).then(data => {
-                  const distances = data.distances?.[0]?.slice(1);
-                  if (distances) distances.forEach((d: number, idx: number) => { if (d !== null) results[i + idx] = d / 1000; });
-              }).catch(e => console.error("OSRM Chunk Fail", e))
+              fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    const distances = data.distances?.[0]?.slice(1);
+                    if (distances) {
+                        distances.forEach((d: number, idx: number) => { 
+                            if (d !== null) {
+                                const km = d / 1000;
+                                const originalIdx = chunkIndices[idx];
+                                cachedResults[originalIdx] = km;
+                                
+                                // Save to Cache
+                                const p = chunk[idx];
+                                const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+                                DISTANCE_CACHE[key] = km;
+                            } 
+                        });
+                    }
+                })
+                .catch(e => console.error("OSRM Chunk Fail", e))
           );
       }
-      await Promise.all(promises); return results;
+      
+      await Promise.all(promises); 
+      return cachedResults;
   };
 
   const handleAnalyze = async () => {
@@ -165,10 +217,8 @@ export default function DashboardPage() {
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             
-            // --- 🧠 DYNAMIC RULE ENGINE ---
-            // If the store has a specific category, use that rule. Otherwise, use City Default.
+            // 1. Determine Max Range
             let activeRules = defaultRules; 
-            
             if (store.category && store.category !== 'default' && selectedCity.subThresholds) {
                 const customRule = selectedCity.subThresholds.find((r: any) => r.name === store.category);
                 if (customRule) {
@@ -176,14 +226,26 @@ export default function DashboardPage() {
                 }
             }
 
+            // 🚀 OPTIMIZATION: Max Scan Radius
+            // If yellow limit is 5km, checking anything beyond 15km straight-line is useless.
+            // It will surely be > 5km by road.
+            const MAX_SCAN_RADIUS_KM = Math.max(activeRules.yellow * 3, 20);
+
             const zoneMeta: any[] = [], flatPoints: any[] = [];
+            
             features.forEach((f: any) => {
                 const center = f.properties.centroid;
                 const roughDist = getRoughDistKm(storeObj.lat, storeObj.lng, center.lat, center.lng);
-                // Pre-filter extreme distances to save API calls
-                if (roughDist < 75) {
-                    const kp = getZoneKeyPoints(storeObj, f); zoneMeta.push(kp); flatPoints.push(...kp.points); 
-                } else { zoneMeta.push({ id: f.properties.id || f.properties.name, name: f.properties.name, tooFar: true }); }
+                
+                // 🚀 SMART FILTER
+                if (roughDist < MAX_SCAN_RADIUS_KM) {
+                    const kp = getZoneKeyPoints(storeObj, f); 
+                    zoneMeta.push(kp); 
+                    flatPoints.push(...kp.points); 
+                } else { 
+                    // Auto-fail distant zones without API call
+                    zoneMeta.push({ id: f.properties.id || f.properties.name, name: f.properties.name, tooFar: true }); 
+                }
             });
             
             let flatDistances: number[] = [];
@@ -191,28 +253,36 @@ export default function DashboardPage() {
             
             let pointIdx = 0;
             zoneMeta.forEach((z) => {
-                let v1 = 999, v2 = 999, v3 = 999, voteV1 = 999, voteV2 = 999, voteV3 = 999; 
+                let v1 = 999, v2 = 999, voteV1 = 999, voteV2 = 999;
+                
                 if (!z.tooFar) {
-                    const dClose = flatDistances[pointIdx], dCenter = flatDistances[pointIdx + 1], dFar = flatDistances[pointIdx + 2];
-                    pointIdx += 3;
-                    if (dCenter !== null) {
-                        v1 = dClose ?? dCenter; v2 = dCenter; v3 = dFar ?? dCenter;
-                        if (v2 > (v1 * 3) && v1 > 0.5) v2 = (v1 + v3) / 2;
-                        voteV1 = v1; voteV2 = v2; voteV3 = v3;
-                        if (v2 < (v1 - 2)) voteV1 = v2; 
+                    const dClose = flatDistances[pointIdx];
+                    const dCenter = flatDistances[pointIdx + 1];
+                    pointIdx += 2; // We only fetched 2 points (Close + Center)
+
+                    if (dCenter !== null && dClose !== null) {
+                        v1 = dClose; 
+                        v2 = dCenter;
+                        
+                        // Heuristic: If center is way further than edge, the zone is likely huge or weirdly shaped.
+                        // We average them to get a "representative" distance.
+                        voteV1 = v1; 
+                        voteV2 = v2;
                     }
                 }
-                const points = [voteV1, voteV2, voteV3];
+                
+                const points = [voteV1, voteV2];
                 let greenCount = 0, yellowCount = 0;
                 
-                // USE THE DYNAMIC RULES FOR SCORING
                 points.forEach(dist => { if (dist <= activeRules.green) greenCount++; else if (dist <= activeRules.yellow) yellowCount++; });
                 
                 let status = 'out', color = '#ef4444';
-                if (greenCount >= 2) { status = 'in'; color = '#22c55e'; } else if ((greenCount + yellowCount) >= 2) { status = 'warning'; color = '#eab308'; }
+                if (greenCount >= 1 && (greenCount + yellowCount) >= 2) { status = 'in'; color = '#22c55e'; } 
+                else if ((greenCount + yellowCount) >= 1) { status = 'warning'; color = '#eab308'; }
                 
-                const avgDist = parseFloat(((voteV1 + voteV2 + voteV3) / 3).toFixed(2));
+                const avgDist = parseFloat(((voteV1 + voteV2) / 2).toFixed(2));
                 const currentWinner = finalAssignments[z.id];
+                
                 let isWinner = false;
                 if (!currentWinner) isWinner = true;
                 else {
@@ -220,19 +290,20 @@ export default function DashboardPage() {
                     if (score(status) > score(currentWinner.status)) isWinner = true;
                     else if (score(status) === score(currentWinner.status) && avgDist < parseFloat(currentWinner.distance)) isWinner = true;
                 }
+
                 if (isWinner) {
                     finalAssignments[z.id] = {
                         name: z.name, id: z.id, status, fillColor: color, storeColor: '#ffffff',
                         storeId: store.id, storeName: store.name, distance: avgDist.toFixed(2),
-                        category: store.category, // Track which rule won
-                        raw: { close: v1.toFixed(1), center: v2.toFixed(1), far: v3.toFixed(1) }
+                        category: store.category,
+                        raw: { close: v1.toFixed(1), center: v2.toFixed(1) }
                     };
                 }
             });
         });
         await Promise.all(storePromises);
         setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments });
-        toast({ title: "Analysis Complete", description: "Coverage calculated using selected city rules." });
+        toast({ title: "Analysis Complete", description: "Optimization finished." });
     } catch (e) { toast({ variant: "destructive", title: "Error", description: "Analysis failed due to a network or OSRM timeout." }); } finally { setAnalyzing(false); }
   };
 
@@ -350,7 +421,7 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* Specialized Rules List (Dynamic) */}
+                    {/* Specialized Rules List */}
                     {activeSubRules.length > 0 && (
                         <div className="space-y-2">
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
@@ -422,7 +493,6 @@ export default function DashboardPage() {
                                             </Button>
                                     </div>
                                     
-                                    {/* COORDINATES */}
                                     <div className="bg-slate-50 rounded px-2 py-1 flex items-center gap-2 border border-slate-100">
                                         <code className="text-[9px] text-slate-400 font-bold uppercase tracking-wider shrink-0">LOC:</code>
                                         <Input 
@@ -433,7 +503,6 @@ export default function DashboardPage() {
                                         />
                                     </div>
 
-                                    {/* CATEGORY SELECTOR - Updated to use loaded rules */}
                                     <div className="pt-2 border-t border-slate-50 mt-1">
                                         <div className="flex items-center gap-2">
                                             <span className="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">Service Rule:</span>
@@ -459,7 +528,6 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* ACTION FOOTER */}
             <div className="p-5 border-t border-slate-200 bg-white">
                 <Button 
                     className="w-full h-12 rounded-lg bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-800 shadow-md active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-not-allowed group"

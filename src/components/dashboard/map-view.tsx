@@ -187,7 +187,8 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       });
 
       const promises = [
-          fetchRoutePath(storePt, closestVertex, '#22c55e', 'Closest (Entrance)'),
+          // 🟣 UPDATED: Changed Closest route to High-Contrast Purple (#9333ea)
+          fetchRoutePath(storePt, closestVertex, '#9333ea', 'Closest (Entrance)'),
           fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Middle (Center)'),
           fetchRoutePath(storePt, furthestVertex, '#ef4444', 'Furthest Reach')
       ];
