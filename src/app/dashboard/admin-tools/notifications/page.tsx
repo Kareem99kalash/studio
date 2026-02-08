@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import { 
+  collection, 
+  addDoc, 
+  getDocs, 
+  query, 
+  orderBy, 
+  where, 
+  writeBatch,
+  doc,
+  limit 
+} from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,9 +37,18 @@ export default function BroadcastPage() {
 
   const fetchHistory = async () => {
     try {
-      const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'));
+      const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(20));
       const snap = await getDocs(q);
-      setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      
+      // FIX: Explicitly type this as 'any[]' so TypeScript knows it has custom fields like 'title'
+      const rawDocs: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Now TS won't complain about 't.title' or 'v.title'
+      const distinctHistory = rawDocs.filter((v,i,a) => 
+        a.findIndex(t => (t.title === v.title && t.message === v.message)) === i
+      );
+      
+      setHistory(distinctHistory);
     } catch (e) { console.error(e); }
   };
 
@@ -38,18 +57,57 @@ export default function BroadcastPage() {
     setLoading(true);
     
     try {
-      await addDoc(collection(db, 'notifications'), {
-        title,
-        message,
-        target,
-        type,
-        createdAt: new Date().toISOString()
+      // 1. FIND RECIPIENTS
+      let q;
+      if (target === 'all') {
+        q = query(collection(db, 'users'));
+      } else {
+        q = query(collection(db, 'users'), where('role', '==', target));
+      }
+      
+      const userSnap = await getDocs(q);
+      
+      if (userSnap.empty) {
+        toast({ variant: "destructive", title: "No Users Found", description: `No users match the role: ${target}` });
+        setLoading(false);
+        return;
+      }
+
+      // 2. CREATE BATCH (Fan-out)
+      const batch = writeBatch(db);
+      const timestamp = new Date().toISOString();
+
+      userSnap.docs.forEach((u) => {
+        const userData = u.data();
+        const recipientId = userData.username || u.id; 
+
+        const newRef = doc(collection(db, 'notifications'));
+        batch.set(newRef, {
+          targetUser: recipientId,
+          title: title,
+          message: message,
+          type: type,
+          read: false,
+          createdAt: timestamp,
+          broadcastGroup: target 
+        });
+      });
+
+      // 3. COMMIT
+      await batch.commit();
+      
+      toast({ 
+        title: "Broadcast Sent", 
+        description: `Delivered to ${userSnap.size} user(s).` 
       });
       
-      toast({ title: "Message Broadcasted", description: `Sent to: ${target.toUpperCase()}` });
-      setTitle(''); setMessage(''); fetchHistory();
+      setTitle(''); 
+      setMessage(''); 
+      fetchHistory();
+
     } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to send." });
+      console.error(e);
+      toast({ variant: "destructive", title: "Error", description: "Failed to broadcast message." });
     } finally {
       setLoading(false);
     }
@@ -84,7 +142,8 @@ export default function BroadcastPage() {
                   <SelectItem value="all">Everyone (Global)</SelectItem>
                   <SelectItem value="admin">Admins Only</SelectItem>
                   <SelectItem value="manager">Managers Only</SelectItem>
-                  <SelectItem value="agent">Field Agents Only</SelectItem>
+                  <SelectItem value="analyst">Analysts Only</SelectItem>
+                  <SelectItem value="viewer">Viewers Only</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -133,12 +192,12 @@ export default function BroadcastPage() {
         {/* HISTORY */}
         <Card className="lg:col-span-2 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><History className="h-5 w-5 text-slate-400" /> Recent History</CardTitle>
+            <CardTitle className="flex items-center gap-2"><History className="h-5 w-5 text-slate-400" /> Recent Broadcasts</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {history.length === 0 ? (
-                <p className="text-center text-slate-400 italic py-8">No messages sent yet.</p>
+                <p className="text-center text-slate-400 italic py-8">No messages sent recently.</p>
               ) : (
                 history.map((item) => (
                   <div key={item.id} className="flex items-start gap-4 p-4 border rounded-lg bg-slate-50/50 hover:bg-white transition-all">
@@ -151,9 +210,11 @@ export default function BroadcastPage() {
                         <span className="text-[10px] text-slate-400 font-mono">{new Date(item.createdAt).toLocaleDateString()}</span>
                       </div>
                       <p className="text-sm text-slate-600 mb-2">{item.message}</p>
-                      <Badge variant="outline" className="bg-white text-[10px] uppercase tracking-wide text-slate-500">
-                        To: {item.target}
-                      </Badge>
+                      <div className="flex gap-2">
+                        <Badge variant="outline" className="bg-white text-[10px] uppercase tracking-wide text-slate-500">
+                            Role: {item.broadcastGroup || 'Specific User'}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 ))
