@@ -1,35 +1,35 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Info, ShieldCheck, Store } from 'lucide-react';
+import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
-// Dynamic import with SSR disabled is crucial for Leaflet
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
-  loading: () => <div className="h-full w-full bg-slate-50 animate-pulse flex items-center justify-center text-slate-400 font-bold">Loading Map Engine...</div>
+  loading: () => (
+    <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loading Engine...</span>
+    </div>
+  )
 });
 
 // --- HELPERS ---
-function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
-    return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
-}
-
+function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) { return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2; }
 function getRoughDistKm(lat1: number, lng1: number, lat2: number, lng2: number) {
-    const R = 6371; 
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lng2 - lng1) * Math.PI / 180;
+    const R = 6371; const dLat = (lat2 - lat1) * Math.PI / 180; const dLon = (lng2 - lng1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
@@ -74,7 +74,8 @@ export default function DashboardPage() {
     if (city) {
         setSelectedCity(city);
         setStores([]); 
-        setAnalysisData(null); // Clear old analysis to prevent map crashes
+        setAnalysisData(null); 
+        // Set default rules
         if (city.thresholds) {
             setRules({
                 green: Number(city.thresholds.green) || 2,
@@ -84,34 +85,34 @@ export default function DashboardPage() {
     }
   };
 
-  const addStore = () => {
-    setStores([...stores, { id: Date.now(), name: `Branch ${stores.length + 1}`, coordinates: '', lat: '', lng: '', cityId: selectedCity?.id }]);
+  const addStore = () => { 
+      setStores([...stores, { 
+          id: Date.now(), 
+          name: `Hub ${stores.length + 1}`, 
+          coordinates: '', 
+          lat: '', 
+          lng: '', 
+          cityId: selectedCity?.id,
+          category: 'default' // Default category
+      }]); 
   };
 
-  const updateStoreName = (id: number, name: string) => {
-    setStores(stores.map(s => s.id === id ? { ...s, name } : s));
+  const updateStoreName = (id: number, name: string) => { setStores(stores.map(s => s.id === id ? { ...s, name } : s)); };
+  
+  const updateStoreCategory = (id: number, category: string) => {
+      setStores(stores.map(s => s.id === id ? { ...s, category } : s));
   };
 
   const updateStoreCoordinates = (id: number, input: string) => {
-    let lat = '';
-    let lng = '';
-    const parts = input.split(',');
+    let lat = ''; let lng = ''; const parts = input.split(',');
     if (parts.length === 2) {
-        const parsedLat = parseFloat(parts[0].trim());
-        const parsedLng = parseFloat(parts[1].trim());
-        if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
-            lat = parsedLat.toString();
-            lng = parsedLng.toString();
-        }
+        const parsedLat = parseFloat(parts[0].trim()); const parsedLng = parseFloat(parts[1].trim());
+        if (!isNaN(parsedLat) && !isNaN(parsedLng)) { lat = parsedLat.toString(); lng = parsedLng.toString(); }
     }
     setStores(stores.map(s => s.id === id ? { ...s, coordinates: input, lat, lng } : s));
   };
+  const removeStore = (id: number) => { setStores(stores.filter(s => s.id !== id)); };
 
-  const removeStore = (id: number) => {
-    setStores(stores.filter(s => s.id !== id));
-  };
-
-  // --- OSRM BATCHING & ANALYSIS LOGIC ---
   const getZoneKeyPoints = (store: any, feature: any) => {
       const center = feature.properties.centroid;
       const vertices = feature.geometry.coordinates[0].map((p: any) => ({ lat: p[1], lng: p[0] }));
@@ -125,9 +126,7 @@ export default function DashboardPage() {
   };
 
   const fetchMatrixBatch = async (store: any, allZonePoints: any[]) => {
-      const chunkSize = 75; 
-      const results = new Array(allZonePoints.length).fill(null);
-      const promises = [];
+      const chunkSize = 75; const results = new Array(allZonePoints.length).fill(null); const promises = [];
       for (let i = 0; i < allZonePoints.length; i += chunkSize) {
           const chunk = allZonePoints.slice(i, i + chunkSize);
           const coords = [`${store.lng},${store.lat}`, ...chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`)].join(';');
@@ -139,8 +138,7 @@ export default function DashboardPage() {
               }).catch(e => console.error("OSRM Chunk Fail", e))
           );
       }
-      await Promise.all(promises);
-      return results;
+      await Promise.all(promises); return results;
   };
 
   const handleAnalyze = async () => {
@@ -152,26 +150,31 @@ export default function DashboardPage() {
     try {
         const finalAssignments: Record<string, any> = {};
         const features = selectedCity.polygons.features.filter((f: any) => f.properties?.centroid);
-
+        
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
-            const zoneMeta: any[] = [], flatPoints: any[] = [];
+            
+            // --- DETERMINE RULES FOR THIS STORE ---
+            let activeRules = rules; // Default to city main rules
+            if (store.category && store.category !== 'default' && selectedCity.subThresholds) {
+                const customRule = selectedCity.subThresholds.find((r: any) => r.name === store.category);
+                if (customRule) {
+                    activeRules = { green: Number(customRule.green), yellow: Number(customRule.yellow) };
+                }
+            }
 
+            const zoneMeta: any[] = [], flatPoints: any[] = [];
             features.forEach((f: any) => {
                 const center = f.properties.centroid;
                 const roughDist = getRoughDistKm(storeObj.lat, storeObj.lng, center.lat, center.lng);
                 if (roughDist < 75) {
-                    const kp = getZoneKeyPoints(storeObj, f);
-                    zoneMeta.push(kp);
-                    flatPoints.push(...kp.points); 
-                } else {
-                    zoneMeta.push({ id: f.properties.id || f.properties.name, name: f.properties.name, tooFar: true });
-                }
+                    const kp = getZoneKeyPoints(storeObj, f); zoneMeta.push(kp); flatPoints.push(...kp.points); 
+                } else { zoneMeta.push({ id: f.properties.id || f.properties.name, name: f.properties.name, tooFar: true }); }
             });
-
+            
             let flatDistances: number[] = [];
             if (flatPoints.length > 0) flatDistances = await fetchMatrixBatch(storeObj, flatPoints);
-
+            
             let pointIdx = 0;
             zoneMeta.forEach((z) => {
                 let v1 = 999, v2 = 999, v3 = 999, voteV1 = 999, voteV2 = 999, voteV3 = 999; 
@@ -187,26 +190,22 @@ export default function DashboardPage() {
                 }
                 const points = [voteV1, voteV2, voteV3];
                 let greenCount = 0, yellowCount = 0;
-                points.forEach(dist => {
-                    if (dist <= rules.green) greenCount++;
-                    else if (dist <= rules.yellow) yellowCount++;
-                });
-
+                
+                // USE ACTIVE RULES HERE
+                points.forEach(dist => { if (dist <= activeRules.green) greenCount++; else if (dist <= activeRules.yellow) yellowCount++; });
+                
                 let status = 'out', color = '#ef4444';
-                if (greenCount >= 2) { status = 'in'; color = '#22c55e'; }
-                else if ((greenCount + yellowCount) >= 2) { status = 'warning'; color = '#eab308'; }
-
+                if (greenCount >= 2) { status = 'in'; color = '#22c55e'; } else if ((greenCount + yellowCount) >= 2) { status = 'warning'; color = '#eab308'; }
+                
                 const avgDist = parseFloat(((voteV1 + voteV2 + voteV3) / 3).toFixed(2));
                 const currentWinner = finalAssignments[z.id];
                 let isWinner = false;
-
                 if (!currentWinner) isWinner = true;
                 else {
                     const score = (s: string) => s === 'in' ? 3 : s === 'warning' ? 2 : 1;
                     if (score(status) > score(currentWinner.status)) isWinner = true;
                     else if (score(status) === score(currentWinner.status) && avgDist < parseFloat(currentWinner.distance)) isWinner = true;
                 }
-
                 if (isWinner) {
                     finalAssignments[z.id] = {
                         name: z.name, id: z.id, status, fillColor: color, storeColor: '#ffffff',
@@ -216,20 +215,15 @@ export default function DashboardPage() {
                 }
             });
         });
-
         await Promise.all(storePromises);
         setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments });
-        toast({ title: "Analysis Success", description: "Coverage maps updated." });
-    } catch (e) {
-        toast({ variant: "destructive", title: "Error", description: "Analysis failed due to a network or OSRM timeout." });
-    } finally {
-        setAnalyzing(false);
-    }
+        toast({ title: "Analysis Success", description: "Coverage maps updated with category rules." });
+    } catch (e) { toast({ variant: "destructive", title: "Error", description: "Analysis failed due to a network or OSRM timeout." }); } finally { setAnalyzing(false); }
   };
 
   const downloadCSV = () => {
       if (!analysisData?.assignments) return;
-      const rows = [['Zone ID', 'Zone Name', 'Assigned Branch', 'Avg Dist (KM)', 'Status']];
+      const rows = [['Zone ID', 'Zone Name', 'Assigned Hub', 'Avg Dist (KM)', 'Status']];
       Object.values(analysisData.assignments).forEach((a: any) => rows.push([a.id, a.name, a.storeName, a.distance, a.status.toUpperCase()]));
       const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
       const link = document.createElement("a");
@@ -240,166 +234,318 @@ export default function DashboardPage() {
       document.body.removeChild(link);
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin h-10 w-10 text-purple-600" /></div>;
+  if (loading) return (
+    <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
+        <Loader2 className="animate-spin h-10 w-10 text-indigo-600" />
+        <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-xs animate-pulse">Loading Environment...</p>
+    </div>
+  );
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
-      <header className="h-16 border-b bg-white flex items-center px-6 justify-between shrink-0 z-30 shadow-sm">
-        <div className="flex items-center gap-2">
-            <div className="bg-purple-600 p-2 rounded-lg shadow-inner"><MapIcon className="text-white h-5 w-5" /></div>
-            <h1 className="font-bold text-xl tracking-tight text-slate-900">Coverage Command Center</h1>
+    <div className="h-screen flex flex-col bg-white overflow-hidden font-sans">
+      
+      {/* HEADER */}
+      <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
+        <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-2 rounded-lg shadow-md shadow-indigo-100">
+                <Radar className="text-white h-5 w-5" />
+            </div>
+            <div>
+                <h1 className="font-black text-lg tracking-tight text-slate-800 leading-none">COMMAND CENTER</h1>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Spatial Intelligence Unit</p>
+            </div>
         </div>
         <div className="flex items-center gap-4">
-           {analysisData && <Badge variant="secondary" className="bg-green-50 text-green-700 animate-in fade-in duration-500">Live Analysis Active</Badge>}
+           {analyzing && (
+               <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
+                   <Loader2 className="h-3 w-3 animate-spin" />
+                   <span className="text-[10px] font-black uppercase tracking-wider">Processing Grid</span>
+               </div>
+           )}
+           {analysisData && !analyzing && (
+                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 gap-1.5 py-1.5 pl-1.5 pr-3 shadow-sm">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wider">System Online</span>
+                </Badge>
+           )}
         </div>
       </header>
 
+      {/* MAIN CONTAINER - FLUSH (No padding/gaps) */}
       <div className="flex-1 flex overflow-hidden">
-        {/* SIDEBAR */}
-        <div className="w-96 bg-white border-r flex flex-col shrink-0 overflow-y-auto z-20 shadow-xl scrollbar-hide">
-            <div className="p-6 space-y-8">
+        
+        {/* SIDEBAR - CONNECTED TO LEFT */}
+        <div className="w-[380px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20">
+            {/* Sidebar Header */}
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm">
+                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Settings2 className="h-3 w-3" /> Configuration
+                </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-8 scrollbar-hide">
+                
+                {/* 1. Region Selector */}
                 <div className="space-y-3">
-                    <Label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Regional Focus</Label>
-                    <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id}>
-                        <SelectTrigger className="h-12 border-slate-200 text-lg font-bold"><SelectValue placeholder="Select Area" /></SelectTrigger>
-                        <SelectContent>{cities.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                        <MapIcon className="h-3.5 w-3.5 text-indigo-500" /> Target Region
+                    </Label>
+                    <div className="relative">
+                        <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id}>
+                            <SelectTrigger className="h-11 border-slate-200 bg-white hover:border-indigo-300 transition-all text-sm font-bold shadow-sm focus:ring-indigo-500">
+                                <SelectValue placeholder="Select Territory" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {cities.map(c => <SelectItem key={c.id} value={c.id} className="font-medium text-xs">{c.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        {selectedCity && (
+                            <div className="absolute top-1/2 -translate-y-1/2 right-9 pointer-events-none">
+                                <Badge variant="secondary" className="text-[9px] bg-slate-100 text-slate-500 font-mono">ID: {selectedCity.id.slice(0,4)}</Badge>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                            <ShieldCheck className="h-4 w-4 text-purple-600" /> SLA Thresholds
-                        </div>
-                    </div>
+                <Separator className="bg-slate-200" />
+
+                {/* 2. SLA Config */}
+                <div className="space-y-4">
+                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> SLA Thresholds (Default)
+                    </Label>
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white p-3 rounded-xl border border-green-100 flex flex-col items-center shadow-sm">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Green</span>
-                            <span className="text-xl font-black text-green-600 tracking-tighter">&lt;{rules.green}km</span>
+                        <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center gap-1">
+                            <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wider">Optimal</span>
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-xl font-black text-emerald-600 tracking-tighter">{rules.green}</span>
+                                <span className="text-xs font-bold text-emerald-400">km</span>
+                            </div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-yellow-100 flex flex-col items-center shadow-sm">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">Yellow</span>
-                            <span className="text-xl font-black text-yellow-500 tracking-tighter">&lt;{rules.yellow}km</span>
+                        <div className="bg-white p-3 rounded-lg border border-amber-100 shadow-sm flex flex-col items-center gap-1">
+                            <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider">Warning</span>
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-xl font-black text-amber-500 tracking-tighter">{rules.yellow}</span>
+                                <span className="text-xs font-bold text-amber-400">km</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
+                <Separator className="bg-slate-200" />
+
+                {/* 3. Hubs */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <Label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Logistics Hubs</Label>
-                        <Button variant="outline" size="sm" onClick={addStore} className="h-7 text-[10px] font-bold border-purple-200 text-purple-600 hover:bg-purple-50 uppercase"><Plus className="h-3 w-3 mr-1" /> Add Hub</Button>
+                        <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                            <Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes
+                        </Label>
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={addStore} 
+                            className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide"
+                        >
+                            <Plus className="h-3 w-3 mr-1.5" /> Add Node
+                        </Button>
                     </div>
-                    <div className="space-y-3">
-                        {stores.length === 0 && <div className="text-center py-10 border-2 border-dashed rounded-2xl text-slate-300 text-xs font-bold uppercase tracking-widest">No hubs defined.</div>}
-                        {stores.map((store) => (
-                            <Card key={store.id} className="relative group border-l-4 border-l-purple-500 shadow-sm overflow-hidden animate-in slide-in-from-left duration-300">
-                                <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-6 w-6 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeStore(store.id)}><Trash2 className="h-3 w-3" /></Button>
-                                <CardContent className="p-3 space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Store className="h-4 w-4 text-purple-400" />
-                                        <Input placeholder="Hub Identifier" className="h-8 text-sm font-bold border-none shadow-none px-0 focus-visible:ring-0" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
+                    
+                    <div className="space-y-3 min-h-[100px]">
+                        {stores.length === 0 && (
+                            <div className="h-24 border-2 border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center gap-2 text-slate-400 bg-slate-50/50">
+                                <Search className="h-5 w-5 opacity-20" />
+                                <span className="text-[10px] font-black uppercase tracking-widest opacity-50">No Active Nodes</span>
+                            </div>
+                        )}
+                        {stores.map((store, idx) => (
+                            <div key={store.id} className="relative group bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:border-indigo-300 transition-all duration-200">
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-center gap-2 w-full">
+                                            <div className="h-5 w-5 rounded bg-slate-100 flex items-center justify-center text-slate-500 text-[10px] font-black shrink-0">
+                                                {idx + 1}
+                                            </div>
+                                            <Input 
+                                                className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" 
+                                                value={store.name} 
+                                                onChange={e => updateStoreName(store.id, e.target.value)}
+                                                placeholder="Node Name"
+                                            />
+                                        </div>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" 
+                                            onClick={() => removeStore(store.id)}
+                                        >
+                                            <Trash2 className="h-3 w-3" />
+                                        </Button>
                                     </div>
-                                    <div className="bg-slate-50 p-2 rounded-lg">
-                                        <Input placeholder="Lat, Lng (Coordinates)" className="h-6 text-[10px] bg-transparent border-none shadow-none font-mono focus-visible:ring-0 px-0" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} />
+                                    
+                                    {/* COORDINATES */}
+                                    <div className="bg-slate-50 rounded px-2 py-1 flex items-center gap-2 border border-slate-100">
+                                        <code className="text-[9px] text-slate-400 font-bold uppercase tracking-wider shrink-0">LOC:</code>
+                                        <Input 
+                                            className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-slate-600 focus-visible:ring-0 w-full" 
+                                            value={store.coordinates} 
+                                            onChange={e => updateStoreCoordinates(store.id, e.target.value)}
+                                            placeholder="LAT, LNG" 
+                                        />
                                     </div>
-                                </CardContent>
-                            </Card>
+
+                                    {/* CATEGORY SELECTOR - ONLY IF SUB-RULES EXIST */}
+                                    {selectedCity?.subThresholds && selectedCity.subThresholds.length > 0 && (
+                                        <div className="pt-2 border-t border-slate-50 mt-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Rule:</span>
+                                                <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
+                                                    <SelectTrigger className="h-6 w-full text-[10px] border-slate-200 bg-slate-50">
+                                                        <SelectValue placeholder="Default" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="default">City Default</SelectItem>
+                                                        {selectedCity.subThresholds.map((r: any, i: number) => (
+                                                            <SelectItem key={i} value={r.name}>{r.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         ))}
                     </div>
                 </div>
+            </div>
 
-                <Button className="w-full h-14 text-lg font-black bg-purple-600 hover:bg-purple-700 shadow-xl shadow-purple-100 active:scale-[0.98] transition-all" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
-                    {analyzing ? <Loader2 className="animate-spin mr-2" /> : "Initiate Analysis"}
+            {/* ACTION FOOTER */}
+            <div className="p-5 border-t border-slate-200 bg-white">
+                <Button 
+                    className="w-full h-12 rounded-lg bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-800 shadow-md active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-not-allowed group"
+                    onClick={handleAnalyze} 
+                    disabled={analyzing || !selectedCity}
+                >
+                    <div className="flex items-center gap-3">
+                        {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-indigo-400" /> : <Zap className="h-4 w-4 text-yellow-400 group-hover:scale-110 transition-transform" />}
+                        <span>{analyzing ? "Processing Grid..." : "Initiate Analysis"}</span>
+                    </div>
                 </Button>
             </div>
         </div>
 
-        {/* MAIN VIEW */}
-        <div className="flex-1 bg-slate-100 relative">
+        {/* MAIN CONTENT AREA - FLUSH RIGHT */}
+        <div className="flex-1 bg-slate-100 overflow-hidden flex flex-col relative z-10">
             {!selectedCity ? (
-                <div className="h-full w-full flex flex-col items-center justify-center text-slate-300"><MapIcon className="h-24 w-24 mb-6 opacity-10" /><p className="font-black uppercase tracking-widest text-sm">Awaiting Regional Data</p></div>
+                <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50/50 gap-4">
+                    <div className="h-24 w-24 bg-slate-200 rounded-full flex items-center justify-center">
+                        <MapIcon className="h-10 w-10 text-slate-400" />
+                    </div>
+                    <p className="font-black uppercase tracking-[0.2em] text-xs text-slate-400">Awaiting Regional Selection</p>
+                </div>
             ) : (
                 <Tabs defaultValue="map" className="h-full flex flex-col">
-                    <div className="border-b bg-white px-4 py-2 shrink-0 flex items-center justify-between shadow-sm z-10">
-                        <TabsList className="h-9 bg-slate-100 p-1 rounded-xl">
-                            <TabsTrigger value="map" className="text-[10px] font-bold uppercase h-7 px-4 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm"><MapIcon className="h-3 w-3 mr-2" /> Map View</TabsTrigger>
-                            <TabsTrigger value="table" className="text-[10px] font-bold uppercase h-7 px-4 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm"><TableIcon className="h-3 w-3 mr-2" /> Table View</TabsTrigger>
-                        </TabsList>
-                        <div className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">
-                            Dataset: {selectedCity.name}
+                    <div className="h-12 border-b border-slate-200 flex items-center justify-between px-6 bg-white shrink-0">
+                        <div className="flex items-center gap-4">
+                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Active View:</span>
+                            <TabsList className="bg-slate-100 p-1 h-8 rounded-lg">
+                                <TabsTrigger value="map" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all">
+                                    <MapIcon className="h-3 w-3 mr-2" /> Geo-Map
+                                </TabsTrigger>
+                                <TabsTrigger value="table" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all">
+                                    <TableIcon className="h-3 w-3 mr-2" /> Data Grid
+                                </TabsTrigger>
+                            </TabsList>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{selectedCity.name} Dataset</span>
                         </div>
                     </div>
                     
-                    <TabsContent value="map" className="flex-1 m-0 p-0 h-full relative outline-none">
-                         {selectedCity.polygons ? (
-                            // 🔑 CRITICAL FIX: The 'key' ensures Leaflet remounts on city change
-                            // preventing the '_leaflet_pos' error.
-                            <MapView 
-                                key={selectedCity.id} 
-                                selectedCity={selectedCity} 
-                                stores={stores} 
-                                analysisData={analysisData} 
-                                isLoading={analyzing} 
-                            />
-                        ) : (
-                            <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 p-10 bg-slate-50">
-                                <AlertTriangle className="h-12 w-12 mb-4 text-amber-500 animate-pulse" />
-                                <p className="font-black text-slate-700 uppercase tracking-widest">Geodata Missing</p>
-                                <p className="text-xs max-w-xs text-center mt-2 leading-relaxed">This city has no polygons. Please upload a GeoJSON file in City Management.</p>
-                            </div>
-                        )}
-                    </TabsContent>
-                    
-                    <TabsContent value="table" className="flex-1 m-0 p-8 overflow-auto outline-none">
-                        <Card className="border-none shadow-2xl">
-                            <CardContent className="p-0">
-                                {analysisData?.assignments ? (
-                                    <>
-                                        <div className="p-6 border-b flex justify-between items-center bg-white sticky top-0 z-10">
-                                            <div>
-                                              <h3 className="font-black text-slate-900 uppercase tracking-tight">Deployment Assignments</h3>
-                                              <p className="text-[10px] text-slate-400 font-bold uppercase">Optimized via OSRM Engine</p>
-                                            </div>
-                                            <Button size="sm" variant="default" className="bg-slate-900 font-bold h-9" onClick={downloadCSV}><Download className="h-4 w-4 mr-2" /> Download Report</Button>
+                    <div className="flex-1 relative bg-slate-50">
+                        <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
+                             {selectedCity.polygons ? (
+                                <MapView 
+                                    key={selectedCity.id} 
+                                    selectedCity={selectedCity} 
+                                    stores={stores} 
+                                    analysisData={analysisData} 
+                                    isLoading={analyzing} 
+                                />
+                            ) : (
+                                <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 p-10">
+                                    <AlertTriangle className="h-12 w-12 mb-4 text-amber-500/50" />
+                                    <p className="font-black text-slate-600 uppercase tracking-widest">Geodata Unavailable</p>
+                                    <p className="text-xs text-slate-400 mt-2">Please upload Polygon data in admin settings.</p>
+                                </div>
+                            )}
+                        </TabsContent>
+                        
+                        <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto">
+                            <div className="p-8 max-w-5xl mx-auto">
+                                <Card className="border-none shadow-sm rounded-xl overflow-hidden">
+                                    <div className="p-6 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-10">
+                                        <div>
+                                            <h3 className="font-black text-lg text-slate-800 uppercase tracking-tight">Assignment Matrix</h3>
+                                            <p className="text-[11px] text-slate-400 font-bold uppercase mt-1">Optimization Results • {new Date().toLocaleDateString()}</p>
                                         </div>
-                                        <Table>
-                                            <TableHeader className="bg-slate-50">
-                                                <TableRow>
-                                                    <TableHead className="text-[10px] font-black uppercase text-slate-500">Zone</TableHead>
-                                                    <TableHead className="text-[10px] font-black uppercase text-slate-500">Logistics Hub</TableHead>
-                                                    <TableHead className="text-[10px] font-black uppercase text-slate-500">Distance (AVG)</TableHead>
-                                                    <TableHead className="text-[10px] font-black uppercase text-slate-500 text-right">Status</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {Object.values(analysisData.assignments).map((row: any, i) => (
-                                                    <TableRow key={i} className="hover:bg-slate-50/50">
-                                                        <TableCell className="font-bold text-xs text-slate-700">{row.name}</TableCell>
-                                                        <TableCell className="text-xs font-black text-purple-600 tracking-tighter uppercase">{row.storeName}</TableCell>
-                                                        <TableCell className="text-xs font-mono font-bold text-slate-400">{row.distance} km</TableCell>
-                                                        <TableCell className="text-right">
-                                                          <Badge className={`${
-                                                            row.status === 'in' ? 'bg-green-100 text-green-700' : 
-                                                            row.status === 'warning' ? 'bg-yellow-100 text-yellow-700' : 
-                                                            'bg-red-100 text-red-700'
-                                                          } text-[9px] font-black border-none shadow-none`}>
-                                                            {row.status.toUpperCase()}
-                                                          </Badge>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </>
-                                ) : (
-                                    <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed flex flex-col items-center">
-                                        <TableIcon className="h-10 w-10 text-slate-200 mb-4" />
-                                        <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px]">No Data Computed</p>
+                                        {analysisData?.assignments && (
+                                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 rounded-lg shadow-md shadow-indigo-100" onClick={downloadCSV}>
+                                                <Download className="h-4 w-4 mr-2" /> Export CSV
+                                            </Button>
+                                        )}
                                     </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
+                                    <div className="bg-white min-h-[400px]">
+                                        {analysisData?.assignments ? (
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
+                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Zone Identifier</TableHead>
+                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Assigned Node</TableHead>
+                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Distance (Avg)</TableHead>
+                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10 text-right">Coverage Status</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {Object.values(analysisData.assignments).map((row: any, i) => (
+                                                        <TableRow key={i} className="hover:bg-indigo-50/10 transition-colors border-slate-50">
+                                                            <TableCell className="font-bold text-xs text-slate-700">{row.name}</TableCell>
+                                                            <TableCell>
+                                                                <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] font-bold border-none uppercase tracking-wide">
+                                                                    {row.storeName}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-xs font-mono font-bold text-slate-500">{row.distance} km</TableCell>
+                                                            <TableCell className="text-right">
+                                                              <Badge className={`${
+                                                                row.status === 'in' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 
+                                                                row.status === 'warning' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' : 
+                                                                'bg-rose-100 text-rose-700 hover:bg-rose-100'
+                                                              } text-[9px] font-black border-none shadow-none uppercase tracking-wider px-2`}>
+                                                                        {row.status}
+                                                              </Badge>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                                                <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center">
+                                                    <Activity className="h-8 w-8 text-slate-300" />
+                                                </div>
+                                                <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No Analysis Data Available</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </Card>
+                            </div>
+                        </TabsContent>
+                    </div>
                 </Tabs>
             )}
         </div>

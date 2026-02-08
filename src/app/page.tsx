@@ -2,136 +2,174 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { MapPin, Loader2, LogIn } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { MapPin, Loader2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { toast } = useToast();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const { toast } = useToast();
 
-  // Prevent logged-in users from seeing the login page
+  // Redirect if already logged in
   useEffect(() => {
     if (localStorage.getItem('geo_user')) {
-      router.replace('/dashboard');
+      router.push('/dashboard');
     }
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!username || !password) {
+      toast({ variant: "destructive", title: "Missing Credentials", description: "Please enter both username and password." });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // 1. Fetch user directly by Document ID (Username)
-      // This matches the creation logic in User Management
-      const userRef = doc(db, 'users', username.toLowerCase());
-      const userSnap = await getDoc(userRef);
+      // 1. Check User in Firestore
+      const usersRef = collection(db, 'users');
+      // Query by lowercase username for case-insensitive login
+      const q = query(usersRef, where('username', '==', username.toLowerCase()));
+      const querySnapshot = await getDocs(q);
 
-      if (!userSnap.exists()) {
-        toast({ 
-          variant: "destructive", 
-          title: "Login Failed", 
-          description: "User not found. Accounts must be created by an Admin." 
-        });
-        setLoading(false);
-        return;
+      if (querySnapshot.empty) {
+        throw new Error("User not found.");
       }
 
-      const userData = userSnap.data();
+      const userData = querySnapshot.docs[0].data();
 
-      // 2. Validate Password (Matches the internal database field)
-      if (userData.password === password) {
-        // SUCCESS: Save session locally
-        localStorage.setItem('geo_user', JSON.stringify({
-          ...userData,
-          uid: userSnap.id
-        }));
-
-        toast({ 
-          title: "Access Granted", 
-          description: `Welcome back, ${userData.username}!` 
-        });
-        
-        // Force a hard redirect to refresh layout permissions
-        window.location.href = '/dashboard';
-      } else {
-        toast({ 
-          variant: "destructive", 
-          title: "Login Failed", 
-          description: "Incorrect password." 
-        });
+      // 2. Simple Password Check (matches your existing logic)
+      if (userData.password !== password) {
+        throw new Error("Incorrect password.");
       }
-    } catch (error: any) {
-      console.error("Login Error:", error);
+
+      // 3. Success: Save Session & Redirect
+      const sessionData = {
+        uid: querySnapshot.docs[0].id,
+        username: userData.username,
+        role: userData.role,
+        // Important: Save the groupId if it exists, so the dashboard knows which city to show
+        roleGroup: userData.groupId || null
+      };
+
+      localStorage.setItem('geo_user', JSON.stringify(sessionData));
+      
+      toast({ 
+        title: "Access Granted", 
+        description: `Welcome back, ${userData.username}.`,
+        className: "bg-green-600 text-white border-none"
+      });
+
+      // Force navigation
+      window.location.href = '/dashboard';
+
+    } catch (err: any) {
       toast({ 
         variant: "destructive", 
-        title: "Connection Error", 
-        description: "Could not connect to the database. Check Firebase Rules." 
+        title: "Authentication Failed", 
+        description: "Invalid credentials or access denied." 
       });
-    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-slate-50 p-4">
-      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-purple-600">
-        <CardHeader className="text-center">
-          <MapPin className="mx-auto h-12 w-12 text-purple-600 mb-2" />
-          <CardTitle className="text-2xl font-bold tracking-tight text-slate-800">
-            GeoCoverage
-          </CardTitle>
-          <CardDescription className="uppercase text-[10px] font-bold tracking-widest text-slate-500">
-            Secure Access Control
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700 ml-1">USERNAME</label>
-              <Input 
-                placeholder="Enter your assigned username" 
-                value={username} 
-                onChange={e => setUsername(e.target.value)} 
-                required 
-                className="bg-slate-50 border-slate-200 focus:ring-purple-500"
-              />
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#F8F9FB] p-4">
+      
+      {/* LOGIN CARD */}
+      <div className="w-full max-w-[440px] bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden">
+        
+        {/* Blue Top Accent Bar */}
+        <div className="h-1.5 w-full bg-blue-600" />
+
+        <div className="p-10">
+          
+          {/* HEADER SECTION */}
+          <div className="flex flex-col items-center text-center mb-8 space-y-3">
+            <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-2">
+              <MapPin className="h-6 w-6 fill-current" />
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700 ml-1">PASSWORD</label>
-              <Input 
-                type="password" 
-                placeholder="••••••••" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                required 
-                className="bg-slate-50 border-slate-200 focus:ring-purple-500"
-              />
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">GeoCoverage</h1>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                Secure Access Control
+              </p>
             </div>
+          </div>
+
+          {/* FORM SECTION */}
+          <form onSubmit={handleLogin} className="space-y-6">
+            
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">
+                Username
+              </label>
+              <div className="relative">
+                <Input 
+                  type="text" 
+                  placeholder="Enter your assigned username" 
+                  className="h-11 bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-500 transition-all pl-4 rounded-lg"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">
+                Password
+              </label>
+              <div className="relative">
+                <Input 
+                  type="password" 
+                  placeholder="••••••••" 
+                  className="h-11 bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-500 transition-all pl-4 rounded-lg"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
             <Button 
               type="submit" 
-              className="w-full bg-purple-600 hover:bg-purple-700 h-11 text-white font-bold transition-all shadow-md active:scale-[0.98] mt-2" 
+              className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2"
               disabled={loading}
             >
               {loading ? (
-                <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <><LogIn className="mr-2 h-4 w-4" /> Authenticate</>
+                <>
+                  Authenticate <ArrowRight className="ml-2 h-4 w-4" />
+                </>
               )}
             </Button>
-            <p className="text-center text-[11px] text-slate-400 mt-4 italic">
+
+          </form>
+
+          {/* FOOTER SECTION */}
+          <div className="mt-8 text-center">
+            <p className="text-[11px] text-slate-400 italic">
               New accounts can only be created by System Administrators.
             </p>
-          </form>
-        </CardContent>
-      </Card>
+          </div>
+
+        </div>
+      </div>
+
+      {/* BACKGROUND DECORATION (Subtle Grid) */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.02]" 
+           style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+      </div>
+
     </div>
   );
 }

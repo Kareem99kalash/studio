@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation'; // Added for redirection
+import { useRouter } from 'next/navigation'; 
 import { collection, addDoc, getDocs, query, updateDoc, doc, orderBy, deleteDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Plus, CheckCircle, Clock, AlertCircle, Loader2, FileSpreadsheet, Download, Trash2, ShieldAlert, ChevronLeft } from 'lucide-react';
+import { Search, Plus, Loader2, FileSpreadsheet, Download, Trash2, ShieldAlert, ChevronLeft } from 'lucide-react';
 
 export default function TicketsPage() {
   const router = useRouter();
@@ -24,15 +24,23 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [attachedFile, setAttachedFile] = useState<{name: string, content: string} | null>(null);
 
+  // Form State
+  const [newTicketTitle, setNewTicketTitle] = useState('');
+  const [newTicketDesc, setNewTicketDesc] = useState('');
+  const [newTicketType, setNewTicketType] = useState('General');
+
   useEffect(() => {
     const stored = localStorage.getItem('geo_user');
     if (stored) {
       const parsedUser = JSON.parse(stored);
       setUser(parsedUser);
       
-      // 🛡️ THE GUARD: If role is Agent, we stop loading and just show the guard UI
-      if (parsedUser.role === 'Agent') {
-        setLoading(false);
+      // 🛡️ PERMISSION CHECK: Must have 'view_tickets'
+      // We check granular permission OR admin role for backward compatibility
+      const hasViewAccess = parsedUser.permissions?.view_tickets || parsedUser.role === 'admin' || parsedUser.role === 'manager';
+      
+      if (!hasViewAccess) {
+        setLoading(false); // Stop loading to show the restricted UI below
         return;
       }
     }
@@ -47,8 +55,13 @@ export default function TicketsPage() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  // --- 🛡️ RESTRICTED ACCESS UI ---
-  if (user && user.role === 'Agent') {
+  // --- 🛡️ PERMISSION HELPERS ---
+  // Using granular checks with role fallback for old users
+  const canCreate = user?.permissions?.create_tickets || user?.role === 'admin' || user?.role === 'manager';
+  const canManage = user?.permissions?.manage_tickets || user?.role === 'admin';
+
+  // --- 🛡️ RESTRICTED ACCESS UI (For users without 'view_tickets') ---
+  if (user && !loading && !user.permissions?.view_tickets && user.role !== 'admin' && user.role !== 'manager') {
     return (
       <div className="h-full w-full flex items-center justify-center bg-slate-50 p-6">
         <Card className="max-w-md w-full text-center shadow-lg border-t-4 border-t-red-500">
@@ -59,14 +72,10 @@ export default function TicketsPage() {
             <div className="space-y-2">
               <h2 className="text-xl font-bold text-slate-900">Access Restricted</h2>
               <p className="text-sm text-slate-500">
-                Your account role (<strong>Agent</strong>) does not have permission to access the Ticket Request system.
+                You do not have permission to view tickets. Contact your administrator.
               </p>
             </div>
-            <Button 
-              variant="outline" 
-              className="mt-4"
-              onClick={() => router.push('/dashboard')}
-            >
+            <Button variant="outline" className="mt-4" onClick={() => router.push('/dashboard')}>
               <ChevronLeft className="mr-2 h-4 w-4" /> Return to Dashboard
             </Button>
           </CardContent>
@@ -75,7 +84,7 @@ export default function TicketsPage() {
     );
   }
 
-  // --- 📥 DOWNLOAD LOGIC ---
+  // --- HANDLERS (Same as before) ---
   const downloadAttachedCSV = (ticket: any) => {
     if (!ticket.csvContent) return;
     const blob = new Blob([ticket.csvContent], { type: 'text/csv' });
@@ -87,12 +96,11 @@ export default function TicketsPage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    toast({ title: "Download Started" });
   };
 
-  // --- 🗑️ DELETE LOGIC ---
   const handleDeleteTicket = async (id: string) => {
-    if (user?.role !== 'Admin' || !confirm("Permanently delete this ticket?")) return;
+    if (!canManage) return; 
+    if (!confirm("Permanently delete this ticket?")) return;
     try {
       await deleteDoc(doc(db, 'tickets', id));
       setTickets(prev => prev.filter(t => t.id !== id));
@@ -111,23 +119,27 @@ export default function TicketsPage() {
     reader.readAsText(file);
   };
 
-  const handleCreateTicket = async (e: any) => {
+  const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newTicketTitle || !newTicketDesc) return;
+
     const ticketId = `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
     const newTicket = {
       ticketId,
-      title: e.target.title.value,
-      description: e.target.description.value,
-      type: e.target.type.value,
+      title: newTicketTitle,
+      description: newTicketDesc,
+      type: newTicketType,
       status: 'New',
-      creator: user.username,
+      creator: user.username || 'Unknown',
       attachedFileName: attachedFile?.name || null,
       csvContent: attachedFile?.content || null,
       createdAt: new Date().toISOString()
     };
+    
     await addDoc(collection(db, 'tickets'), newTicket);
     setIsCreating(false);
     setAttachedFile(null);
+    setNewTicketTitle(''); setNewTicketDesc('');
     fetchTickets();
     toast({ title: "Ticket Sent", description: `ID: ${ticketId}` });
   };
@@ -156,7 +168,9 @@ export default function TicketsPage() {
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Search ID..." className="pl-8 w-48 bg-white" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          {(user?.role === 'Manager' || user?.role === 'Admin') && (
+          
+          {/* ONLY SHOW IF USER HAS 'create_tickets' PERMISSION */}
+          {canCreate && (
             <Button onClick={() => setIsCreating(true)} className="bg-purple-600 hover:bg-purple-700">
               <Plus className="mr-2 h-4 w-4" /> New Request
             </Button>
@@ -198,25 +212,33 @@ export default function TicketsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {user?.role === 'Admin' && (
-                        <>
-                          {t.csvContent && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" onClick={() => downloadAttachedCSV(t)}><Download className="size-3" /></Button>
-                          )}
-                          <Select onValueChange={(val) => updateStatus(t.id, val)}>
-                            <SelectTrigger className="h-7 w-24 text-[10px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                      
+                      {t.csvContent && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600" onClick={() => downloadAttachedCSV(t)}>
+                            <Download className="size-3" />
+                        </Button>
+                      )}
+
+                      {/* ONLY SHOW STATUS UPDATE IF 'manage_tickets' or 'create_tickets' */}
+                      {(canCreate || canManage) && (
+                        <Select onValueChange={(val) => updateStatus(t.id, val)} defaultValue={t.status}>
+                            <SelectTrigger className="h-7 w-24 text-[10px]"><SelectValue /></SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="New">New</SelectItem>
                                 <SelectItem value="Pending">Pending</SelectItem>
-                                <SelectItem value="Solved">Solved</SelectItem>
+                                <SelectItem value="In Progress">In Progress</SelectItem>
+                                <SelectItem value="Resolved">Resolved</SelectItem>
                             </SelectContent>
-                          </Select>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDeleteTicket(t.id)}><Trash2 className="size-3" /></Button>
-                        </>
+                        </Select>
                       )}
-                      {/* Managers can only see their status, they can't delete or update status */}
-                      {user?.role === 'Manager' && (
-                        <span className="text-[10px] text-slate-400 italic">View Only</span>
+                      
+                      {/* ONLY SHOW DELETE IF 'manage_tickets' */}
+                      {canManage && (
+                         <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDeleteTicket(t.id)}>
+                            <Trash2 className="size-3" />
+                         </Button>
                       )}
+
                     </div>
                   </TableCell>
                 </TableRow>
@@ -226,27 +248,38 @@ export default function TicketsPage() {
         </CardContent>
       </Card>
 
-      {/* CREATE TICKET MODAL */}
+      {/* CREATE MODAL */}
       {isCreating && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-md shadow-2xl border-t-4 border-t-purple-600">
+          <Card className="w-full max-w-md shadow-2xl border-t-4 border-t-purple-600 animate-in fade-in zoom-in duration-200">
             <CardHeader><CardTitle>New Request</CardTitle></CardHeader>
             <CardContent>
               <form onSubmit={handleCreateTicket} className="space-y-4">
-                <Input name="title" placeholder="Subject" required />
-                <Select name="type" defaultValue="General">
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AddZone">Add New Zones (CSV)</SelectItem>
-                    <SelectItem value="DeleteUser">Delete User</SelectItem>
-                    <SelectItem value="General">General Question</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Textarea name="description" placeholder="Details..." required />
-                <Input type="file" accept=".csv" onChange={handleFileChange} />
+                <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Subject</label>
+                    <Input value={newTicketTitle} onChange={(e) => setNewTicketTitle(e.target.value)} required />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Category</label>
+                    <Select value={newTicketType} onValueChange={setNewTicketType}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="AddZone">Add New Zones</SelectItem>
+                            <SelectItem value="General">General Question</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Description</label>
+                    <Textarea value={newTicketDesc} onChange={(e) => setNewTicketDesc(e.target.value)} required />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Attachment</label>
+                    <Input type="file" accept=".csv" onChange={handleFileChange} className="text-xs" />
+                </div>
                 <div className="flex gap-2 pt-4">
-                  <Button type="submit" className="flex-1 bg-purple-600">Submit</Button>
-                  <Button type="button" variant="outline" onClick={() => { setIsCreating(false); setAttachedFile(null); }}>Cancel</Button>
+                  <Button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700">Submit</Button>
+                  <Button type="button" variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
                 </div>
               </form>
             </CardContent>

@@ -22,11 +22,11 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
     if (stored) {
       try { 
         localUser = JSON.parse(stored); 
-        // 🛡️ REVERTED: Only allow 'admin' role. Managers are now restricted.
         const role = localUser.role ? localUser.role.toLowerCase() : '';
-        if (role === 'admin') {
+        
+        // 🟢 FIX: Allow both 'admin' AND 'manager'
+        if (['admin', 'manager'].includes(role)) {
           setAuthorized(true);
-          // We don't set loading to false here; we wait for the DB to confirm
         }
       } catch (e) {
         console.error("Local session corrupt");
@@ -36,7 +36,6 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
     // 2. Secure Verification: Firestore (Single Source of Truth)
     const verifyAccess = async (uid: string) => {
       try {
-        // Use username if using document-id login, otherwise use uid
         const docId = localUser?.username || uid; 
         if (!docId) {
           setLoading(false);
@@ -46,13 +45,13 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
         const userDoc = await getDoc(doc(db, 'users', docId));
         if (userDoc.exists()) {
           const userData = userDoc.data();
-          // 🛡️ STANDARDIZED: Role must be lowercase 'admin'
           const role = userData?.role?.toLowerCase(); 
 
-          if (role === 'admin') {
+          // 🟢 FIX: Allow both 'admin' AND 'manager'
+          if (['admin', 'manager'].includes(role)) {
             setAuthorized(true);
           } else {
-            setAuthorized(false); // Immediate revoke if DB role changed
+            setAuthorized(false); 
           }
         } else {
           setAuthorized(false);
@@ -89,7 +88,7 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
     );
   }
 
-  // Access Denied State (For Managers or Agents)
+  // Access Denied State (For regular Agents or unknown roles)
   if (!authorized) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-slate-100 p-6 text-center">
@@ -99,7 +98,7 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
             </div>
             <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Restricted Area</h1>
             <p className="text-slate-500 mt-3 mb-8 text-sm leading-relaxed">
-                This sector is reserved for <strong>System Administrators</strong> only. Your current clearance level does not grant access.
+                This sector is reserved for <strong>Admins & Managers</strong> only. Your current clearance level does not grant access.
             </p>
             <button 
               onClick={() => router.push('/dashboard')} 
@@ -112,7 +111,7 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
     );
   }
 
-  // Authorized Admin View
+  // Authorized View
   return (
     <div className="flex flex-col h-full bg-slate-50 min-h-screen">
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">

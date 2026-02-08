@@ -1,18 +1,18 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react'; // <--- 1. Added useRef
 import Papa from 'papaparse';
 import * as turf from '@turf/turf';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UploadCloud, Layers, AlertTriangle, CheckCircle, Loader2, Map as MapIcon, Table as TableIcon, GitCompare, ZoomIn } from 'lucide-react';
+import { UploadCloud, Layers, AlertTriangle, CheckCircle, Loader2, Map as MapIcon, Table as TableIcon, GitCompare, ZoomIn, Trash2 } from 'lucide-react'; // <--- Added Trash2
 import dynamic from 'next/dynamic';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { useMap } from 'react-leaflet'; // This will work because the parent is client-side
+import { useMap } from 'react-leaflet'; 
 
 // Dynamic Leaflet
 const MapContainer = dynamic(() => import('react-leaflet').then(m => m.MapContainer), { ssr: false });
@@ -42,7 +42,6 @@ interface OverlapResult {
 }
 
 // 🧠 INTERNAL COMPONENT: Zoom Handler
-// Must be a child of MapContainer to access the map instance
 function MapController({ target }: { target: [number, number] | null }) {
     const map = useMap(); 
     useEffect(() => {
@@ -64,8 +63,11 @@ export default function TopologyCheckPage() {
   const [compareMode, setCompareMode] = useState(false);
   const [activeTab, setActiveTab] = useState("map");
   
-  // State to trigger map zoom
   const [zoomTarget, setZoomTarget] = useState<[number, number] | null>(null);
+
+  // 2. REFS FOR INPUTS (To clear them programmatically)
+  const fileInputARef = useRef<HTMLInputElement>(null);
+  const fileInputBRef = useRef<HTMLInputElement>(null);
 
   // Initial Bounds
   const mapBounds = useMemo(() => {
@@ -77,6 +79,19 @@ export default function TopologyCheckPage() {
         return [[bbox[1], bbox[0]], [bbox[3], bbox[2]]] as any;
     } catch { return null; }
   }, [dataA, dataB, compareMode]);
+
+  // 3. THE CLEAR FUNCTION
+  const handleClearMap = () => {
+    // A. Reset Data States
+    setDataA([]);
+    setDataB([]);
+    setOverlaps([]);
+    setInvalidPolys([]);
+    
+    // B. Reset File Inputs (Crucial to allow re-uploading same file)
+    if (fileInputARef.current) fileInputARef.current.value = "";
+    if (fileInputBRef.current) fileInputBRef.current.value = "";
+  };
 
   const parseFile = (file: File, target: 'A' | 'B') => {
     Papa.parse(file, {
@@ -201,7 +216,15 @@ export default function TopologyCheckPage() {
                     <div className="border-dashed border-2 p-4 rounded-lg bg-blue-50/50 hover:bg-blue-50 transition relative text-center">
                         <UploadCloud className="h-6 w-6 mx-auto text-blue-400 mb-1" />
                         <span className="text-xs font-bold text-blue-700">Select CSV</span>
-                        <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && parseFile(e.target.files[0], 'A')} className="absolute inset-0 opacity-0 cursor-pointer" />
+                        
+                        {/* 4. ATTACH REF TO INPUT A */}
+                        <input 
+                            ref={fileInputARef}
+                            type="file" 
+                            accept=".csv" 
+                            onChange={e => e.target.files?.[0] && parseFile(e.target.files[0], 'A')} 
+                            className="absolute inset-0 opacity-0 cursor-pointer" 
+                        />
                     </div>
                     {dataA.length > 0 && <div className="text-xs text-center font-mono text-green-600">Loaded {dataA.length} zones</div>}
                 </div>
@@ -212,15 +235,36 @@ export default function TopologyCheckPage() {
                         <div className="border-dashed border-2 p-4 rounded-lg bg-orange-50/50 hover:bg-orange-50 transition relative text-center">
                             <UploadCloud className="h-6 w-6 mx-auto text-orange-400 mb-1" />
                             <span className="text-xs font-bold text-orange-700">Select CSV</span>
-                            <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && parseFile(e.target.files[0], 'B')} className="absolute inset-0 opacity-0 cursor-pointer" />
+                            
+                            {/* 4. ATTACH REF TO INPUT B */}
+                            <input 
+                                ref={fileInputBRef}
+                                type="file" 
+                                accept=".csv" 
+                                onChange={e => e.target.files?.[0] && parseFile(e.target.files[0], 'B')} 
+                                className="absolute inset-0 opacity-0 cursor-pointer" 
+                            />
                         </div>
                         {dataB.length > 0 && <div className="text-xs text-center font-mono text-green-600">Loaded {dataB.length} zones</div>}
                     </div>
                 )}
 
-                <Button onClick={runDiagnostics} disabled={checking || dataA.length === 0} className="w-full bg-slate-900 hover:bg-slate-800">
-                    {checking ? <Loader2 className="animate-spin h-4 w-4" /> : "Run Diagnostics"}
-                </Button>
+                <div className="space-y-3 pt-2">
+                    <Button onClick={runDiagnostics} disabled={checking || dataA.length === 0} className="w-full bg-slate-900 hover:bg-slate-800">
+                        {checking ? <Loader2 className="animate-spin h-4 w-4" /> : "Run Diagnostics"}
+                    </Button>
+
+                    {/* 5. NEW CLEAR BUTTON */}
+                    {(dataA.length > 0 || dataB.length > 0) && (
+                        <Button 
+                            variant="ghost" 
+                            onClick={handleClearMap} 
+                            className="w-full text-red-500 hover:text-red-700 hover:bg-red-50"
+                        >
+                            <Trash2 className="h-4 w-4 mr-2" /> Clear Map Data
+                        </Button>
+                    )}
+                </div>
 
                 {(overlaps.length > 0 || invalidPolys.length > 0) && (
                     <div className="bg-red-50 p-3 rounded text-xs space-y-1 border border-red-100">

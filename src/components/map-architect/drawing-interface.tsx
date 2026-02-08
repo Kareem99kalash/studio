@@ -41,6 +41,9 @@ interface VertexCacheItem {
 let CURRENT_SNAP: L.LatLng | null = null;
 
 export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
+  // 1. FIX: Use a Ref for the container to prevent "Map container not found" errors
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.FeatureGroup | null>(null);
   const snapLayerRef = useRef<L.LayerGroup | null>(null);
@@ -52,6 +55,14 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
   const [statusMsg, setStatusMsg] = useState<string>('Ready');
   const [isSatellite, setIsSatellite] = useState(false);
   const [isHudCollapsed, setIsHudCollapsed] = useState(false);
+
+  // 2. FIX: Create refs for state so the Map Event Listeners can read the *current* value
+  // (Otherwise they only ever see the initial 'true' value from the first render)
+  const snapToRoadsRef = useRef(snapToRoads);
+  const snapToVerticesRef = useRef(snapToVertices);
+
+  useEffect(() => { snapToRoadsRef.current = snapToRoads; }, [snapToRoads]);
+  useEffect(() => { snapToVerticesRef.current = snapToVertices; }, [snapToVertices]);
 
   // --- 1. Vertex Caching ---
   const rebuildVertexCache = useCallback(() => {
@@ -89,59 +100,48 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
 
     try {
         // Get coordinates from the drawing
-        // Handle potential nested array from Leaflet
         const latlngs = layer.getLatLngs();
         const rawCoords = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs) as L.LatLng[];
         
         const points = rawCoords.map(p => ({ lat: p.lat, lng: p.lng }));
         
-        if (snapToRoads && points.length > 2) {
+        // FIX: Use the ref here to check the REAL current setting
+        if (snapToRoadsRef.current && points.length > 2) {
             
-            // PREPARE REQUESTS IN PARALLEL (Fixes Slowness)
+            // PREPARE REQUESTS IN PARALLEL
             const segmentPromises = points.map((start, i) => {
-                const end = points[(i + 1) % points.length]; // Wrap to start
+                const end = points[(i + 1) % points.length]; 
                 const dist = L.latLng(start).distanceTo(L.latLng(end));
                 
-                // OPTIMIZATION:
-                // 1. Skip tiny segments (<10m) - just use straight line
-                // 2. Skip huge segments (>2km) - assume it's a cross-city line not a road
                 if (dist < 10 || dist > 2000) {
                     return Promise.resolve([start]); 
                 }
 
-                // CRITICAL: Use 'walking' profile to ignore one-ways and U-turn restrictions
                 return fetch(`https://router.project-osrm.org/route/v1/walking/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`)
                     .then(res => res.json())
                     .then(data => {
                         if (data.code === 'Ok' && data.routes?.[0]) {
                             const routeDist = data.routes[0].distance;
                             
-                            // SANITY CHECK: 
-                            // If AI route is > 50% longer than straight line, it's a detour. REJECT IT.
+                            // SANITY CHECK
                             if (routeDist > dist * 1.5) {
-                                return [start]; // Keep straight line
+                                return [start]; 
                             }
                             
-                            // Return the curvy road points
-                            // We map them to Leaflet LatLng objects
                             return data.routes[0].geometry.coordinates.map((c: any) => L.latLng(c[1], c[0]));
                         }
                         return [start];
                     })
-                    .catch(() => [start]); // Fallback on error
+                    .catch(() => [start]); 
             });
 
-            // EXECUTE ALL AT ONCE
             const results = await Promise.all(segmentPromises);
             
-            // FLATTEN RESULTS INTO ONE SMOOTH PATH
             const smartPath: L.LatLng[] = [];
             results.forEach(segmentPoints => {
-                // We add all points from the segment
                 smartPath.push(...segmentPoints);
             });
 
-            // Update Layer with new curvy path
             layer.setLatLngs(smartPath);
         }
     } catch (e) {
@@ -153,11 +153,10 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
     finalFeature.properties = {
         name,
         id: `z_${Date.now()}`,
-        mode: snapToRoads ? 'AI_ASSISTED' : 'MANUAL',
+        mode: snapToRoadsRef.current ? 'AI_ASSISTED' : 'MANUAL',
         timestamp: new Date().toISOString()
     };
     
-    // Refresh Map Data
     layersRef.current?.removeLayer(layer);
     L.geoJSON(finalFeature, {
         onEachFeature: (f, l) => { if (l instanceof L.Polygon) layersRef.current?.addLayer(l); }
@@ -173,10 +172,14 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    import('leaflet-draw').then(() => {
-      if (mapRef.current) return;
+    // FIX: Guard clause - ensure container exists before loading map
+    if (mapRef.current || !mapContainerRef.current) return;
 
-      const map = L.map('studio-canvas', { zoomControl: false } as any).setView([36.1911, 44.0092], 13);
+    import('leaflet-draw').then(() => {
+      // FIX: Use the ref instead of string ID
+      if (!mapContainerRef.current) return;
+
+      const map = L.map(mapContainerRef.current, { zoomControl: false } as any).setView([36.1911, 44.0092], 13);
       const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
       const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
       
@@ -226,7 +229,9 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
 
       map.on('mousemove', (e: L.LeafletMouseEvent) => {
         CURRENT_SNAP = null;
-        if (vertexCacheRef.current.length > 0) {
+        
+        // FIX: Check Vertex Snap Ref
+        if (snapToVerticesRef.current && vertexCacheRef.current.length > 0) {
           let nearestDist = Infinity;
           let nearestV: VertexCacheItem | null = null;
           for (const v of vertexCacheRef.current) {
@@ -241,7 +246,9 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
             return;
           }
         }
-        if (snapToRoads) fetchRoadSnap(e.latlng.lat, e.latlng.lng);
+        
+        // FIX: Check Road Snap Ref
+        if (snapToRoadsRef.current) fetchRoadSnap(e.latlng.lat, e.latlng.lng);
       });
 
       map.on('draw:drawvertex', (e: any) => {
@@ -257,7 +264,8 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
       // --- Polygon Created ---
       map.on(L.Draw.Event.CREATED, async (e: any) => {
         const layer = e.layer;
-        const name = prompt("Zone Name:") || `Zone_${Date.now().toString().slice(-4)}`;
+        // Use standard window.prompt
+        const name = window.prompt("Zone Name:") || `Zone_${Date.now().toString().slice(-4)}`;
         layersRef.current?.addLayer(layer);
         
         // AUTO-SNAP TRIGGER
@@ -282,7 +290,8 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
 
   return (
     <div className="h-full w-full relative group">
-      <div id="studio-canvas" className="h-full w-full cursor-crosshair z-0" />
+      {/* 3. FIX: Attach the ref to the div and remove the ID */}
+      <div ref={mapContainerRef} className="h-full w-full cursor-crosshair z-0" />
       
       {/* HUD Panel */}
       <div className={`absolute top-4 right-4 z-[1000] bg-white rounded-2xl shadow-xl p-2 transition-all duration-300 border border-slate-200 ${isHudCollapsed ? 'w-12 h-12 overflow-hidden' : 'w-64'}`}>
@@ -315,8 +324,8 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
       </button>
 
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] bg-slate-900/90 backdrop-blur text-white px-6 py-2 rounded-full shadow-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-3 border border-slate-700">
-         <div className={`w-2 h-2 rounded-full ${statusMsg.includes('overlap') ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
-         {statusMsg}
+          <div className={`w-2 h-2 rounded-full ${statusMsg.includes('overlap') ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+          {statusMsg}
       </div>
       
       {isProcessing && (
