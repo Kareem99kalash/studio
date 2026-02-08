@@ -1,6 +1,5 @@
 'use client';
 
-import { NotificationBell } from '@/components/dashboard/notification-bell';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Link from "next/link";
@@ -26,20 +25,16 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { NotificationBell } from '@/components/dashboard/notification-bell';
 
 // --- NAVIGATION CONFIG ---
+// We map permissions to links here. 
+// "System Admin" will automatically override these checks.
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
   { label: 'User Roles', href: '/dashboard/user-management', icon: Users, permission: 'manage_users' },
@@ -76,9 +71,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setUser(parsedUser);
       setIsAuth(true);
 
-      const userRef = doc(db, 'users', parsedUser.uid);
+      // Real-time listener: Updates permissions instantly if changed in DB
+      // We use the username as the document ID
+      const userRef = doc(db, 'users', parsedUser.uid || parsedUser.username);
       const unsub = onSnapshot(userRef, (docSnap) => {
         if (!docSnap.exists()) {
+          // If user is deleted from DB, log them out
           localStorage.removeItem('geo_user');
           window.location.href = '/'; 
         } else {
@@ -97,35 +95,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, []);
 
-  // --- 2. PERMISSION CHECKER ---
+  // --- 2. PERMISSION CHECKER (THE KEY LOGIC) ---
   const hasAccess = (permissionKey: string) => {
     if (!user) return false;
     
-    // Always allow dashboard
-    if (permissionKey === 'view_dashboard') return true;
-
-    // Granular Check
-    if (user.permissions && typeof user.permissions[permissionKey] !== 'undefined') {
-      return user.permissions[permissionKey];
-    }
-
-    // Role Fallback
-    const role = (user.role || '').toLowerCase();
-    if (role === 'admin' || role === 'super_admin') return true;
-    if (role === 'manager') {
-      if (permissionKey === 'manage_users' || permissionKey === 'access_admin_tools') return false;
+    // 👑 MASTER OVERRIDE: If role is 'admin', allow EVERYTHING.
+    if (user.role === 'admin' || user.role === 'super_admin') {
       return true;
     }
-    if (role === 'agent') {
-      if (permissionKey === 'view_dashboard' || permissionKey === 'view_tickets') return true;
-      return false;
+
+    // Always allow dashboard for basic users
+    if (permissionKey === 'view_dashboard') return true;
+
+    // Standard Check: Does the user have the specific checkbox ticked?
+    if (user.permissions && user.permissions[permissionKey] === true) {
+      return true;
     }
+
     return false;
   };
 
   // --- 3. TICKET COUNTER ---
   useEffect(() => {
     if (!isAuth) return;
+    // Only check tickets if they have access
     if (!hasAccess('view_tickets')) return;
 
     const q = query(
@@ -193,13 +186,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-lg text-white leading-none tracking-tight">GeoCoverage</span>
-              <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Pro Admin</span>
+              <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                 {user.role === 'admin' ? 'System Administrator' : 'Workspace'}
+              </span>
             </div>
           </Link>
 
           {/* DESKTOP NAV LINKS */}
           <nav className="hidden lg:flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
+              // Hide link if no access
               if (!hasAccess(item.permission)) return null;
               
               const isActive = pathname === item.href;
@@ -282,7 +278,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {user.username}
                   </p>
                   <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 group-hover:text-blue-400 transition-colors">
-                    {user.role?.replace('_', ' ') || 'User'}
+                    {user.role === 'admin' ? 'Admin' : user.role || 'User'}
                   </p>
                 </div>
                 <Avatar className="h-9 w-9 border-2 border-slate-700 group-hover:border-blue-500 transition-colors">
@@ -304,7 +300,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div>
                   <h4 className="font-bold text-slate-800 text-sm">{user.username}</h4>
                   <Badge variant="secondary" className="mt-1 bg-slate-200 text-slate-600 text-[10px] uppercase">
-                    {user.role?.replace('_', ' ') || 'Custom Role'}
+                    {user.role === 'admin' ? 'System Administrator' : user.role || 'Custom Role'}
                   </Badge>
                 </div>
               </div>

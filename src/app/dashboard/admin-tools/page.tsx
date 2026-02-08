@@ -13,13 +13,13 @@ import {
   Wrench, 
   Loader2, 
   ShieldAlert,
-  Bell // <-- Added Bell import
+  Bell
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-// 🛠️ TOOL CONFIGURATION WITH GRANULAR PERMISSIONS
+// 🛠️ UPDATED CONFIGURATION WITH GRANULAR KEYS
 const tools = [
   {
     title: "Batch Coverage Processor",
@@ -28,7 +28,7 @@ const tools = [
     href: "/dashboard/admin-tools/batch-processor",
     color: "text-blue-500",
     bg: "bg-blue-50",
-    requiredPermission: 'manage_cities', // Needed to edit city data
+    requiredPermission: 'tool_batch', // Updated Key
     locked: false
   },
   {
@@ -38,7 +38,7 @@ const tools = [
     href: "/dashboard/admin-tools/topology-check",
     color: "text-orange-500",
     bg: "bg-orange-50",
-    requiredPermission: 'manage_cities', 
+    requiredPermission: 'tool_topology', // Updated Key
     locked: false
   },
   {
@@ -48,18 +48,18 @@ const tools = [
     href: "/dashboard/admin-tools/map-architect",
     color: "text-purple-500",
     bg: "bg-purple-50",
-    requiredPermission: 'manage_cities', 
+    requiredPermission: 'tool_maps', // Updated Key
     locked: false
   },
   {
     title: "Team Access Manager",
     description: "Promote staff to Admins. Restricts deletion of Super Admin accounts.",
     icon: Users,
-    href: "/dashboard/admin-tools/team-manager",
+    href: "/dashboard/admin-tools/access-control", 
     color: "text-indigo-500",
     bg: "bg-indigo-50",
-    requiredPermission: 'manage_users', // 🔒 Only for User Managers
-    locked: true // Example visual lock for demo
+    requiredPermission: 'tool_users', // Updated Key
+    locked: false 
   },
   {
     title: "Coordinate Flipper",
@@ -68,7 +68,7 @@ const tools = [
     href: "/dashboard/admin-tools/coord-flipper",
     color: "text-emerald-500",
     bg: "bg-emerald-50",
-    requiredPermission: 'manage_cities', 
+    requiredPermission: 'tool_coords', // Updated Key
     locked: false
   },
   {
@@ -78,7 +78,7 @@ const tools = [
     href: "/dashboard/admin-tools/notifications",
     color: "text-pink-500",
     bg: "bg-pink-50",
-    requiredPermission: 'access_admin_tools', 
+    requiredPermission: 'tool_broadcast', // Updated Key
     locked: false
   }
 ];
@@ -100,8 +100,15 @@ export default function AdminUtilitiesPage() {
   }, [router]);
 
   // 1. GLOBAL PAGE GUARD
-  // Does the user have general access to this area?
-  const canAccessPage = user?.permissions?.access_admin_tools || user?.role === 'admin' || user?.role === 'super_admin';
+  // Access is granted if they are Admin OR have explicit access to ANY of the tools
+  const canAccessPage = (() => {
+      if (!user) return false;
+      if (user.role === 'admin' || user.role === 'super_admin') return true;
+      if (user.permissions?.access_admin_tools) return true; // Generic Gate
+
+      // Granular Check: Do they have AT LEAST ONE tool permission?
+      return tools.some(t => user.permissions?.[t.requiredPermission] === true);
+  })();
 
   if (loading) {
     return (
@@ -112,7 +119,6 @@ export default function AdminUtilitiesPage() {
   }
 
   // 2. RESTRICTED UI
-  // If they don't have the 'access_admin_tools' permission, block the whole page
   if (!canAccessPage) {
     return (
       <div className="h-[80vh] w-full flex items-center justify-center">
@@ -127,9 +133,8 @@ export default function AdminUtilitiesPage() {
   }
 
   // 3. ITEM CHECKER
-  // Helper to check individual tool permissions
   const canSeeTool = (toolPermission: string) => {
-    if (user?.role === 'admin' || user?.role === 'super_admin') return true; // Admin overrides
+    if (user?.role === 'admin' || user?.role === 'super_admin') return true; 
     return user?.permissions?.[toolPermission] === true;
   };
 

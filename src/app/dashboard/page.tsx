@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search } from 'lucide-react';
+import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search, ScrollText } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -42,7 +42,10 @@ export default function DashboardPage() {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [rules, setRules] = useState({ green: 2, yellow: 5 });
+  
+  // Rules State
+  const [defaultRules, setDefaultRules] = useState({ green: 2, yellow: 5 });
+  const [activeSubRules, setActiveSubRules] = useState<any[]>([]);
 
   useEffect(() => { fetchCities(); }, []);
 
@@ -75,12 +78,20 @@ export default function DashboardPage() {
         setSelectedCity(city);
         setStores([]); 
         setAnalysisData(null); 
-        // Set default rules
+        
+        // 1. Set Default City Thresholds
         if (city.thresholds) {
-            setRules({
+            setDefaultRules({
                 green: Number(city.thresholds.green) || 2,
                 yellow: Number(city.thresholds.yellow) || 5
             });
+        }
+
+        // 2. Load Sub-Rules (Categories)
+        if (city.subThresholds && Array.isArray(city.subThresholds)) {
+            setActiveSubRules(city.subThresholds);
+        } else {
+            setActiveSubRules([]);
         }
     }
   };
@@ -93,7 +104,7 @@ export default function DashboardPage() {
           lat: '', 
           lng: '', 
           cityId: selectedCity?.id,
-          category: 'default' // Default category
+          category: 'default' // Default to city standard
       }]); 
   };
 
@@ -154,8 +165,10 @@ export default function DashboardPage() {
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             
-            // --- DETERMINE RULES FOR THIS STORE ---
-            let activeRules = rules; // Default to city main rules
+            // --- 🧠 DYNAMIC RULE ENGINE ---
+            // If the store has a specific category, use that rule. Otherwise, use City Default.
+            let activeRules = defaultRules; 
+            
             if (store.category && store.category !== 'default' && selectedCity.subThresholds) {
                 const customRule = selectedCity.subThresholds.find((r: any) => r.name === store.category);
                 if (customRule) {
@@ -167,6 +180,7 @@ export default function DashboardPage() {
             features.forEach((f: any) => {
                 const center = f.properties.centroid;
                 const roughDist = getRoughDistKm(storeObj.lat, storeObj.lng, center.lat, center.lng);
+                // Pre-filter extreme distances to save API calls
                 if (roughDist < 75) {
                     const kp = getZoneKeyPoints(storeObj, f); zoneMeta.push(kp); flatPoints.push(...kp.points); 
                 } else { zoneMeta.push({ id: f.properties.id || f.properties.name, name: f.properties.name, tooFar: true }); }
@@ -191,7 +205,7 @@ export default function DashboardPage() {
                 const points = [voteV1, voteV2, voteV3];
                 let greenCount = 0, yellowCount = 0;
                 
-                // USE ACTIVE RULES HERE
+                // USE THE DYNAMIC RULES FOR SCORING
                 points.forEach(dist => { if (dist <= activeRules.green) greenCount++; else if (dist <= activeRules.yellow) yellowCount++; });
                 
                 let status = 'out', color = '#ef4444';
@@ -210,6 +224,7 @@ export default function DashboardPage() {
                     finalAssignments[z.id] = {
                         name: z.name, id: z.id, status, fillColor: color, storeColor: '#ffffff',
                         storeId: store.id, storeName: store.name, distance: avgDist.toFixed(2),
+                        category: store.category, // Track which rule won
                         raw: { close: v1.toFixed(1), center: v2.toFixed(1), far: v3.toFixed(1) }
                     };
                 }
@@ -217,14 +232,14 @@ export default function DashboardPage() {
         });
         await Promise.all(storePromises);
         setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments });
-        toast({ title: "Analysis Success", description: "Coverage maps updated with category rules." });
+        toast({ title: "Analysis Complete", description: "Coverage calculated using selected city rules." });
     } catch (e) { toast({ variant: "destructive", title: "Error", description: "Analysis failed due to a network or OSRM timeout." }); } finally { setAnalyzing(false); }
   };
 
   const downloadCSV = () => {
       if (!analysisData?.assignments) return;
-      const rows = [['Zone ID', 'Zone Name', 'Assigned Hub', 'Avg Dist (KM)', 'Status']];
-      Object.values(analysisData.assignments).forEach((a: any) => rows.push([a.id, a.name, a.storeName, a.distance, a.status.toUpperCase()]));
+      const rows = [['Zone ID', 'Zone Name', 'Assigned Hub', 'Hub Rule', 'Avg Dist (KM)', 'Status']];
+      Object.values(analysisData.assignments).forEach((a: any) => rows.push([a.id, a.name, a.storeName, a.category, a.distance, a.status.toUpperCase()]));
       const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
       const link = document.createElement("a");
       link.setAttribute("href", encodeURI(csvContent));
@@ -274,12 +289,11 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* MAIN CONTAINER - FLUSH (No padding/gaps) */}
+      {/* MAIN CONTAINER */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* SIDEBAR - CONNECTED TO LEFT */}
+        {/* SIDEBAR CONFIGURATION */}
         <div className="w-[380px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20">
-            {/* Sidebar Header */}
             <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm">
                 <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Settings2 className="h-3 w-3" /> Configuration
@@ -312,32 +326,55 @@ export default function DashboardPage() {
 
                 <Separator className="bg-slate-200" />
 
-                {/* 2. SLA Config */}
+                {/* 2. Rules Visualization */}
                 <div className="space-y-4">
                     <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> SLA Thresholds (Default)
+                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> Coverage Rules (SLA)
                     </Label>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white p-3 rounded-lg border border-emerald-100 shadow-sm flex flex-col items-center gap-1">
-                            <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wider">Optimal</span>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-xl font-black text-emerald-600 tracking-tighter">{rules.green}</span>
-                                <span className="text-xs font-bold text-emerald-400">km</span>
-                            </div>
+                    
+                    {/* Default Rules */}
+                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-2">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <span className="text-[10px] font-black uppercase text-slate-500">City Default</span>
+                            <Badge variant="secondary" className="text-[9px] h-5">Standard</Badge>
                         </div>
-                        <div className="bg-white p-3 rounded-lg border border-amber-100 shadow-sm flex flex-col items-center gap-1">
-                            <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider">Warning</span>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-xl font-black text-amber-500 tracking-tighter">{rules.yellow}</span>
-                                <span className="text-xs font-bold text-amber-400">km</span>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-col items-center bg-emerald-50 rounded p-1">
+                                <span className="text-[9px] font-bold text-emerald-600">Optimal</span>
+                                <span className="text-xs font-black text-emerald-700">{defaultRules.green} km</span>
+                            </div>
+                            <div className="flex flex-col items-center bg-amber-50 rounded p-1">
+                                <span className="text-[9px] font-bold text-amber-600">Max Limit</span>
+                                <span className="text-xs font-black text-amber-700">{defaultRules.yellow} km</span>
                             </div>
                         </div>
                     </div>
+
+                    {/* Specialized Rules List (Dynamic) */}
+                    {activeSubRules.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
+                                <ScrollText className="h-3 w-3" /> Specialized Categories available
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {activeSubRules.map((rule, idx) => (
+                                    <div key={idx} className="bg-slate-100 border border-slate-200 rounded p-2 flex justify-between items-center">
+                                        <span className="text-xs font-bold text-slate-600">{rule.name}</span>
+                                        <div className="flex gap-2 text-[10px] font-mono">
+                                            <span className="text-emerald-600 font-bold">{rule.green}km</span>
+                                            <span className="text-slate-300">/</span>
+                                            <span className="text-amber-600 font-bold">{rule.yellow}km</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <Separator className="bg-slate-200" />
 
-                {/* 3. Hubs */}
+                {/* 3. Hubs Input */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
@@ -364,25 +401,25 @@ export default function DashboardPage() {
                             <div key={store.id} className="relative group bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:border-indigo-300 transition-all duration-200">
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-start">
-                                        <div className="flex items-center gap-2 w-full">
-                                            <div className="h-5 w-5 rounded bg-slate-100 flex items-center justify-center text-slate-500 text-[10px] font-black shrink-0">
-                                                {idx + 1}
+                                            <div className="flex items-center gap-2 w-full">
+                                                <div className="h-5 w-5 rounded bg-slate-100 flex items-center justify-center text-slate-500 text-[10px] font-black shrink-0">
+                                                    {idx + 1}
+                                                </div>
+                                                <Input 
+                                                    className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" 
+                                                    value={store.name} 
+                                                    onChange={e => updateStoreName(store.id, e.target.value)}
+                                                    placeholder="Node Name"
+                                                />
                                             </div>
-                                            <Input 
-                                                className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" 
-                                                value={store.name} 
-                                                onChange={e => updateStoreName(store.id, e.target.value)}
-                                                placeholder="Node Name"
-                                            />
-                                        </div>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" 
-                                            onClick={() => removeStore(store.id)}
-                                        >
-                                            <Trash2 className="h-3 w-3" />
-                                        </Button>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" 
+                                                onClick={() => removeStore(store.id)}
+                                            >
+                                                <Trash2 className="h-3 w-3" />
+                                            </Button>
                                     </div>
                                     
                                     {/* COORDINATES */}
@@ -396,25 +433,25 @@ export default function DashboardPage() {
                                         />
                                     </div>
 
-                                    {/* CATEGORY SELECTOR - ONLY IF SUB-RULES EXIST */}
-                                    {selectedCity?.subThresholds && selectedCity.subThresholds.length > 0 && (
-                                        <div className="pt-2 border-t border-slate-50 mt-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Rule:</span>
-                                                <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
-                                                    <SelectTrigger className="h-6 w-full text-[10px] border-slate-200 bg-slate-50">
-                                                        <SelectValue placeholder="Default" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="default">City Default</SelectItem>
-                                                        {selectedCity.subThresholds.map((r: any, i: number) => (
-                                                            <SelectItem key={i} value={r.name}>{r.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
+                                    {/* CATEGORY SELECTOR - Updated to use loaded rules */}
+                                    <div className="pt-2 border-t border-slate-50 mt-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">Service Rule:</span>
+                                            <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
+                                                <SelectTrigger className="h-6 w-full text-[10px] border-slate-200 bg-slate-50">
+                                                    <SelectValue placeholder="Default" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="default" className="text-xs font-bold">Standard (Default)</SelectItem>
+                                                    {activeSubRules.map((r: any, i: number) => (
+                                                        <SelectItem key={i} value={r.name} className="text-xs">
+                                                            {r.name} <span className="text-slate-400 ml-1">({r.green}/{r.yellow}km)</span>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -437,7 +474,7 @@ export default function DashboardPage() {
             </div>
         </div>
 
-        {/* MAIN CONTENT AREA - FLUSH RIGHT */}
+        {/* MAIN CONTENT AREA */}
         <div className="flex-1 bg-slate-100 overflow-hidden flex flex-col relative z-10">
             {!selectedCity ? (
                 <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50/50 gap-4">
@@ -506,6 +543,7 @@ export default function DashboardPage() {
                                                     <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
                                                         <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Zone Identifier</TableHead>
                                                         <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Assigned Node</TableHead>
+                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Applied Rule</TableHead>
                                                         <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Distance (Avg)</TableHead>
                                                         <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10 text-right">Coverage Status</TableHead>
                                                     </TableRow>
@@ -519,6 +557,7 @@ export default function DashboardPage() {
                                                                     {row.storeName}
                                                                 </Badge>
                                                             </TableCell>
+                                                            <TableCell className="text-[10px] font-mono text-slate-400">{row.category || 'Standard'}</TableCell>
                                                             <TableCell className="text-xs font-mono font-bold text-slate-500">{row.distance} km</TableCell>
                                                             <TableCell className="text-right">
                                                               <Badge className={`${
