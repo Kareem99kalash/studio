@@ -38,22 +38,17 @@ import {
   X,
   Wrench,
   Eye,
-  EyeOff,
-  ChevronDown,
-  ChevronUp
+  EyeOff
 } from 'lucide-react';
 
-// --- CONFIGURATION: PRESETS ---
-// These are the "Easy Mode" roles that hide the complexity
+// --- CONFIGURATION ---
 const ROLE_PRESETS: Record<string, string[]> = {
   'viewer': ['view_dashboard', 'view_cities', 'view_tickets'],
   'analyst': ['view_dashboard', 'view_cities', 'view_tickets', 'tool_topology', 'tool_maps', 'tool_coords'],
   'manager': ['view_dashboard', 'view_audit', 'view_cities', 'view_tickets', 'create_tickets', 'manage_tickets', 'manage_cities', 'tool_batch'],
-  'admin': [] // Admin gets wildcard access
+  'admin': [] 
 };
 
-// --- CONFIGURATION: PERMISSIONS ---
-// These only show up if you select "Custom"
 const PERMISSION_GROUPS = [
   {
     category: "General Access",
@@ -106,12 +101,12 @@ export default function UserManagementPage() {
   // CREATE FORM STATE
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false); // Toggle visibility
+  const [showPassword, setShowPassword] = useState(false); 
   const [createGroup, setCreateGroup] = useState('');
-  const [createRole, setCreateRole] = useState('viewer'); // Default to simple role
+  const [createRole, setCreateRole] = useState('viewer'); 
   const [createPermissions, setCreatePermissions] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false); // Controls "Custom" view
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // GROUP FORM STATE
   const [newGroupName, setNewGroupName] = useState('');
@@ -148,6 +143,21 @@ export default function UserManagementPage() {
     fetchData();
   }, [toast]);
 
+  // --- 📝 LOGGING HELPER ---
+  const logActivity = async (action: string, details: string) => {
+    try {
+        await addDoc(collection(db, 'audit_logs'), {
+            timestamp: new Date().toISOString(),
+            user: currentUser?.username || 'System',
+            action: action,
+            details: details,
+            userAgent: navigator.userAgent
+        });
+    } catch (e) {
+        console.error("Failed to log activity", e);
+    }
+  };
+
   // --- HANDLERS ---
   
   const handleCreateGroup = async () => {
@@ -159,6 +169,10 @@ export default function UserManagementPage() {
         createdBy: currentUser?.username
       });
       setGroups([...groups, { id: docRef.id, name: newGroupName.trim() }]);
+      
+      // LOG IT
+      await logActivity('Create Group', `Created new group: ${newGroupName.trim()}`);
+      
       setNewGroupName('');
       toast({ title: "Group Created" });
     } catch (e) {
@@ -171,6 +185,10 @@ export default function UserManagementPage() {
     try {
       await deleteDoc(doc(db, 'agent_groups', groupId));
       setGroups(groups.filter(g => g.id !== groupId));
+      
+      // LOG IT
+      await logActivity('Delete Group', `Deleted group ID: ${groupId}`);
+      
       toast({ title: "Group Deleted" });
     } catch (e) { toast({ variant: "destructive", title: "Error" }); }
   };
@@ -190,7 +208,6 @@ export default function UserManagementPage() {
       setCreatePermissions({});
     } else {
       setShowAdvanced(false);
-      // Auto-fill permissions based on preset
       const preset = ROLE_PRESETS[role] || [];
       const newPerms: Record<string, boolean> = {};
       preset.forEach(p => newPerms[p] = true);
@@ -221,11 +238,13 @@ export default function UserManagementPage() {
 
       await setDoc(userRef, newUser);
       
+      // LOG IT
+      await logActivity('Create User', `Created user ${cleanUsername} with role ${createRole}`);
+
       setUsers([...users, newUser]);
       setNewUsername('');
       setNewPassword('');
       setCreateGroup('');
-      // Reset to default safe state
       handleRoleChange('viewer');
       
       toast({ title: "User Created", description: `${cleanUsername} ready.` });
@@ -243,13 +262,16 @@ export default function UserManagementPage() {
     try {
       await deleteDoc(doc(db, 'users', targetUser.username));
       setUsers(users.filter(u => u.username !== targetUser.username));
+      
+      // LOG IT
+      await logActivity('Delete User', `Deleted user account: ${targetUser.username}`);
+
       toast({ title: "Deleted" });
     } catch (error) {
       toast({ variant: "destructive", title: "Error" });
     }
   };
 
-  // --- EDIT MODAL HANDLERS ---
   const openEditModal = (user: any) => {
     setEditingUser(user);
     setEditGroup(user.groupId || '');
@@ -278,6 +300,9 @@ export default function UserManagementPage() {
       }
 
       await updateDoc(userRef, updates);
+      
+      // LOG IT
+      await logActivity('Update User', `Updated profile for ${editingUser.username}. Role: ${editRole}`);
 
       setUsers(users.map(u => 
         u.username === editingUser.username ? { ...u, ...updates } : u
@@ -318,7 +343,6 @@ export default function UserManagementPage() {
             <CardContent>
               <form onSubmit={handleCreateUser} className="space-y-4">
                 
-                {/* 1. CREDENTIALS */}
                 <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
                    <div className="space-y-1">
                      <label className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
@@ -346,7 +370,6 @@ export default function UserManagementPage() {
                    </div>
                 </div>
 
-                {/* 2. GROUP ASSIGNMENT */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500 uppercase">Geographic Group</label>
                   <select className="w-full p-2 h-9 border rounded-md bg-white text-sm" value={createGroup} onChange={(e) => setCreateGroup(e.target.value)}>
@@ -355,7 +378,6 @@ export default function UserManagementPage() {
                   </select>
                 </div>
 
-                {/* 3. ROLE PRESETS (Clean UX) */}
                 <div className="space-y-1">
                    <label className="text-[10px] font-bold text-slate-500 uppercase">Role Template</label>
                    <select 
@@ -371,7 +393,6 @@ export default function UserManagementPage() {
                     </select>
                 </div>
 
-                {/* 4. ADVANCED SECTION (Only visible if Custom is selected) */}
                 {createRole === 'custom' && (
                     <div className="border rounded-lg p-2 bg-slate-50 animate-in fade-in zoom-in-95 duration-200">
                         <div className="flex items-center justify-between mb-2">
@@ -489,7 +510,6 @@ export default function UserManagementPage() {
                     </div>
 
                     <div className="p-6 overflow-y-auto flex-1">
-                      {/* TAB: GENERAL */}
                       <TabsContent value="general" className="space-y-4 mt-0">
                          <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
@@ -523,7 +543,6 @@ export default function UserManagementPage() {
                          </div>
                       </TabsContent>
 
-                      {/* TAB: PERMISSIONS */}
                       <TabsContent value="permissions" className="mt-0">
                          <div className="space-y-5">
                             {PERMISSION_GROUPS.map((group) => (
