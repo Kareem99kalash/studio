@@ -33,8 +33,6 @@ import { Badge } from '@/components/ui/badge';
 import { NotificationBell } from '@/components/dashboard/notification-bell';
 
 // --- NAVIGATION CONFIG ---
-// We map permissions to links here. 
-// "System Admin" will automatically override these checks.
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
   { label: 'User Roles', href: '/dashboard/user-management', icon: Users, permission: 'manage_users' },
@@ -52,6 +50,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAuth, setIsAuth] = useState(false);
   const [openTicketCount, setOpenTicketCount] = useState(0);
   
+  // Sidebar State (The "Curtain")
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -71,17 +72,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setUser(parsedUser);
       setIsAuth(true);
 
-      // Real-time listener: Updates permissions instantly if changed in DB
-      // We use the username as the document ID
       const userRef = doc(db, 'users', parsedUser.uid || parsedUser.username);
       const unsub = onSnapshot(userRef, (docSnap) => {
         if (!docSnap.exists()) {
-          // If user is deleted from DB, log them out
           localStorage.removeItem('geo_user');
           window.location.href = '/'; 
         } else {
              const data = docSnap.data();
-             // Sync Permissions if changed
              if (JSON.stringify(data.permissions) !== JSON.stringify(parsedUser.permissions) || data.role !== parsedUser.role) {
                  const updated = { ...parsedUser, ...data };
                  localStorage.setItem('geo_user', JSON.stringify(updated));
@@ -95,30 +92,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, []);
 
-  // --- 2. PERMISSION CHECKER (THE KEY LOGIC) ---
+  // Close sidebar on route change
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [pathname]);
+
+  // --- 2. PERMISSION CHECKER ---
   const hasAccess = (permissionKey: string) => {
     if (!user) return false;
-    
-    // 👑 MASTER OVERRIDE: If role is 'admin', allow EVERYTHING.
-    if (user.role === 'admin' || user.role === 'super_admin') {
-      return true;
-    }
-
-    // Always allow dashboard for basic users
+    if (user.role === 'admin' || user.role === 'super_admin') return true;
     if (permissionKey === 'view_dashboard') return true;
-
-    // Standard Check: Does the user have the specific checkbox ticked?
-    if (user.permissions && user.permissions[permissionKey] === true) {
-      return true;
-    }
-
+    if (user.permissions && user.permissions[permissionKey] === true) return true;
     return false;
   };
 
   // --- 3. TICKET COUNTER ---
   useEffect(() => {
     if (!isAuth) return;
-    // Only check tickets if they have access
     if (!hasAccess('view_tickets')) return;
 
     const q = query(
@@ -147,7 +137,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setIsSearchOpen(true);
   }, [searchQuery, user]);
 
-  // Close search on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
@@ -175,27 +164,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       
-      {/* TOP NAVIGATION BAR */}
+      {/* 🟢 TOP NAVIGATION BAR */}
       <header className="h-16 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-50 shadow-md">
         
-        {/* LEFT: LOGO & MENU LINKS */}
-        <div className="flex items-center gap-8">
+        {/* LEFT: HAMBURGER (Mobile) & LOGO */}
+        <div className="flex items-center gap-4">
+          
+          {/* Mobile Toggle Button (Only visible on small screens) */}
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="lg:hidden p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+
           <Link href="/dashboard" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors">
               <MapIcon className="h-5 w-5 text-white" />
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-lg text-white leading-none tracking-tight">GeoCoverage</span>
-              <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+              <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider hidden sm:block">
                  {user.role === 'admin' ? 'System Administrator' : 'Workspace'}
               </span>
             </div>
           </Link>
 
-          {/* DESKTOP NAV LINKS */}
-          <nav className="hidden lg:flex items-center gap-1">
+          {/* DESKTOP NAV LINKS (Hidden on small screens) */}
+          <nav className="hidden lg:flex items-center gap-1 ml-6">
             {NAV_ITEMS.map((item) => {
-              // Hide link if no access
               if (!hasAccess(item.permission)) return null;
               
               const isActive = pathname === item.href;
@@ -224,7 +221,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* RIGHT: SEARCH & PROFILE */}
         <div className="flex items-center gap-4">
           
-          {/* SEARCH BAR */}
+          {/* SEARCH BAR (Hidden on mobile) */}
           <div className="relative hidden md:block" ref={searchRef}>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
@@ -237,7 +234,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               />
             </div>
 
-            {/* SEARCH DROPDOWN */}
+            {/* SEARCH RESULTS DROPDOWN */}
             {isSearchOpen && (
               <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                 <div className="p-2">
@@ -340,6 +337,82 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         </div>
       </header>
+
+      {/* 🟢 SIDEBAR DRAWER (THE "CURTAIN" for Mobile) */}
+      {/* 1. Dark Backdrop */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] lg:hidden animate-in fade-in duration-200"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* 2. Sliding Panel */}
+      <div className={`
+        fixed top-0 left-0 h-full w-[280px] bg-white z-[70] shadow-2xl transform transition-transform duration-300 ease-in-out lg:hidden
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        {/* Mobile Header */}
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100 bg-slate-50">
+           <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <MapIcon className="h-5 w-5 text-white" />
+              </div>
+              <span className="font-bold text-lg text-slate-800 tracking-tight">GeoCoverage</span>
+           </div>
+           <button onClick={() => setIsSidebarOpen(false)} className="p-2 bg-white rounded-full shadow-sm text-slate-400 hover:text-red-500 transition-colors">
+              <X className="h-5 w-5" />
+           </button>
+        </div>
+
+        {/* Mobile Nav Links */}
+        <div className="p-4 space-y-2 overflow-y-auto">
+           {NAV_ITEMS.map((item) => {
+              if (!hasAccess(item.permission)) return null;
+              const isActive = pathname === item.href;
+              return (
+                <Link 
+                  key={item.href} 
+                  href={item.href}
+                  onClick={() => setIsSidebarOpen(false)} // Close on click
+                  className={`
+                    flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-bold transition-all
+                    ${isActive 
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-200' 
+                      : 'text-slate-600 hover:bg-slate-100'
+                    }
+                  `}
+                >
+                  <item.icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  {item.label}
+                  {item.label === 'Tickets' && openTicketCount > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 px-1.5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
+                      {openTicketCount}
+                    </span>
+                  )}
+                </Link>
+              )
+           })}
+        </div>
+
+        {/* Mobile User Info Footer */}
+        <div className="absolute bottom-6 left-0 w-full px-6">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center gap-3">
+                 <Avatar className="h-10 w-10">
+                    <AvatarFallback className="bg-blue-100 text-blue-700 font-bold">
+                        {user.username?.[0]?.toUpperCase()}
+                    </AvatarFallback>
+                 </Avatar>
+                 <div className="flex-1 overflow-hidden">
+                    <div className="font-bold text-sm text-slate-800 truncate">{user.username}</div>
+                    <Badge variant="outline" className="text-[10px] px-1 h-5 bg-white">{user.role}</Badge>
+                 </div>
+                 <button onClick={handleLogout} className="text-slate-400 hover:text-red-500">
+                    <LogOut className="h-5 w-5" />
+                 </button>
+            </div>
+        </div>
+      </div>
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 lg:p-8 animate-in fade-in duration-500">
