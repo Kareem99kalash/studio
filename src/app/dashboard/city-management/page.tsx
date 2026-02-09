@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Settings2, Loader2, UploadCloud, Save, X, Users, ShieldAlert, ChevronLeft } from 'lucide-react';
+import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { HelpGuide } from '@/components/dashboard/help-guide'; // <--- 1. IMPORTED GUIDE
 
 // --- ROBUST WKT PARSER ---
 const parseWKT = (wkt: string) => {
@@ -62,7 +63,7 @@ export default function CityManagementPage() {
       const hasViewAccess = parsedUser.permissions?.view_cities || parsedUser.role === 'admin' || parsedUser.role === 'manager';
       if (!hasViewAccess) {
         setLoading(false);
-        return; // Stop here, UI will render restricted view
+        return; 
       }
     }
     fetchData(); 
@@ -82,7 +83,6 @@ export default function CityManagementPage() {
   // 🛡️ 2. CHECK ACTION ACCESS
   const canManage = user?.permissions?.manage_cities || user?.role === 'admin';
 
-  // ... (Keep existing file handlers exactly as they were) ...
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -109,7 +109,7 @@ export default function CityManagementPage() {
   };
 
   const handleFinalSave = async () => {
-    if (!canManage) return; // Guard
+    if (!canManage) return; 
     if (!cityName.trim() || csvData.length === 0) return;
     setIsSaving(true);
     try {
@@ -199,6 +199,8 @@ export default function CityManagementPage() {
           <Card className="md:col-span-1 border-t-4 border-t-purple-600 shadow-md">
             <CardHeader><CardTitle>Add New City</CardTitle><CardDescription>Configure region and upload CSV.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
+              
+              {/* STEP 1 */}
               <div className={`p-3 rounded-lg border ${step === 1 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>1</Badge> Details</div>
                   {step === 1 && (
@@ -212,15 +214,41 @@ export default function CityManagementPage() {
                     </>
                   )}
               </div>
-              {/* ... (Step 2 & 3 kept simple for brevity, logic handles them) ... */}
+
+              {/* STEP 2 */}
               <div className={`p-3 rounded-lg border ${step === 2 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>2</Badge> Rules</div>
-                  {step === 2 && <><div className="grid grid-cols-2 gap-2 mb-2"><Input type="number" placeholder="G" value={thresholds.green} onChange={e => setThresholds({...thresholds, green: Number(e.target.value)})} /><Input type="number" placeholder="Y" value={thresholds.yellow} onChange={e => setThresholds({...thresholds, yellow: Number(e.target.value)})} /></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => setStep(1)}>Back</Button><Button size="sm" className="flex-1" onClick={() => setStep(3)}>Next</Button></div></>}
+                  {step === 2 && (
+                    <>
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                            <Input type="number" placeholder="G" value={thresholds.green} onChange={e => setThresholds({...thresholds, green: Number(e.target.value)})} />
+                            <Input type="number" placeholder="Y" value={thresholds.yellow} onChange={e => setThresholds({...thresholds, yellow: Number(e.target.value)})} />
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setStep(1)}>Back</Button>
+                            <Button size="sm" className="flex-1" onClick={() => setStep(3)}>Next</Button>
+                        </div>
+                    </>
+                  )}
               </div>
+
+              {/* STEP 3 (WITH HELP GUIDE) */}
               <div className={`p-3 rounded-lg border ${step === 3 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
-                  <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>3</Badge> Upload</div>
-                  {step === 3 && <><Input type="file" accept=".csv" onChange={handleFileLoad} /><Button className="w-full mt-2 bg-green-600" disabled={csvData.length === 0 || isSaving} onClick={handleFinalSave}>{isSaving ? <Loader2 className="animate-spin" /> : "Save"}</Button></>}
+                  <div className="flex items-center justify-between font-bold text-sm mb-2">
+                      <div className="flex items-center gap-2"><Badge>3</Badge> Upload</div>
+                      {/* 2. INSERTED GUIDE BUTTON HERE */}
+                      {step === 3 && <HelpGuide type="city-upload" />}
+                  </div>
+                  {step === 3 && (
+                    <>
+                        <Input type="file" accept=".csv" onChange={handleFileLoad} />
+                        <Button className="w-full mt-2 bg-green-600" disabled={csvData.length === 0 || isSaving} onClick={handleFinalSave}>
+                            {isSaving ? <Loader2 className="animate-spin" /> : "Save"}
+                        </Button>
+                    </>
+                  )}
               </div>
+
             </CardContent>
           </Card>
         )}
