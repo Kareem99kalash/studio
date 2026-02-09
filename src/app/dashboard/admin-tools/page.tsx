@@ -42,7 +42,7 @@ const tools = [
     locked: false
   },
   {
-    title: "Map Architect - In Development",
+    title: "Map Architect - Under Development",
     description: "Draw, snap, and auto-trim territories. A pro-version of Google My Maps, Tool is in Beta so It won't work properly",
     icon: MapIcon,
     href: "/dashboard/admin-tools/map-architect",
