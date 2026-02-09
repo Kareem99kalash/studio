@@ -344,13 +344,13 @@ export default function UserManagementPage() {
               <form onSubmit={handleCreateUser} className="space-y-4">
                 
                 <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                   <div className="space-y-1">
-                     <label className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
-                     <Input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-9 bg-white" />
-                   </div>
-                   <div className="space-y-1 relative">
-                     <label className="text-[10px] font-bold text-slate-500 uppercase">Password</label>
-                     <div className="relative">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
+                      <Input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-9 bg-white" />
+                    </div>
+                    <div className="space-y-1 relative">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Password</label>
+                      <div className="relative">
                         <Input 
                             type={showPassword ? "text" : "password"} 
                             value={newPassword} 
@@ -366,8 +366,8 @@ export default function UserManagementPage() {
                         >
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
-                     </div>
-                   </div>
+                      </div>
+                    </div>
                 </div>
 
                 <div className="space-y-1">
@@ -379,12 +379,12 @@ export default function UserManagementPage() {
                 </div>
 
                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-500 uppercase">Role Template</label>
-                   <select 
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Role Template</label>
+                    <select 
                       className="w-full p-2 h-9 border rounded-md bg-white text-sm font-medium text-slate-700 focus:ring-2 focus:ring-purple-500 outline-none" 
                       value={createRole} 
                       onChange={(e) => handleRoleChange(e.target.value)}
-                   >
+                    >
                       <option value="viewer">Viewer (Read-Only)</option>
                       <option value="analyst">Analyst (Maps & Tools)</option>
                       <option value="manager">Manager (Operations)</option>
@@ -436,7 +436,7 @@ export default function UserManagementPage() {
               <div className="flex gap-2"><Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-8 text-xs" /><Button size="sm" onClick={handleCreateGroup}><PlusCircle className="h-4 w-4" /></Button></div>
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {groups.map(g => (
-                   <div key={g.id} className="flex justify-between items-center p-1.5 px-3 bg-slate-50 rounded border text-xs"><span className="font-semibold text-slate-700">{g.name}</span><Button variant="ghost" size="icon" className="h-5 w-5 text-slate-400 hover:text-red-500" onClick={() => handleDeleteGroup(g.id)}><Trash2 className="h-3 w-3" /></Button></div>
+                    <div key={g.id} className="flex justify-between items-center p-1.5 px-3 bg-slate-50 rounded border text-xs"><span className="font-semibold text-slate-700">{g.name}</span><Button variant="ghost" size="icon" className="h-5 w-5 text-slate-400 hover:text-red-500" onClick={() => handleDeleteGroup(g.id)}><Trash2 className="h-3 w-3" /></Button></div>
                 ))}
               </div>
             </CardContent>
@@ -511,59 +511,60 @@ export default function UserManagementPage() {
 
                     <div className="p-6 overflow-y-auto flex-1">
                       <TabsContent value="general" className="space-y-4 mt-0">
-                         <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
-                            <Input 
+                          <div className="space-y-1">
+                             <label className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
+                             <Input 
                                type="password" 
-                               placeholder="Enter new password (leave blank to keep current)" 
                                value={editPassword} 
-                               onChange={(e) => setEditPassword(e.target.value)}
-                               className="border-yellow-200 focus:border-yellow-500"
-                            />
-                         </div>
+                               onChange={(e) => setEditPassword(e.target.value)} 
+                               autoComplete="new-password" 
+                               name="new-password-field" 
+                               placeholder="Set new password"
+                             />
+                          </div>
 
-                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                               <label className="text-xs font-bold text-slate-500 uppercase">Assigned Group</label>
-                               <select className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editGroup} onChange={(e) => setEditGroup(e.target.value)}>
-                                  <option value="">-- Global / None --</option>
-                                  {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                               </select>
-                            </div>
-                            <div className="space-y-1">
-                               <label className="text-xs font-bold text-slate-500 uppercase">Role Level</label>
-                               <select className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editRole} onChange={(e) => setEditRole(e.target.value)}>
-                                  <option value="custom">Custom Permissions</option>
-                                  <option value="viewer">Viewer</option>
-                                  <option value="analyst">Analyst</option>
-                                  <option value="manager">Manager</option>
-                                  <option value="admin">System Administrator</option>
-                               </select>
-                            </div>
-                         </div>
-                      </TabsContent>
+                          <div className="grid grid-cols-2 gap-4">
+                             <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Assigned Group</label>
+                                <select className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editGroup} onChange={(e) => setEditGroup(e.target.value)}>
+                                   <option value="">-- Global / None --</option>
+                                   {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                </select>
+                             </div>
+                             <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Role Level</label>
+                                <select className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+                                   <option value="custom">Custom Permissions</option>
+                                   <option value="viewer">Viewer</option>
+                                   <option value="analyst">Analyst</option>
+                                   <option value="manager">Manager</option>
+                                   <option value="admin">System Administrator</option>
+                                </select>
+                             </div>
+                          </div>
+                       </TabsContent>
 
-                      <TabsContent value="permissions" className="mt-0">
-                         <div className="space-y-5">
-                            {PERMISSION_GROUPS.map((group) => (
-                              <div key={group.category} className="space-y-2 border-b border-slate-100 pb-3 last:border-0">
-                                <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2"><group.icon className="h-4 w-4 text-slate-400" /> {group.category}</h4>
-                                <div className="grid grid-cols-2 gap-3 pl-2">
-                                  {group.actions.map((action) => (
-                                    <div key={action.id} className="flex items-center space-x-2">
-                                      <Checkbox 
-                                        id={`edit-${action.id}`} 
-                                        checked={editPermissions[action.id] || false} 
-                                        onCheckedChange={() => togglePermission(action.id, editPermissions, setEditPermissions)} 
-                                      />
-                                      <label htmlFor={`edit-${action.id}`} className="text-sm font-medium leading-none text-slate-600 cursor-pointer">{action.label}</label>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                         </div>
-                      </TabsContent>
+                       <TabsContent value="permissions" className="mt-0">
+                          <div className="space-y-5">
+                             {PERMISSION_GROUPS.map((group) => (
+                               <div key={group.category} className="space-y-2 border-b border-slate-100 pb-3 last:border-0">
+                                 <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2"><group.icon className="h-4 w-4 text-slate-400" /> {group.category}</h4>
+                                 <div className="grid grid-cols-2 gap-3 pl-2">
+                                   {group.actions.map((action) => (
+                                     <div key={action.id} className="flex items-center space-x-2">
+                                       <Checkbox 
+                                         id={`edit-${action.id}`} 
+                                         checked={editPermissions[action.id] || false} 
+                                         onCheckedChange={() => togglePermission(action.id, editPermissions, setEditPermissions)} 
+                                       />
+                                       <label htmlFor={`edit-${action.id}`} className="text-sm font-medium leading-none text-slate-600 cursor-pointer">{action.label}</label>
+                                     </div>
+                                   ))}
+                                 </div>
+                               </div>
+                             ))}
+                          </div>
+                       </TabsContent>
                     </div>
                  </Tabs>
               </CardContent>
