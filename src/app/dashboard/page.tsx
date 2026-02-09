@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { logActivity } from '@/lib/logger'; // <--- 1. NEW IMPORT
 
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
@@ -210,6 +211,19 @@ export default function DashboardPage() {
     if (validStores.length === 0) return toast({ variant: "destructive", title: "Invalid Data", description: "Ensure all branches have valid Lat, Lng coordinates." });
 
     setAnalyzing(true);
+    
+    // 2. LOG THE ACTIVITY
+    try {
+        const currentUser = JSON.parse(localStorage.getItem('geo_user') || '{}');
+        logActivity(
+            currentUser.username, 
+            'Tool Execution', 
+            `Ran coverage analysis for ${selectedCity.name} with ${validStores.length} hubs.`
+        );
+    } catch (e) {
+        console.error("Logging failed", e);
+    }
+
     try {
         const finalAssignments: Record<string, any> = {};
         const features = selectedCity.polygons.features.filter((f: any) => f.properties?.centroid);

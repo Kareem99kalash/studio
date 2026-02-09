@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, limit, getDocs } from 'firebase/firestore'; // Removed orderBy import
+import { collection, query, limit, getDocs, writeBatch, doc, orderBy } from 'firebase/firestore'; 
 import { db } from '@/firebase';
 import { 
   History, 
@@ -10,12 +10,16 @@ import {
   ShieldAlert, 
   Search, 
   Filter, 
-  Calendar
+  Trash2,
+  Calendar,
+  CheckSquare
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox'; // Ensure you have this component
+import { useToast } from '@/hooks/use-toast';
 import {
   Table,
   TableBody,
@@ -27,10 +31,19 @@ import {
 
 export default function AuditLogsPage() {
   const router = useRouter();
+  const { toast } = useToast();
+  
   const [user, setUser] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Filters
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+
+  // Selection & Actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const initPage = async () => {
@@ -54,23 +67,19 @@ export default function AuditLogsPage() {
         return;
       }
 
-      // 3. FETCH LOGS (FIXED)
+      // 3. FETCH LOGS
       try {
-        // We removed orderBy('timestamp') to prevent Firestore from hiding 
-        // documents that might use 'createdAt' or have missing fields.
+        // We fetch the last 200 logs to allow for client-side filtering
         const q = query(
           collection(db, 'audit_logs'), 
-          limit(50)
+          limit(200)
         );
         
         const snapshot = await getDocs(q);
         
-        // Process and Normalize Data
         const fetchedLogs = snapshot.docs.map(doc => {
             const data = doc.data();
-            // Fallback: Check multiple possible names for the date field
             const timeVal = data.timestamp || data.createdAt || data.date || new Date().toISOString();
-            
             return { 
                 id: doc.id, 
                 ...data, 
@@ -86,13 +95,78 @@ export default function AuditLogsPage() {
         setLogs(fetchedLogs);
       } catch (error) {
         console.error("Failed to load logs", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not load audit logs." });
       } finally {
         setLoading(false);
       }
     };
 
     initPage();
-  }, [router]);
+  }, [router, toast]);
+
+  // --- FILTERING LOGIC ---
+  const filteredLogs = logs.filter(log => {
+    // 1. Search Filter
+    const matchesSearch = 
+        (log.action && log.action.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (log.user && log.user.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (log.details && log.details.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    // 2. Date Filter (YYYY-MM-DD)
+    let matchesDate = true;
+    if (dateFilter) {
+        matchesDate = log.timestamp.startsWith(dateFilter);
+    }
+
+    return matchesSearch && matchesDate;
+  });
+
+  // --- SELECTION HANDLERS ---
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredLogs.length && filteredLogs.length > 0) {
+        setSelectedIds(new Set()); // Deselect All
+    } else {
+        setSelectedIds(new Set(filteredLogs.map(l => l.id))); // Select All Visible
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedIds(newSet);
+  };
+
+  // --- BULK DELETE ---
+  const handleDeleteSelected = async () => {
+    if (!isAdmin) return;
+    if (!confirm(`Permanently delete ${selectedIds.size} logs?`)) return;
+
+    setIsDeleting(true);
+    try {
+        const batch = writeBatch(db);
+        selectedIds.forEach(id => {
+            const ref = doc(db, 'audit_logs', id);
+            batch.delete(ref);
+        });
+
+        await batch.commit();
+
+        toast({ title: "Success", description: `Deleted ${selectedIds.size} logs.` });
+        
+        // Update Local State
+        setLogs(prev => prev.filter(l => !selectedIds.has(l.id)));
+        setSelectedIds(new Set());
+
+    } catch (e) {
+        console.error(e);
+        toast({ variant: "destructive", title: "Error", description: "Failed to delete logs." });
+    } finally {
+        setIsDeleting(false);
+    }
+  };
 
   // --- LOADING STATE ---
   if (loading) {
@@ -114,7 +188,6 @@ export default function AuditLogsPage() {
             <h2 className="text-2xl font-bold text-slate-800">Access Restricted</h2>
             <p className="text-slate-500 max-w-md">
                 Your account ({user?.username}) does not have permission to view system audit logs. 
-                Contact a System Administrator to request the <span className="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">view_audit</span> capability.
             </p>
         </div>
         <Button variant="outline" onClick={() => router.push('/dashboard')}>
@@ -124,15 +197,8 @@ export default function AuditLogsPage() {
     );
   }
 
-  // --- MAIN CONTENT ---
-  const filteredLogs = logs.filter(log => 
-    (log.action && log.action.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (log.user && log.user.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (log.details && log.details.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -140,30 +206,68 @@ export default function AuditLogsPage() {
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                 <History className="h-6 w-6 text-indigo-600" /> System Activity
             </h1>
-            <p className="text-slate-500 text-sm"> comprehensive log of all administrative actions.</p>
+            <p className="text-slate-500 text-sm">Comprehensive log of all administrative actions.</p>
         </div>
-        <div className="flex items-center gap-2">
+        
+        {/* FILTERS & ACTIONS */}
+        <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && selectedIds.size > 0 && (
+                <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    onClick={handleDeleteSelected} 
+                    disabled={isDeleting}
+                    className="mr-2 animate-in fade-in slide-in-from-right-4"
+                >
+                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                    Delete ({selectedIds.size})
+                </Button>
+            )}
+
+            <div className="relative">
+                <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Input 
+                    type="date"
+                    className="pl-9 w-[160px] bg-white text-xs font-bold uppercase text-slate-600 h-10"
+                    value={dateFilter}
+                    onChange={(e) => { setDateFilter(e.target.value); setSelectedIds(new Set()); }}
+                />
+            </div>
+
             <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                 <Input 
                     placeholder="Search logs..." 
-                    className="pl-9 w-[250px] bg-white" 
+                    className="pl-9 w-[200px] bg-white h-10" 
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => { setSearchTerm(e.target.value); setSelectedIds(new Set()); }}
                 />
             </div>
-            <Button variant="outline" size="icon">
-                <Filter className="h-4 w-4 text-slate-600" />
-            </Button>
+            
+            {(searchTerm || dateFilter) && (
+                <Button variant="ghost" size="icon" onClick={() => { setSearchTerm(''); setDateFilter(''); }} title="Clear Filters">
+                    <Filter className="h-4 w-4 text-red-400" />
+                </Button>
+            )}
         </div>
       </div>
 
       {/* LOGS TABLE */}
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="border-slate-200 shadow-sm overflow-hidden">
         <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <Table>
                 <TableHeader>
                     <TableRow className="bg-slate-50/50">
+                        {/* Checkbox Column (Admin Only) */}
+                        {isAdmin && (
+                            <TableHead className="w-[50px] text-center">
+                                <Checkbox 
+                                    checked={selectedIds.size === filteredLogs.length && filteredLogs.length > 0}
+                                    onCheckedChange={toggleSelectAll}
+                                />
+                            </TableHead>
+                        )}
                         <TableHead className="w-[180px]">Timestamp</TableHead>
                         <TableHead className="w-[150px]">User</TableHead>
                         <TableHead className="w-[150px]">Action</TableHead>
@@ -174,33 +278,51 @@ export default function AuditLogsPage() {
                 <TableBody>
                     {filteredLogs.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={5} className="h-32 text-center text-slate-400">
-                                No activity found.
+                            <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center text-slate-400">
+                                <div className="flex flex-col items-center gap-2">
+                                    <Search className="h-8 w-8 opacity-20" />
+                                    <span>No activity found matching filters.</span>
+                                </div>
                             </TableCell>
                         </TableRow>
                     ) : (
                         filteredLogs.map((log) => (
-                            <TableRow key={log.id} className="group hover:bg-slate-50 transition-colors">
-                                <TableCell className="font-mono text-xs text-slate-500">
+                            <TableRow 
+                                key={log.id} 
+                                className={`group hover:bg-slate-50 transition-colors ${selectedIds.has(log.id) ? 'bg-indigo-50/40' : ''}`}
+                            >
+                                {/* Checkbox Cell */}
+                                {isAdmin && (
+                                    <TableCell className="text-center">
+                                        <Checkbox 
+                                            checked={selectedIds.has(log.id)}
+                                            onCheckedChange={() => toggleSelect(log.id)}
+                                        />
+                                    </TableCell>
+                                )}
+
+                                <TableCell className="font-mono text-xs text-slate-500 whitespace-nowrap">
                                     <div className="flex items-center gap-2">
-                                        <Calendar className="h-3 w-3 opacity-50" />
-                                        {new Date(log.timestamp).toLocaleString()}
+                                        {new Date(log.timestamp).toLocaleString([], { 
+                                            year: 'numeric', month: 'short', day: '2-digit', 
+                                            hour: '2-digit', minute:'2-digit' 
+                                        })}
                                     </div>
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex items-center gap-2">
-                                        <div className="h-6 w-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700">
-                                            {log.user?.[0]?.toUpperCase() || 'S'}
+                                        <div className="h-6 w-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 uppercase">
+                                            {log.user?.[0] || '?'}
                                         </div>
                                         <span className="text-sm font-medium text-slate-700">{log.user || 'System'}</span>
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide bg-white">
+                                    <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide bg-white whitespace-nowrap">
                                         {log.action || 'Unknown'}
                                     </Badge>
                                 </TableCell>
-                                <TableCell className="text-sm text-slate-600 max-w-md truncate" title={log.details}>
+                                <TableCell className="text-xs text-slate-600 max-w-md truncate" title={log.details}>
                                     {log.details || '-'}
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -213,8 +335,13 @@ export default function AuditLogsPage() {
                     )}
                 </TableBody>
             </Table>
+            </div>
         </CardContent>
       </Card>
+      
+      <div className="text-right text-xs text-slate-400">
+          Showing {filteredLogs.length} records
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { MapPin, Loader2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { logActivity } from '@/lib/logger'; // <--- 1. NEW IMPORT
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -17,7 +18,9 @@ export default function LoginPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (localStorage.getItem('geo_user')) {
+    // Check if already logged in
+    const stored = localStorage.getItem('geo_user');
+    if (stored) {
       router.push('/dashboard');
     }
   }, [router]);
@@ -30,8 +33,6 @@ export default function LoginPage() {
 
     try {
       // 1. DIRECT DATABASE CHECK (Simple & Fast)
-      // We assume the Document ID IS the username (e.g., users/admin)
-      // This matches the "Create User" logic we wrote earlier.
       const cleanUser = username.toLowerCase().trim();
       const userRef = doc(db, 'users', cleanUser);
       const userSnap = await getDoc(userRef);
@@ -43,7 +44,6 @@ export default function LoginPage() {
       const userData = userSnap.data();
 
       // 2. PASSWORD CHECK
-      // In this simple mode, we compare the stored string directly.
       if (userData.password !== password) {
         throw new Error("Incorrect password.");
       }
@@ -57,6 +57,14 @@ export default function LoginPage() {
         roleGroup: userData.groupId || null
       };
 
+      // 4. LOG ACTIVITY (New Step)
+      // We log this BEFORE redirecting so the record is created.
+      await logActivity(
+        userData.username, 
+        'User Login', 
+        'Successful login session started.'
+      );
+
       localStorage.setItem('geo_user', JSON.stringify(sessionData));
       
       toast({ 
@@ -65,13 +73,15 @@ export default function LoginPage() {
         className: "bg-green-600 text-white border-none"
       });
 
+      // Use window.location for a hard refresh to ensure state is clean
       window.location.href = '/dashboard';
 
     } catch (err: any) {
+      console.error(err);
       toast({ 
         variant: "destructive", 
         title: "Login Failed", 
-        description: "Invalid credentials." 
+        description: "Invalid credentials or account issue." 
       });
       setLoading(false);
     }
@@ -95,13 +105,31 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">Username</label>
-              <Input type="text" placeholder="username" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" value={username} onChange={(e) => setUsername(e.target.value)} disabled={loading} />
+              <Input 
+                type="text" 
+                placeholder="username" 
+                className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" 
+                value={username} 
+                onChange={(e) => setUsername(e.target.value)} 
+                disabled={loading} 
+              />
             </div>
             <div className="space-y-2">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">Password</label>
-              <Input type="password" placeholder="••••••••" className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} />
+              <Input 
+                type="password" 
+                placeholder="••••••••" 
+                className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                disabled={loading} 
+              />
             </div>
-            <Button type="submit" className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2" disabled={loading}>
+            <Button 
+                type="submit" 
+                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2" 
+                disabled={loading}
+            >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <>Authenticate <ArrowRight className="ml-2 h-4 w-4" /></>}
             </Button>
           </form>
