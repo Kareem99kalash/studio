@@ -29,16 +29,15 @@ import {
   LayoutGrid,
   Ticket,
   Map as MapIcon,
-  Crown,
   Lock,
-  Users,
   PlusCircle,
   Pencil,
   Save,
   X,
   Wrench,
   Eye,
-  EyeOff
+  EyeOff,
+  Briefcase
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -46,7 +45,7 @@ const ROLE_PRESETS: Record<string, string[]> = {
   'viewer': ['view_dashboard', 'view_cities', 'view_tickets'],
   'analyst': ['view_dashboard', 'view_cities', 'view_tickets', 'tool_topology', 'tool_maps', 'tool_coords'],
   'manager': ['view_dashboard', 'view_audit', 'view_cities', 'view_tickets', 'create_tickets', 'manage_tickets', 'manage_cities', 'tool_batch'],
-  'admin': [] 
+  'admin': [] // Admin gets everything automatically
 };
 
 const PERMISSION_GROUPS = [
@@ -143,6 +142,64 @@ export default function UserManagementPage() {
     fetchData();
   }, [toast]);
 
+  // --- 🔒 HIERARCHY LOGIC ---
+
+  // 1. Can the current user edit/delete the target user?
+  const isAllowedToManage = (targetUser: any) => {
+    if (!currentUser) return false;
+    
+    // Admin: God mode
+    if (currentUser.role === 'admin' || currentUser.role === 'super_admin') return true;
+
+    // Manager Logic
+    if (currentUser.role === 'manager') {
+        // Cannot edit self
+        if (targetUser.username === currentUser.username) return false;
+        
+        // Cannot edit Admins or other Managers
+        const targetRole = targetUser.role || 'viewer';
+        if (targetRole === 'admin' || targetRole === 'manager' || targetRole === 'custom') return false;
+        
+        // Can edit Analysts and Viewers
+        return true;
+    }
+
+    // Everyone else (Analyst/Viewer) cannot manage anyone
+    return false;
+  };
+
+  // 2. What roles can the current user assign?
+  const getAssignableRoles = () => {
+    if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') {
+        return [
+            { val: 'viewer', label: 'Viewer' },
+            { val: 'analyst', label: 'Analyst' },
+            { val: 'manager', label: 'Manager' },
+            { val: 'admin', label: 'System Administrator' },
+            { val: 'custom', label: 'Custom Permissions' }
+        ];
+    }
+    if (currentUser?.role === 'manager') {
+        // Managers can only create lower tiers. No Admins, No Custom, No Managers.
+        return [
+            { val: 'viewer', label: 'Viewer (Read-Only)' },
+            { val: 'analyst', label: 'Analyst (Agent)' },
+        ];
+    }
+    return [];
+  };
+
+  // 3. Can the current user assign this specific permission?
+  // Managers can ONLY give permissions they currently possess.
+  const canAssignPermission = (permissionId: string) => {
+      if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') return true;
+      if (currentUser?.role === 'manager') {
+          // Check if manager has this permission in their own profile
+          return currentUser.permissions?.[permissionId] === true;
+      }
+      return false;
+  };
+
   // --- 📝 LOGGING HELPER ---
   const logActivity = async (action: string, details: string) => {
     try {
@@ -169,10 +226,7 @@ export default function UserManagementPage() {
         createdBy: currentUser?.username
       });
       setGroups([...groups, { id: docRef.id, name: newGroupName.trim() }]);
-      
-      // LOG IT
       await logActivity('Create Group', `Created new group: ${newGroupName.trim()}`);
-      
       setNewGroupName('');
       toast({ title: "Group Created" });
     } catch (e) {
@@ -185,10 +239,7 @@ export default function UserManagementPage() {
     try {
       await deleteDoc(doc(db, 'agent_groups', groupId));
       setGroups(groups.filter(g => g.id !== groupId));
-      
-      // LOG IT
       await logActivity('Delete Group', `Deleted group ID: ${groupId}`);
-      
       toast({ title: "Group Deleted" });
     } catch (e) { toast({ variant: "destructive", title: "Error" }); }
   };
@@ -237,8 +288,6 @@ export default function UserManagementPage() {
       };
 
       await setDoc(userRef, newUser);
-      
-      // LOG IT
       await logActivity('Create User', `Created user ${cleanUsername} with role ${createRole}`);
 
       setUsers([...users, newUser]);
@@ -258,14 +307,17 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (targetUser: any) => {
+    // Double check logic in case UI was bypassed
+    if (!isAllowedToManage(targetUser)) {
+        toast({ variant: "destructive", title: "Permission Denied", description: "You cannot delete this user." });
+        return;
+    }
+
     if (!confirm(`Delete ${targetUser.username}?`)) return;
     try {
       await deleteDoc(doc(db, 'users', targetUser.username));
       setUsers(users.filter(u => u.username !== targetUser.username));
-      
-      // LOG IT
       await logActivity('Delete User', `Deleted user account: ${targetUser.username}`);
-
       toast({ title: "Deleted" });
     } catch (error) {
       toast({ variant: "destructive", title: "Error" });
@@ -273,6 +325,9 @@ export default function UserManagementPage() {
   };
 
   const openEditModal = (user: any) => {
+    // Guard against editing superiors
+    if (!isAllowedToManage(user)) return;
+
     setEditingUser(user);
     setEditGroup(user.groupId || '');
     setEditRole(user.role || 'custom');
@@ -300,8 +355,6 @@ export default function UserManagementPage() {
       }
 
       await updateDoc(userRef, updates);
-      
-      // LOG IT
       await logActivity('Update User', `Updated profile for ${editingUser.username}. Role: ${editRole}`);
 
       setUsers(users.map(u => 
@@ -385,14 +438,13 @@ export default function UserManagementPage() {
                       value={createRole} 
                       onChange={(e) => handleRoleChange(e.target.value)}
                     >
-                      <option value="viewer">Viewer (Read-Only)</option>
-                      <option value="analyst">Analyst (Maps & Tools)</option>
-                      <option value="manager">Manager (Operations)</option>
-                      <option value="admin">System Administrator</option>
-                      <option value="custom">Custom (Advanced)</option>
+                      {getAssignableRoles().map(r => (
+                          <option key={r.val} value={r.val}>{r.label}</option>
+                      ))}
                     </select>
                 </div>
 
+                {/* Only Show Custom Permissions if the User selects "Custom" (Admins Only) */}
                 {createRole === 'custom' && (
                     <div className="border rounded-lg p-2 bg-slate-50 animate-in fade-in zoom-in-95 duration-200">
                         <div className="flex items-center justify-between mb-2">
@@ -410,9 +462,15 @@ export default function UserManagementPage() {
                                                     id={`create-${action.id}`} 
                                                     checked={createPermissions[action.id] || false} 
                                                     onCheckedChange={() => togglePermission(action.id, createPermissions, setCreatePermissions)} 
-                                                    className="h-3.5 w-3.5"
+                                                    disabled={!canAssignPermission(action.id)} // 🔒 PREVENT GIVING UNHELD PERMISSIONS
+                                                    className="h-3.5 w-3.5 disabled:opacity-30"
                                                 />
-                                                <label htmlFor={`create-${action.id}`} className="text-[10px] font-medium text-slate-700 cursor-pointer">{action.label}</label>
+                                                <label 
+                                                    htmlFor={`create-${action.id}`} 
+                                                    className={`text-[10px] font-medium cursor-pointer ${canAssignPermission(action.id) ? 'text-slate-700' : 'text-slate-400 line-through'}`}
+                                                >
+                                                    {action.label}
+                                                </label>
                                             </div>
                                         ))}
                                     </div>
@@ -453,32 +511,41 @@ export default function UserManagementPage() {
                   <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Role / Group</th><th className="px-4 py-3">Access</th><th className="px-4 py-3 text-right">Action</th></tr>
                 </thead>
                 <tbody className="divide-y">
-                  {users.map((user) => (
-                    <tr key={user.username} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-4 font-semibold text-slate-700">{user.username}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex flex-col gap-1">
-                            <Badge variant="outline" className="w-fit bg-indigo-50 text-indigo-700 border-indigo-200">{getGroupName(user.groupId)}</Badge>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">{user.role === 'custom' ? 'Custom Role' : user.role}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        {user.role === 'admin' ? <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100"><ShieldCheck className="h-3 w-3 mr-1" /> Full Access</Badge> : (
-                          <div className="flex flex-wrap gap-1 max-w-md">{user.permissions && Object.entries(user.permissions).filter(([, v]) => v).length > 0 ? Object.entries(user.permissions).filter(([, v]) => v).slice(0, 4).map(([k]) => (<span key={k} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold border border-slate-200">{k.replace(/_/g, ' ')}</span>)) : <span className="text-xs text-slate-400 italic">No access</span>}{user.permissions && Object.values(user.permissions).filter(v => v).length > 4 && <span className="text-[9px] text-slate-400 self-center">...</span>}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {user.role === 'admin' ? <Lock className="h-4 w-4 text-slate-300" /> : (
-                            <>
-                              <Button variant="ghost" size="sm" onClick={() => openEditModal(user)} className="text-blue-500 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleDelete(user)} className="text-red-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {users.map((user) => {
+                    const canEdit = isAllowedToManage(user);
+                    
+                    return (
+                        <tr key={user.username} className={`transition-colors ${canEdit ? 'hover:bg-slate-50' : 'bg-slate-50/50 opacity-80'}`}>
+                        <td className="px-4 py-4 font-semibold text-slate-700">
+                            <div className="flex items-center gap-2">
+                                {user.username} 
+                                {user.username === currentUser?.username && <Badge variant="secondary" className="text-[9px]">YOU</Badge>}
+                            </div>
+                        </td>
+                        <td className="px-4 py-4">
+                            <div className="flex flex-col gap-1">
+                                <Badge variant="outline" className="w-fit bg-indigo-50 text-indigo-700 border-indigo-200">{getGroupName(user.groupId)}</Badge>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase">{user.role === 'custom' ? 'Custom Role' : user.role}</span>
+                            </div>
+                        </td>
+                        <td className="px-4 py-4">
+                            {user.role === 'admin' ? <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100"><ShieldCheck className="h-3 w-3 mr-1" /> Full Access</Badge> : (
+                            <div className="flex flex-wrap gap-1 max-w-md">{user.permissions && Object.entries(user.permissions).filter(([, v]) => v).length > 0 ? Object.entries(user.permissions).filter(([, v]) => v).slice(0, 4).map(([k]) => (<span key={k} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold border border-slate-200">{k.replace(/_/g, ' ')}</span>)) : <span className="text-xs text-slate-400 italic">No access</span>}{user.permissions && Object.values(user.permissions).filter(v => v).length > 4 && <span className="text-[9px] text-slate-400 self-center">...</span>}</div>
+                            )}
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                            {!canEdit ? <Lock className="h-4 w-4 text-slate-300" title="Access Restricted" /> : (
+                                <>
+                                <Button variant="ghost" size="sm" onClick={() => openEditModal(user)} className="text-blue-500 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDelete(user)} className="text-red-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
+                                </>
+                            )}
+                            </div>
+                        </td>
+                        </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -486,7 +553,7 @@ export default function UserManagementPage() {
         </Card>
       </div>
 
-      {/* --- EDIT MODAL (Access Control for Admins) --- */}
+      {/* --- EDIT MODAL (Access Control) --- */}
       {editModalOpen && editingUser && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
            <Card className="w-full max-w-2xl shadow-2xl border-0 max-h-[90vh] flex flex-col">
@@ -534,11 +601,9 @@ export default function UserManagementPage() {
                              <div className="space-y-1">
                                 <label className="text-xs font-bold text-slate-500 uppercase">Role Level</label>
                                 <select className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editRole} onChange={(e) => setEditRole(e.target.value)}>
-                                   <option value="custom">Custom Permissions</option>
-                                   <option value="viewer">Viewer</option>
-                                   <option value="analyst">Analyst</option>
-                                   <option value="manager">Manager</option>
-                                   <option value="admin">System Administrator</option>
+                                   {getAssignableRoles().map(r => (
+                                       <option key={r.val} value={r.val}>{r.label}</option>
+                                   ))}
                                 </select>
                              </div>
                           </div>
@@ -555,9 +620,15 @@ export default function UserManagementPage() {
                                        <Checkbox 
                                          id={`edit-${action.id}`} 
                                          checked={editPermissions[action.id] || false} 
-                                         onCheckedChange={() => togglePermission(action.id, editPermissions, setEditPermissions)} 
+                                         onCheckedChange={() => togglePermission(action.id, editPermissions, setEditPermissions)}
+                                         disabled={!canAssignPermission(action.id)} // 🔒 INHERITANCE GUARD 
                                        />
-                                       <label htmlFor={`edit-${action.id}`} className="text-sm font-medium leading-none text-slate-600 cursor-pointer">{action.label}</label>
+                                       <label 
+                                            htmlFor={`edit-${action.id}`} 
+                                            className={`text-sm font-medium leading-none cursor-pointer ${canAssignPermission(action.id) ? 'text-slate-600' : 'text-slate-300 line-through'}`}
+                                       >
+                                            {action.label}
+                                       </label>
                                      </div>
                                    ))}
                                  </div>
