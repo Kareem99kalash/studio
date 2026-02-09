@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { 
   Map as MapIcon, 
   Layers, 
-  Users, 
   RefreshCw, 
   ChevronRight, 
   Lock, 
@@ -18,8 +17,9 @@ import {
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EngineStatusCard } from '@/components/dashboard/engine-status'; 
 
-// 🛠️ UPDATED CONFIGURATION WITH GRANULAR KEYS
+// 🛠️ CONFIGURATION
 const tools = [
   {
     title: "Batch Coverage Processor",
@@ -28,7 +28,7 @@ const tools = [
     href: "/dashboard/admin-tools/batch-processor",
     color: "text-blue-500",
     bg: "bg-blue-50",
-    requiredPermission: 'tool_batch', // Updated Key
+    requiredPermission: 'tool_batch',
     locked: false
   },
   {
@@ -38,7 +38,7 @@ const tools = [
     href: "/dashboard/admin-tools/topology-check",
     color: "text-orange-500",
     bg: "bg-orange-50",
-    requiredPermission: 'tool_topology', // Updated Key
+    requiredPermission: 'tool_topology',
     locked: false
   },
   {
@@ -48,18 +48,8 @@ const tools = [
     href: "/dashboard/admin-tools/map-architect",
     color: "text-purple-500",
     bg: "bg-purple-50",
-    requiredPermission: 'tool_maps', // Updated Key
+    requiredPermission: 'tool_maps',
     locked: false
-  },
-  {
-    title: "Team Access Manager",
-    description: "Promote staff to Admins. Restricts deletion of Super Admin accounts.",
-    icon: Users,
-    href: "/dashboard/admin-tools/access-control", 
-    color: "text-indigo-500",
-    bg: "bg-indigo-50",
-    requiredPermission: 'tool_users', // Updated Key
-    locked: false 
   },
   {
     title: "Coordinate Flipper",
@@ -68,7 +58,7 @@ const tools = [
     href: "/dashboard/admin-tools/coord-flipper",
     color: "text-emerald-500",
     bg: "bg-emerald-50",
-    requiredPermission: 'tool_coords', // Updated Key
+    requiredPermission: 'tool_coords',
     locked: false
   },
   {
@@ -78,7 +68,7 @@ const tools = [
     href: "/dashboard/admin-tools/notifications",
     color: "text-pink-500",
     bg: "bg-pink-50",
-    requiredPermission: 'tool_broadcast', // Updated Key
+    requiredPermission: 'tool_broadcast',
     locked: false
   }
 ];
@@ -100,11 +90,10 @@ export default function AdminUtilitiesPage() {
   }, [router]);
 
   // 1. GLOBAL PAGE GUARD
-  // Access is granted if they are Admin OR have explicit access to ANY of the tools
   const canAccessPage = (() => {
       if (!user) return false;
       if (user.role === 'admin' || user.role === 'super_admin') return true;
-      if (user.permissions?.access_admin_tools) return true; // Generic Gate
+      if (user.permissions?.access_admin_tools) return true;
 
       // Granular Check: Do they have AT LEAST ONE tool permission?
       return tools.some(t => user.permissions?.[t.requiredPermission] === true);
@@ -140,6 +129,14 @@ export default function AdminUtilitiesPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto min-h-screen bg-slate-50">
+      
+      {/* --- SERVER STATUS MONITORS --- */}
+      {/* Renders two cards side-by-side for your dual server setup */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+         <EngineStatusCard target="erbil" label="Erbil OSRM Engine" />
+         <EngineStatusCard target="beirut" label="Beirut OSRM Engine" />
+      </div>
+
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
             <div className="bg-slate-900 p-2.5 rounded-xl shadow-lg shadow-slate-200">
@@ -189,7 +186,6 @@ export default function AdminUtilitiesPage() {
                   Launch Tool <ChevronRight className="h-3 w-3 ml-1" />
                 </div>
 
-                {/* Show Lock icon if it's explicitly marked as locked in config */}
                 {tool.locked && (
                     <div className="absolute top-4 right-4 bg-slate-100 p-1.5 rounded-lg" title="Feature Locked">
                         <Lock className="h-3.5 w-3.5 text-slate-400" />
