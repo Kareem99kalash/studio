@@ -36,8 +36,7 @@ import {
   X,
   Wrench,
   Eye,
-  EyeOff,
-  Briefcase
+  EyeOff
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -142,45 +141,44 @@ export default function UserManagementPage() {
     fetchData();
   }, [toast]);
 
-  // --- 🔒 HIERARCHY LOGIC ---
+  // --- 🔒 HIERARCHY LOGIC (STRICT) ---
 
-  // 1. Can the current user edit/delete the target user?
   const isAllowedToManage = (targetUser: any) => {
     if (!currentUser) return false;
     
-    // Admin: God mode
-    if (currentUser.role === 'admin' || currentUser.role === 'super_admin') return true;
+    const targetRole = targetUser.role || 'viewer';
 
-    // Manager Logic
-    if (currentUser.role === 'manager') {
-        // Cannot edit self
-        if (targetUser.username === currentUser.username) return false;
-        
-        // Cannot edit Admins or other Managers
-        const targetRole = targetUser.role || 'viewer';
-        if (targetRole === 'admin' || targetRole === 'manager' || targetRole === 'custom') return false;
-        
-        // Can edit Analysts and Viewers
+    // ⛔ IMMUTABLE ADMINS
+    if (targetRole === 'admin' || targetRole === 'super_admin') {
+        return false;
+    }
+
+    // 👑 Current User is Admin
+    if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
         return true;
     }
 
-    // Everyone else (Analyst/Viewer) cannot manage anyone
+    // 👷 Current User is Manager
+    if (currentUser.role === 'manager') {
+        if (targetUser.username === currentUser.username) return false;
+        if (targetRole === 'manager' || targetRole === 'custom') return false;
+        return true;
+    }
+
     return false;
   };
 
-  // 2. What roles can the current user assign?
   const getAssignableRoles = () => {
     if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') {
         return [
             { val: 'viewer', label: 'Viewer' },
             { val: 'analyst', label: 'Analyst' },
             { val: 'manager', label: 'Manager' },
-            { val: 'admin', label: 'System Administrator' },
+            { val: 'admin', label: 'System Administrator' }, 
             { val: 'custom', label: 'Custom Permissions' }
         ];
     }
     if (currentUser?.role === 'manager') {
-        // Managers can only create lower tiers. No Admins, No Custom, No Managers.
         return [
             { val: 'viewer', label: 'Viewer (Read-Only)' },
             { val: 'analyst', label: 'Analyst (Agent)' },
@@ -189,12 +187,9 @@ export default function UserManagementPage() {
     return [];
   };
 
-  // 3. Can the current user assign this specific permission?
-  // Managers can ONLY give permissions they currently possess.
   const canAssignPermission = (permissionId: string) => {
       if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') return true;
       if (currentUser?.role === 'manager') {
-          // Check if manager has this permission in their own profile
           return currentUser.permissions?.[permissionId] === true;
       }
       return false;
@@ -307,9 +302,8 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (targetUser: any) => {
-    // Double check logic in case UI was bypassed
     if (!isAllowedToManage(targetUser)) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "You cannot delete this user." });
+        toast({ variant: "destructive", title: "Permission Denied", description: "This user cannot be deleted via UI." });
         return;
     }
 
@@ -325,7 +319,6 @@ export default function UserManagementPage() {
   };
 
   const openEditModal = (user: any) => {
-    // Guard against editing superiors
     if (!isAllowedToManage(user)) return;
 
     setEditingUser(user);
@@ -350,7 +343,7 @@ export default function UserManagementPage() {
         permissions: isMasterAdmin ? {} : editPermissions
       };
 
-      if (editPassword.trim()) {
+      if (editPassword && editPassword.trim() !== '') {
         updates.password = editPassword.trim();
       }
 
@@ -444,7 +437,6 @@ export default function UserManagementPage() {
                     </select>
                 </div>
 
-                {/* Only Show Custom Permissions if the User selects "Custom" (Admins Only) */}
                 {createRole === 'custom' && (
                     <div className="border rounded-lg p-2 bg-slate-50 animate-in fade-in zoom-in-95 duration-200">
                         <div className="flex items-center justify-between mb-2">
@@ -462,7 +454,7 @@ export default function UserManagementPage() {
                                                     id={`create-${action.id}`} 
                                                     checked={createPermissions[action.id] || false} 
                                                     onCheckedChange={() => togglePermission(action.id, createPermissions, setCreatePermissions)} 
-                                                    disabled={!canAssignPermission(action.id)} // 🔒 PREVENT GIVING UNHELD PERMISSIONS
+                                                    disabled={!canAssignPermission(action.id)} 
                                                     className="h-3.5 w-3.5 disabled:opacity-30"
                                                 />
                                                 <label 
@@ -513,9 +505,10 @@ export default function UserManagementPage() {
                 <tbody className="divide-y">
                   {users.map((user) => {
                     const canEdit = isAllowedToManage(user);
+                    const isTargetAdmin = user.role === 'admin' || user.role === 'super_admin';
                     
                     return (
-                        <tr key={user.username} className={`transition-colors ${canEdit ? 'hover:bg-slate-50' : 'bg-slate-50/50 opacity-80'}`}>
+                        <tr key={user.username} className={`transition-colors ${canEdit ? 'hover:bg-slate-50' : 'bg-slate-50/50 opacity-90'}`}>
                         <td className="px-4 py-4 font-semibold text-slate-700">
                             <div className="flex items-center gap-2">
                                 {user.username} 
@@ -535,7 +528,11 @@ export default function UserManagementPage() {
                         </td>
                         <td className="px-4 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                            {!canEdit ? <Lock className="h-4 w-4 text-slate-300" title="Access Restricted" /> : (
+                            {!canEdit ? (
+                                <div title={isTargetAdmin ? "Managed via Database Only" : "Access Restricted"}>
+                                    <Lock className="h-4 w-4 text-slate-300 cursor-not-allowed" />
+                                </div>
+                            ) : (
                                 <>
                                 <Button variant="ghost" size="sm" onClick={() => openEditModal(user)} className="text-blue-500 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="sm" onClick={() => handleDelete(user)} className="text-red-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
@@ -586,7 +583,7 @@ export default function UserManagementPage() {
                                onChange={(e) => setEditPassword(e.target.value)} 
                                autoComplete="new-password" 
                                name="new-password-field" 
-                               placeholder="Set new password"
+                               placeholder="Set new password (optional)"
                              />
                           </div>
 
@@ -621,7 +618,7 @@ export default function UserManagementPage() {
                                          id={`edit-${action.id}`} 
                                          checked={editPermissions[action.id] || false} 
                                          onCheckedChange={() => togglePermission(action.id, editPermissions, setEditPermissions)}
-                                         disabled={!canAssignPermission(action.id)} // 🔒 INHERITANCE GUARD 
+                                         disabled={!canAssignPermission(action.id)} 
                                        />
                                        <label 
                                             htmlFor={`edit-${action.id}`} 
