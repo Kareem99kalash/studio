@@ -158,7 +158,7 @@ export default function BatchCoveragePage() {
 
   const [summaryMode, setSummaryMode] = useState<'polygon' | 'store'>('polygon');
   
-  // ⚡ NEW: Reassign Dialog State (Moving interaction out of Popup)
+  // Reassign Dialog State
   const [reassignDialogData, setReassignDialogData] = useState<{polyId: string, parentId: string, polyName: string} | null>(null);
   const [pendingReassignStore, setPendingReassignStore] = useState<string>("");
 
@@ -529,7 +529,7 @@ export default function BatchCoveragePage() {
       ]);
       
       setPendingReassignStore("");
-      setReassignDialogData(null); // Close Dialog
+      setReassignDialogData(null); 
       toast({title: "Reassigned!", description: `Zone moved to ${storeObj.name}.`});
   };
 
@@ -606,9 +606,9 @@ export default function BatchCoveragePage() {
         </Card>
       </div>
 
-      {/* COLUMN MAPPING WIZARD */}
+      {/* COLUMN MAPPING WIZARD (Z-Index Fixed) */}
       <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-xl z-[9999] bg-white backdrop-blur-sm">
             <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                     <FileSpreadsheet className="h-5 w-5 text-green-600"/> Map CSV Columns
@@ -630,7 +630,7 @@ export default function BatchCoveragePage() {
                             <SelectTrigger className="col-span-3 h-8">
                                 <SelectValue placeholder={field.required ? "Select Column..." : "Optional"} />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="z-[9999]">
                                 {wizardHeaders.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
                             </SelectContent>
                         </Select>
@@ -644,9 +644,9 @@ export default function BatchCoveragePage() {
         </DialogContent>
       </Dialog>
 
-      {/* REASSIGN DIALOG (OUTSIDE POPUP) */}
+      {/* REASSIGN DIALOG (OUTSIDE POPUP - Z-Index Fixed) */}
       <Dialog open={!!reassignDialogData} onOpenChange={(open) => !open && setReassignDialogData(null)}>
-        <DialogContent>
+        <DialogContent className="z-[9999] bg-white/95 backdrop-blur-sm shadow-2xl border border-slate-200">
             <DialogHeader>
                 <DialogTitle>Reassign Polygon</DialogTitle>
                 <DialogDescription>
@@ -654,11 +654,15 @@ export default function BatchCoveragePage() {
                 </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-                <Label className="text-xs mb-2 block">Select New Branch</Label>
+                <Label className="text-xs mb-2 block font-bold uppercase text-slate-500">Select New Branch</Label>
                 <Select value={pendingReassignStore} onValueChange={setPendingReassignStore}>
-                    <SelectTrigger><SelectValue placeholder="Choose branch..." /></SelectTrigger>
-                    <SelectContent>
-                        {processedStores.filter(s => s.parentId === selectedParent).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Choose branch..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999]" position="popper">
+                        {processedStores.filter(s => s.parentId === selectedParent).map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
@@ -685,7 +689,7 @@ export default function BatchCoveragePage() {
 
                 {activeTab === 'map' && (
                     <div className="flex gap-2">
-                        {/* FORMATTED DROPDOWN */}
+                        {/* FORMATTED DROPDOWN (Sorted A-Z by Name) */}
                         <Select value={selectedParent} onValueChange={setSelectedParent}>
                             <SelectTrigger className="w-[300px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
                                 <SelectValue placeholder="Select Parent" />
@@ -709,7 +713,7 @@ export default function BatchCoveragePage() {
                         <Button 
                             variant={reassignMode ? "destructive" : "outline"} 
                             size="sm" 
-                            onClick={() => { setReassignMode(!reassignMode); setVisualRoutes([]); }}
+                            onClick={() => { setReassignMode(!reassignMode); setVisualRoutes([]); setPendingReassignStore(""); }}
                             className="gap-2"
                         >
                             <Edit className="h-4 w-4" /> {reassignMode ? "Exit Reassign" : "Reassign Mode"}
