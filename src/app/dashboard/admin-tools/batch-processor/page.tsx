@@ -441,17 +441,10 @@ export default function BatchCoveragePage() {
   };
 
   // --- HELPERS ---
-  
-  // ⚡ FIXED REASSIGNMENT LOGIC
-  // We now correctly filter out the OLD assignment using 'originalParentID' (if present) or standard matching
   const activeAssignments = useMemo(() => {
       let combined = [...assignments];
-      
       manualOverrides.forEach(ov => {
-          // Identify the exact record to remove
-          // If we stored the original parent, use it. Otherwise use the current parent.
           const targetParent = ov.originalParentID || ov.ParentID;
-          
           combined = combined.filter(a => !(a.PolygonID === ov.PolygonID && a.ParentID === targetParent));
           combined.push(ov);
       });
@@ -507,31 +500,23 @@ export default function BatchCoveragePage() {
 
   const executeReassign = (polyId: string, parentId: string, newStoreId: string) => {
       if (!newStoreId) return;
-      
       const storeObj = processedStores.find(s => s.id === newStoreId);
       const polyObj = activeAssignments.find(a => a.PolygonID === polyId && a.ParentID === parentId);
-      
       if (!storeObj || !polyObj) return;
 
       const newEntry = {
           ...polyObj,
           StoreID: storeObj.id,
           StoreName: storeObj.name,
-          ParentID: storeObj.parentId, // New Parent
+          ParentID: storeObj.parentId, 
           ParentName: storeObj.parentName,
           DistanceKM: "Manual",
           Color: storeObj.color,
           isManual: true,
           isCovered: true,
-          originalParentID: parentId // ⚡ SAVE ORIGINAL PARENT FOR FILTERING
+          originalParentID: parentId 
       };
-      
-      // Remove any existing overrides for this specific polygon to avoid duplicates in the override list
-      setManualOverrides(prev => [
-          ...prev.filter(x => x.PolygonID !== polyId), 
-          newEntry
-      ]);
-      
+      setManualOverrides(prev => [...prev.filter(x => x.PolygonID !== polyId), newEntry]);
       setPendingReassignStore(""); 
       toast({title: "Reassigned!", description: `Zone moved to ${storeObj.name}.`});
   };
@@ -737,12 +722,15 @@ export default function BatchCoveragePage() {
                                             ) : (
                                                 <div className="space-y-3">
                                                     <div className="text-xs font-bold text-red-600 uppercase">Reassign Branch</div>
+                                                    
+                                                    {/* ⚡ FIXED DROPDOWN (Added position="popper") */}
                                                     <Select onValueChange={setPendingReassignStore}>
                                                         <SelectTrigger className="h-8 text-xs w-full"><SelectValue placeholder="Choose branch..." /></SelectTrigger>
-                                                        <SelectContent className="z-[9999]">
+                                                        <SelectContent className="z-[9999]" position="popper">
                                                             {processedStores.filter(s => s.parentId === selectedParent).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
+                                                    
                                                     <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-xs h-7" disabled={!pendingReassignStore} onClick={() => executeReassign(a.PolygonID, a.ParentID, pendingReassignStore)}><Save className="h-3 w-3 mr-1" /> Confirm</Button>
                                                 </div>
                                             )}
