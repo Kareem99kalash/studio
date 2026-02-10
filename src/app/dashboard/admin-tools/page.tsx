@@ -33,7 +33,7 @@ const tools = [
     locked: false
   },
   {
-    title: "Dark Store Analyzer", // 🟢 NEW TOOL ADDED
+    title: "Dark Warehouse Analyzer", // 🟢 NEW TOOL ADDED
     description: "Network planning, time-based analysis, and dead zone detection for delivery.",
     icon: ShoppingBasket,
     href: "/dashboard/admin-tools/dark-store-analyzer",

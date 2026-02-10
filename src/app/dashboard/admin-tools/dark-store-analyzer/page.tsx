@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, UploadCloud, Play, Map as MapIcon, ShoppingBasket, Clock, Info, FileSpreadsheet, AlertTriangle, Eye, Layers } from 'lucide-react';
+import { Loader2, UploadCloud, Play, ShoppingBasket, Clock, Info, FileSpreadsheet, AlertTriangle, Eye, Layers, Scale } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Badge } from '@/components/ui/badge';
 import L from 'leaflet';
@@ -36,36 +36,46 @@ const OSRM_ENDPOINTS = {
 };
 const HF_TOKEN = process.env.NEXT_PUBLIC_HF_TOKEN;
 
-// Distinct Colors for Stores (Post-Analysis)
 const STORE_COLORS = [
     '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', 
     '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', 
-    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', 
-    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
+    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000'
 ];
-
-// Zone Group Colors (Pre-Analysis)
-const ZONE_GROUP_COLORS = [
-    '#64748b', '#0ea5e9', '#8b5cf6', '#ec4899', '#f97316', '#84cc16'
-];
+const ZONE_GROUP_COLORS = ['#64748b', '#0ea5e9', '#8b5cf6', '#ec4899', '#f97316', '#84cc16'];
 
 const getBranchColor = (index: number) => STORE_COLORS[index % STORE_COLORS.length];
 const getGroupColor = (index: number) => ZONE_GROUP_COLORS[index % ZONE_GROUP_COLORS.length];
 
 // --- ICONS ---
-const createStoreIcon = (color: string) => {
+const createStoreIcon = (color: string, weight: number) => {
+    // Icon size scales slightly with weight (Visual feedback)
+    const size = weight > 1.5 ? 40 : weight < 0.8 ? 24 : 32; 
+    
     return L.divIcon({
         className: 'custom-store-icon',
-        html: `<div style="background-color: ${color}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8c.9 0 1.8-.7 2-1.6l1.7-7.4"/><path d="m9 11 1 9"/></svg>
+        html: `<div style="background-color: ${color}; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="${size/2}" height="${size/2}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8c.9 0 1.8-.7 2-1.6l1.7-7.4"/><path d="m9 11 1 9"/></svg>
                </div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-        popupAnchor: [0, -32]
+        iconSize: [size, size],
+        iconAnchor: [size/2, size],
+        popupAnchor: [0, -size]
     });
 };
 
 // --- HELPERS ---
+const parsePercentage = (value: any) => {
+    if (!value) return 1; // Default to 1 (100% or standard weight)
+    const str = String(value).replace('%', '').trim();
+    const num = parseFloat(str);
+    if (isNaN(num)) return 1;
+    // If user types "50", assume 0.5 (unless it's > 100, then assume scale)
+    // Actually, simpler logic: "Weight" usually relative. 
+    // "50%" -> 0.5. "50" -> 50.
+    // For normalization, let's treat "50%" as 0.5
+    if (String(value).includes('%')) return num / 100;
+    return num; 
+};
+
 const getGeoPoints = (polyFeature: any, storeCoords: {lat: number, lng: number}) => {
     const center = turf.centroid(polyFeature);
     const vertices = turf.explode(polyFeature).features;
@@ -103,11 +113,13 @@ const REQUIRED_FIELDS = {
         { key: 'lng', label: 'Longitude', required: true },
         { key: 'id', label: 'Store ID', required: false },
         { key: 'name', label: 'Store Name', required: false },
+        { key: 'weight', label: 'Capacity / Weight %', required: false }, // 🟢 NEW
     ],
     polygons: [
         { key: 'wkt', label: 'WKT Geometry', required: true },
         { key: 'id', label: 'Polygon ID', required: false },
         { key: 'name', label: 'Polygon Name', required: false },
+        { key: 'demand', label: 'Order Volume / Demand %', required: false }, // 🟢 NEW
     ]
 };
 
@@ -117,10 +129,10 @@ export default function DarkStoreAnalyzerPage() {
   // Data
   const [stores, setStores] = useState<any[]>([]);
   const [polygons, setPolygons] = useState<any[]>([]);
-  const [results, setResults] = useState<Record<string, any>>({}); // Key: PolyID, Val: CoverageData
+  const [results, setResults] = useState<Record<string, any>>({}); 
   
   // View Control
-  const [filterStore, setFilterStore] = useState<string>("all"); // 'all' or StoreID
+  const [filterStore, setFilterStore] = useState<string>("all"); 
   const [analysisDone, setAnalysisDone] = useState(false);
 
   // Visuals
@@ -129,8 +141,8 @@ export default function DarkStoreAnalyzerPage() {
   
   // Settings
   const [region, setRegion] = useState("Iraq");
-  const [distThreshold, setDistThreshold] = useState(5); // km
-  const [timeThreshold, setTimeThreshold] = useState(15); // min
+  const [distThreshold, setDistThreshold] = useState(5); 
+  const [timeThreshold, setTimeThreshold] = useState(15); 
   const [useTime, setUseTime] = useState(false);
   const [showRadius, setShowRadius] = useState(false);
   
@@ -144,8 +156,6 @@ export default function DarkStoreAnalyzerPage() {
   const [wizardType, setWizardType] = useState<'stores' | 'polygons'>('stores');
   const [wizardHeaders, setWizardHeaders] = useState<string[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
-  
-  // 🟢 NEW: Zone Group Naming
   const [zoneGroupName, setZoneGroupName] = useState("");
   const [zoneGroupCount, setZoneGroupCount] = useState(0);
 
@@ -172,17 +182,21 @@ export default function DarkStoreAnalyzerPage() {
                   Object.entries(columnMapping).forEach(([key, col]) => {
                       if (col) obj[key] = key === 'lat' || key === 'lng' ? parseFloat(row[col]) : row[col];
                   });
+                  // Defaults
                   if (!obj.id) obj.id = `${wizardType}_${i}_${Date.now()}`;
                   if (!obj.name) obj.name = obj.id;
+                  
+                  // 🟢 PARSE WEIGHTS
+                  if (wizardType === 'stores') obj.weight = parsePercentage(obj.weight); // Capacity
+                  if (wizardType === 'polygons') obj.demand = parsePercentage(obj.demand); // Traffic Load
+
                   return obj;
               }).filter((d: any) => wizardType === 'stores' ? (!isNaN(d.lat)) : (!!d.wkt));
 
               if (wizardType === 'stores') {
-                  // Assign colors to stores immediately
                   const coloredStores = mapped.map((s, i) => ({ ...s, color: getBranchColor(stores.length + i) }));
                   setStores(prev => [...prev, ...coloredStores]);
               } else {
-                  // 🟢 ZONE GROUP LOGIC
                   const groupColor = getGroupColor(zoneGroupCount);
                   const parsedPolys = mapped.map((p, i) => {
                       try {
@@ -197,8 +211,8 @@ export default function DarkStoreAnalyzerPage() {
                               ...p, 
                               geometry: poly.geometry, 
                               feature: poly, 
-                              groupName: zoneGroupName, // Save Group Name
-                              initialColor: groupColor  // Save Group Color
+                              groupName: zoneGroupName, 
+                              initialColor: groupColor
                           };
                       } catch { return null; }
                   }).filter(Boolean);
@@ -207,12 +221,12 @@ export default function DarkStoreAnalyzerPage() {
                   setZoneGroupCount(prev => prev + 1);
               }
               setIsWizardOpen(false);
-              toast({ title: "Loaded", description: `Added ${mapped.length} items to ${zoneGroupName || 'Stores'}.` });
+              toast({ title: "Loaded", description: `Added ${mapped.length} items.` });
           }
       });
   };
 
-  // --- 2. ANALYSIS ENGINE ---
+  // --- 2. WEIGHTED ANALYSIS ENGINE ---
   const runAnalysis = async () => {
       if (!stores.length || !polygons.length) return;
       setProcessing(true); setProgress(0); setResults({}); setAnalysisDone(false);
@@ -221,6 +235,7 @@ export default function DarkStoreAnalyzerPage() {
       const tempResults: Record<string, any> = {};
       const chunkSize = 20;
 
+      // Radius circles based on threshold
       const circles = stores.map(s => turf.circle([s.lng, s.lat], distThreshold, { units: 'kilometers', properties: { color: s.color } }));
       setRadiusCircles(circles);
 
@@ -243,7 +258,7 @@ export default function DarkStoreAnalyzerPage() {
               if (data.code === 'Ok') {
                   chunk.forEach((poly: any, pIdx: number) => {
                       let bestStore: any = null;
-                      let bestScore = -1; 
+                      let bestScore = -Infinity; 
 
                       stores.forEach((store, sIdx) => {
                           const distM = data.distances[sIdx][pIdx]; 
@@ -254,29 +269,33 @@ export default function DarkStoreAnalyzerPage() {
                           const distKm = distM / 1000;
                           const durMin = durS / 60;
 
+                          // 1. HARD THRESHOLD CHECK (Actual Distance)
                           if (distKm > distThreshold * 1.5) return;
                           if (useTime && durMin > timeThreshold * 1.5) return;
 
-                          let score = 0;
+                          // 2. WEIGHTED SCORING (Gravity Model)
+                          // Effective Distance = Actual Distance / Store Weight
+                          // A store with weight 2.0 pulls zones as if it's half as far away.
+                          const effectiveDist = distKm / (store.weight || 1);
+
                           const distPass = distKm <= distThreshold;
                           const timePass = !useTime || (durMin <= timeThreshold);
 
                           if (distPass && timePass) {
-                              score = 3; 
-                              if (distKm > distThreshold * 0.8) score = 2; 
-                          }
-
-                          if (score > bestScore) {
-                              bestScore = score;
-                              bestStore = { 
-                                  store, 
-                                  dist: distKm, 
-                                  time: durMin,
-                                  status: score >= 2 ? 'covered' : 'borderline'
-                              };
-                          } else if (score === bestScore && bestStore) {
-                              if (distKm < bestStore.dist) {
-                                  bestStore = { store, dist: distKm, time: durMin, status: bestStore.status };
+                              // Score: Higher is better. 
+                              // Use inverse of effective distance so closer (and heavier) stores win.
+                              // Add 100 base points for passing thresholds to ensure they beat any "borderline" logic.
+                              let score = 100 - effectiveDist; 
+                              
+                              if (score > bestScore) {
+                                  bestScore = score;
+                                  bestStore = { 
+                                      store, 
+                                      dist: distKm, // Keep visual distance REAL
+                                      time: durMin,
+                                      weightedDist: effectiveDist, // For debugging
+                                      status: 'covered'
+                                  };
                               }
                           }
                       });
@@ -312,10 +331,30 @@ export default function DarkStoreAnalyzerPage() {
       setVisualRoutes(routes);
   };
 
-  // --- 3. FILTER LOGIC ---
+  // --- 3. SUMMARY STATS (With Weights) ---
+  const storeStats = useMemo(() => {
+      const stats: Record<string, { count: number, demand: number, name: string, color: string, cap: number }> = {};
+      
+      // Init
+      stores.forEach(s => {
+          stats[s.id] = { count: 0, demand: 0, name: s.name, color: s.color, cap: s.weight || 1 };
+      });
+
+      // Aggregate
+      Object.keys(results).forEach(polyId => {
+          const res = results[polyId];
+          const poly = polygons.find(p => p.id === polyId);
+          if (res.status === 'covered' && res.store && poly) {
+              stats[res.store.id].count += 1;
+              stats[res.store.id].demand += (poly.demand || 1); // Add Order Volume
+          }
+      });
+
+      return Object.values(stats);
+  }, [results, polygons, stores]);
+
   const viewData = useMemo(() => {
       if (filterStore === 'all') return polygons;
-      // Only return polygons assigned to the selected store
       return polygons.filter(p => {
           const res = results[p.id];
           return res && res.store && res.store.id === filterStore;
@@ -330,29 +369,21 @@ export default function DarkStoreAnalyzerPage() {
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                     <ShoppingBasket className="h-6 w-6 text-purple-600"/> Dark Store Analyzer
                 </h1>
-                <p className="text-xs text-slate-500">Network planning & Dead zone detection</p>
+                <p className="text-xs text-slate-500">Weighted Capacity & Order Volume Analysis</p>
             </div>
             
             <div className="flex items-center gap-4">
-                {/* 🟢 STORE FILTER (Visible Only After Analysis) */}
                 {analysisDone && (
                     <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
                         <Badge variant="outline" className="h-8 px-3 bg-purple-50 text-purple-700 border-purple-200">
-                            <Eye className="h-3 w-3 mr-1"/> View Mode
+                            <Eye className="h-3 w-3 mr-1"/> View
                         </Badge>
                         <Select value={filterStore} onValueChange={setFilterStore}>
-                            <SelectTrigger className="w-40 h-9 font-bold">
-                                <SelectValue placeholder="All Stores" />
-                            </SelectTrigger>
+                            <SelectTrigger className="w-40 h-9 font-bold"><SelectValue placeholder="All Stores" /></SelectTrigger>
                             <SelectContent className="z-[9999]">
                                 <SelectItem value="all">🌍 All Stores</SelectItem>
                                 {stores.map(s => (
-                                    <SelectItem key={s.id} value={s.id}>
-                                        <span className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full" style={{backgroundColor: s.color}}></span>
-                                            {s.name}
-                                        </span>
-                                    </SelectItem>
+                                    <SelectItem key={s.id} value={s.id}><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{backgroundColor: s.color}}></span>{s.name}</span></SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -399,14 +430,14 @@ export default function DarkStoreAnalyzerPage() {
 
                 <Button size="lg" onClick={runAnalysis} disabled={processing || !stores.length} className="bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-200">
                     {processing ? <Loader2 className="animate-spin mr-2"/> : <Play className="mr-2 fill-current"/>}
-                    {processing ? `${progress}%` : "Analyze Coverage"}
+                    {processing ? `${progress}%` : "Analyze"}
                 </Button>
             </div>
         </div>
 
-        {/* MAIN CONTENT GRID */}
+        {/* CONTENT */}
         <div className="grid grid-cols-12 gap-6 flex-1 min-h-0">
-            {/* LEFT: UPLOAD & STATS */}
+            {/* LEFT SIDEBAR */}
             <div className="col-span-3 space-y-4 overflow-y-auto pr-1">
                 <Card className="border-dashed border-2 bg-slate-50/50">
                     <CardHeader className="py-3"><CardTitle className="text-sm">1. Upload Stores</CardTitle></CardHeader>
@@ -422,49 +453,44 @@ export default function DarkStoreAnalyzerPage() {
                 </Card>
 
                 <Card className="border-dashed border-2 bg-slate-50/50">
-                    <CardHeader className="py-3"><CardTitle className="text-sm">2. Upload Zone Groups</CardTitle></CardHeader>
-                    <CardContent className="space-y-2">
+                    <CardHeader className="py-3"><CardTitle className="text-sm">2. Upload Zones</CardTitle></CardHeader>
+                    <CardContent>
                         <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-500">{polygons.length} Total Polygons</span>
+                            <span className="text-xs text-slate-500">{polygons.length} Total</span>
                             <Button variant="outline" size="sm" className="h-7 text-xs relative overflow-hidden">
                                 <UploadCloud className="h-3 w-3 mr-1"/> Add Group
                                 <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons')} />
                             </Button>
                         </div>
-                        {/* Zone Group Legend (Pre-Analysis) */}
-                        {!analysisDone && zoneGroupCount > 0 && (
-                            <div className="pt-2 border-t mt-2">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Active Groups</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {Array.from({length: zoneGroupCount}).map((_, i) => (
-                                        <Badge key={i} className="text-[10px]" style={{backgroundColor: getGroupColor(i)}}>
-                                            Group {i+1}
-                                        </Badge>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
                     </CardContent>
                 </Card>
 
-                {/* STATS SUMMARY */}
-                {Object.keys(results).length > 0 && (
-                    <Card className="bg-white shadow-md border-t-4 border-t-purple-500">
-                        <CardHeader className="py-3 bg-purple-50/50 border-b border-purple-100">
-                            <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 text-purple-600"/> Coverage Report</CardTitle>
+                {/* 🟢 STORE LOAD SUMMARY */}
+                {analysisDone && (
+                    <Card className="bg-white shadow-md border-t-4 border-t-blue-500">
+                        <CardHeader className="py-3 bg-blue-50/50 border-b border-blue-100">
+                            <CardTitle className="text-sm flex items-center gap-2"><Scale className="h-4 w-4 text-blue-600"/> Weighted Load Balance</CardTitle>
                         </CardHeader>
-                        <CardContent className="py-4 space-y-3">
-                            <div className="flex justify-between items-center">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Covered</span>
-                                <Badge className="bg-green-100 text-green-700 hover:bg-green-200">
-                                    {Object.values(results).filter(r => r.status === 'covered' || r.status === 'borderline').length} Zones
-                                </Badge>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Dead Zones</span>
-                                <Badge variant="destructive">
-                                    {Object.values(results).filter(r => r.status === 'dead').length} Zones
-                                </Badge>
+                        <CardContent className="p-0 overflow-hidden">
+                            <div className="max-h-[300px] overflow-y-auto">
+                                <table className="w-full text-[10px]">
+                                    <thead className="bg-slate-50 border-b text-slate-500">
+                                        <tr>
+                                            <th className="p-2 text-left">Store</th>
+                                            <th className="p-2 text-center">Zones</th>
+                                            <th className="p-2 text-right">Traffic Load</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {storeStats.map((s: any, i: number) => (
+                                            <tr key={i} className="hover:bg-slate-50">
+                                                <td className="p-2 font-bold" style={{color: s.color}}>{s.name} <span className="text-slate-300 font-normal">({s.cap})</span></td>
+                                                <td className="p-2 text-center">{s.count}</td>
+                                                <td className="p-2 text-right font-mono font-bold text-slate-700">{s.demand.toFixed(1)}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         </CardContent>
                     </Card>
@@ -475,23 +501,18 @@ export default function DarkStoreAnalyzerPage() {
             <div className="col-span-9 h-full rounded-xl overflow-hidden border-2 border-slate-200 shadow-inner relative">
                 <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    
-                    {/* Layer 1: Polygons */}
                     <Pane name="polygons" style={{ zIndex: 400 }}>
                         <FeatureGroup>
                             {viewData.map((p, i) => {
                                 const res = results[p.id];
-                                let fillColor = p.initialColor; // Default: Zone Group Color
+                                let fillColor = p.initialColor;
                                 let opacity = 0.5;
 
-                                // 🟢 POST-ANALYSIS COLOR LOGIC
                                 if (analysisDone && res) {
                                     if (res.status === 'dead') {
-                                        fillColor = '#334155'; // Dead = Grey
-                                        opacity = 0.8;
+                                        fillColor = '#334155'; opacity = 0.8;
                                     } else {
-                                        fillColor = res.store.color; // Covered = Store Color
-                                        opacity = 0.6;
+                                        fillColor = res.store.color; opacity = 0.6;
                                     }
                                 }
 
@@ -505,7 +526,10 @@ export default function DarkStoreAnalyzerPage() {
                                         <Popup pane="popupPane">
                                             <div className="p-1 min-w-[200px]">
                                                 <h4 className="font-bold">{p.name}</h4>
-                                                <Badge variant="outline" className="text-[10px] mb-2">{p.groupName}</Badge>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <Badge variant="outline" className="text-[9px]">{p.groupName}</Badge>
+                                                    {p.demand && <span className="text-[10px] text-green-600 font-bold">{p.demand}% Vol</span>}
+                                                </div>
                                                 {res ? (
                                                     res.status === 'dead' ? (
                                                         <div className="flex items-center gap-2 text-red-600 font-bold text-xs"><AlertTriangle className="h-3 w-3"/> Dead Zone</div>
@@ -515,11 +539,11 @@ export default function DarkStoreAnalyzerPage() {
                                                             <div className="font-bold text-slate-800">{res.store.name}</div>
                                                             <div className="flex gap-2 mt-1 text-xs">
                                                                 <span className="bg-blue-100 text-blue-700 px-1 rounded">{res.dist.toFixed(2)} km</span>
-                                                                {res.time && <span className="bg-purple-100 text-purple-700 px-1 rounded">{res.time.toFixed(1)} min</span>}
+                                                                {res.store.weight && <span className="bg-orange-100 text-orange-700 px-1 rounded">Wt: {res.store.weight}</span>}
                                                             </div>
                                                         </div>
                                                     )
-                                                ) : <span className="text-xs italic text-slate-400">Zone Group: {p.groupName}</span>}
+                                                ) : <span className="text-xs italic text-slate-400">Not analyzed</span>}
                                             </div>
                                         </Popup>
                                     </GeoJSON>
@@ -528,7 +552,6 @@ export default function DarkStoreAnalyzerPage() {
                         </FeatureGroup>
                     </Pane>
 
-                    {/* Layer 2: Radius Circles */}
                     {showRadius && (
                         <Pane name="radius" style={{ zIndex: 420 }}>
                             {radiusCircles.map((c, i) => (
@@ -537,32 +560,22 @@ export default function DarkStoreAnalyzerPage() {
                         </Pane>
                     )}
 
-                    {/* Layer 3: Visual Routes */}
                     <Pane name="routes" style={{ zIndex: 450 }}>
                         {visualRoutes.map((r, i) => (
-                            <Polyline 
-                                key={`route-${i}`} 
-                                positions={r.geom} 
-                                color={r.type === 'closest' ? '#22c55e' : r.type === 'centroid' ? '#3b82f6' : '#ef4444'} 
-                                weight={4} 
-                                dashArray={r.type === 'centroid' ? '10, 10' : undefined}
-                            >
+                            <Polyline key={`route-${i}`} positions={r.geom} color={r.type === 'closest' ? '#22c55e' : r.type === 'centroid' ? '#3b82f6' : '#ef4444'} weight={4}>
                                 <Tooltip sticky>{r.label}: {r.dist.toFixed(2)} km</Tooltip>
                             </Polyline>
                         ))}
                     </Pane>
 
-                    {/* Layer 4: Stores */}
                     <Pane name="stores" style={{ zIndex: 500 }}>
                         {stores.map((s, i) => {
-                            // Filter Stores if view mode is active
                             if (filterStore !== 'all' && s.id !== filterStore) return null;
-                            
                             return (
-                                <Marker key={`store-${i}`} position={[s.lat, s.lng]} icon={createStoreIcon(s.color)}>
+                                <Marker key={`store-${i}`} position={[s.lat, s.lng]} icon={createStoreIcon(s.color, s.weight || 1)}>
                                     <Popup pane="popupPane">
                                         <strong>{s.name}</strong><br/>
-                                        <span className="text-xs text-slate-500">{s.id}</span>
+                                        <span className="text-xs text-slate-500">Weight: {s.weight || 1}</span>
                                     </Popup>
                                 </Marker>
                             );
@@ -572,29 +585,20 @@ export default function DarkStoreAnalyzerPage() {
             </div>
         </div>
 
-        {/* WIZARD DIALOG (High Z-Index) */}
+        {/* WIZARD */}
         <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
             <DialogContent className="z-[9999] bg-white/95 backdrop-blur">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5 text-green-600"/> Map Columns</DialogTitle>
-                    <DialogDescription>Match CSV headers for {wizardType}.</DialogDescription>
+                    <DialogDescription>Match CSV headers. Optional fields can be skipped.</DialogDescription>
                 </DialogHeader>
-                
                 <div className="grid gap-4 py-4">
-                    {/* 🟢 NEW: Zone Group Name Input */}
                     {wizardType === 'polygons' && (
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-2">
                             <Label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Zone Group Name</Label>
-                            <Input 
-                                placeholder="e.g. North City, District 1..." 
-                                value={zoneGroupName} 
-                                onChange={e => setZoneGroupName(e.target.value)} 
-                                className="bg-white"
-                            />
-                            <p className="text-[10px] text-slate-400 mt-1">This name will help identify these zones on the map.</p>
+                            <Input placeholder="e.g. North City" value={zoneGroupName} onChange={e => setZoneGroupName(e.target.value)} className="bg-white" />
                         </div>
                     )}
-
                     {REQUIRED_FIELDS[wizardType].map(f => (
                         <div key={f.key} className="grid grid-cols-4 items-center gap-4">
                             <Label className="text-right text-xs font-bold uppercase text-slate-500">{f.label}</Label>
