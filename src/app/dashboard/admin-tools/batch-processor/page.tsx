@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save } from 'lucide-react';
+import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save, ArrowLeftRight } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +36,6 @@ const OSRM_ENDPOINTS = {
 const HF_TOKEN = process.env.NEXT_PUBLIC_HF_TOKEN;
 
 // --- 🎨 DISTINCT COLOR PALETTE ---
-// High contrast colors to ensure branches are distinguishable
 const DISTINCT_COLORS = [
     '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', 
     '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', 
@@ -50,9 +49,20 @@ const getBranchColor = (index: number) => {
 
 // --- ROUTING HELPER ---
 async function fetchRouteGeometry(start: {lat: number, lng: number}, end: {lat: number, lng: number}, endpoint: string) {
+    if (!HF_TOKEN) {
+        console.error("Missing NEXT_PUBLIC_HF_TOKEN");
+        return null;
+    }
     const url = `${endpoint}/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
     try {
         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${HF_TOKEN}` } });
+        
+        if (!res.ok) {
+            const errText = await res.text();
+            console.error("OSRM Route Error:", res.status, errText);
+            return null;
+        }
+
         const data = await res.json();
         if (data.code === 'Ok' && data.routes[0]) {
             return {
@@ -60,7 +70,9 @@ async function fetchRouteGeometry(start: {lat: number, lng: number}, end: {lat: 
                 geom: data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]])
             };
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Network Error:", e); 
+    }
     return null;
 }
 
@@ -87,6 +99,9 @@ export default function BatchCoveragePage() {
   const [searchStore, setSearchStore] = useState("");
   const [reassignMode, setReassignMode] = useState(false);
   const [selectedPolyRoutes, setSelectedPolyRoutes] = useState<any>(null);
+  
+  // Summary View Mode
+  const [summaryMode, setSummaryMode] = useState<'polygon' | 'store'>('polygon');
 
   // Temporary state for the popup dropdown
   const [pendingReassignStore, setPendingReassignStore] = useState<string>("");
@@ -105,13 +120,17 @@ export default function BatchCoveragePage() {
   // --- ANALYSIS ENGINE ---
   const runAnalysis = async () => {
     if (!stores.length || !polygons.length) return;
+    if (!HF_TOKEN) {
+        toast({ variant: "destructive", title: "Config Error", description: "Missing API Token." });
+        return;
+    }
+
     setProcessing(true); setProgress(0); setAssignments([]); setManualOverrides([]); 
 
     const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
     const initialResults: any[] = [];
     
     // 1. Prepare Data & Assign Colors
-    // Group stores by Parent first to assign distinct indices
     const storesByParent: Record<string, any[]> = {};
     stores.forEach(s => {
         const pid = s.Parent_ID ? s.Parent_ID.trim() : (s.Store_ID ? s.Store_ID.trim() : `Unique-${Math.random()}`);
@@ -130,7 +149,6 @@ export default function BatchCoveragePage() {
                 lng: parseFloat(s.Lon),
                 parentId: pid,
                 parentName: pname,
-                // Assign color based on its index within the parent group
                 color: getBranchColor(index) 
             });
         });
@@ -161,7 +179,11 @@ export default function BatchCoveragePage() {
 
     // 2. Batch Matrix Calc
     const chunkSize = 50;
+    let hasError = false;
+
     for (let i = 0; i < validPolys.length; i += chunkSize) {
+        if (hasError) break; 
+
         const chunk = validPolys.slice(i, i + chunkSize);
         
         const storeCoords = finalStores.map(s => `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`).join(';');
@@ -173,6 +195,19 @@ export default function BatchCoveragePage() {
 
         try {
             const res = await fetch(url, { headers: { 'Authorization': `Bearer ${HF_TOKEN}` } });
+            
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error("OSRM Matrix Error:", errorText);
+                toast({ 
+                    variant: "destructive", 
+                    title: "Engine Error", 
+                    description: `Server returned ${res.status}. Check console for details.` 
+                });
+                hasError = true;
+                break;
+            }
+
             const data = await res.json();
 
             if (data.code === 'Ok' && data.distances) {
@@ -184,7 +219,6 @@ export default function BatchCoveragePage() {
                         if (dMeter !== null) {
                             const dKm = dMeter / 1000;
                             if (dKm <= threshold) {
-                                // Basic Logic: Closest branch wins for this Parent
                                 if (!bestPerParent[store.parentId] || dKm < bestPerParent[store.parentId].dist) {
                                     bestPerParent[store.parentId] = { store, dist: dKm };
                                 }
@@ -200,7 +234,7 @@ export default function BatchCoveragePage() {
                             StoreName: winner.store.name,
                             ParentID: winner.store.parentId,
                             ParentName: winner.store.parentName,
-                            DistanceKM: winner.dist, // Keep as number for sorting
+                            DistanceKM: winner.dist,
                             Color: winner.store.color,
                             geometry: poly.geometry,
                             center: poly.center,
@@ -209,63 +243,66 @@ export default function BatchCoveragePage() {
                     });
                 });
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error(e);
+            hasError = true;
+            toast({ variant: "destructive", title: "Network Error", description: "Failed to connect to routing engine." });
+        }
         setProgress(Math.round(((i + chunkSize) / validPolys.length) * 100));
     }
 
-    // 3. AI FAIRNESS / LOAD BALANCING
-    let finalAssignments = initialResults;
-    if (useAiBalance) {
-        // Group assignments by Parent
-        const parentGroups: Record<string, any[]> = {};
-        finalAssignments.forEach(a => {
-            if (!parentGroups[a.ParentID]) parentGroups[a.ParentID] = [];
-            parentGroups[a.ParentID].push(a);
-        });
+    // 3. AI FAIRNESS
+    if (!hasError) {
+        let finalAssignments = initialResults;
+        if (useAiBalance) {
+            const parentGroups: Record<string, any[]> = {};
+            finalAssignments.forEach(a => {
+                if (!parentGroups[a.ParentID]) parentGroups[a.ParentID] = [];
+                parentGroups[a.ParentID].push(a);
+            });
 
-        // Optimize each parent company separately
-        Object.keys(parentGroups).forEach(pid => {
-            const companyAssignments = parentGroups[pid];
-            const companyStores = finalStores.filter(s => s.parentId === pid);
-            if (companyStores.length < 2) return; 
+            Object.keys(parentGroups).forEach(pid => {
+                const companyAssignments = parentGroups[pid];
+                const companyStores = finalStores.filter(s => s.parentId === pid);
+                if (companyStores.length < 2) return; 
 
-            const avgLoad = companyAssignments.length / companyStores.length;
-            const overloadLimit = avgLoad * 1.3; 
+                const avgLoad = companyAssignments.length / companyStores.length;
+                const overloadLimit = avgLoad * 1.3; 
 
-            // Calculate loads
-            const storeCounts: Record<string, number> = {};
-            companyStores.forEach(s => storeCounts[s.id] = 0);
-            companyAssignments.forEach(a => storeCounts[a.StoreID]++);
+                const storeCounts: Record<string, number> = {};
+                companyStores.forEach(s => storeCounts[s.id] = 0);
+                companyAssignments.forEach(a => storeCounts[a.StoreID]++);
 
-            const hoarders = companyStores.filter(s => storeCounts[s.id] > overloadLimit);
-            const starving = companyStores.filter(s => storeCounts[s.id] < avgLoad);
+                const hoarders = companyStores.filter(s => storeCounts[s.id] > overloadLimit);
+                const starving = companyStores.filter(s => storeCounts[s.id] < avgLoad);
 
-            if (hoarders.length && starving.length) {
-                companyAssignments.sort((a: any, b: any) => b.DistanceKM - a.DistanceKM);
-                companyAssignments.forEach(assign => {
-                    if (storeCounts[assign.StoreID] > overloadLimit) {
-                        if (assign.DistanceKM > 3) {
-                             const luckyWinner = starving[0]; 
-                             if (luckyWinner) {
-                                 assign.StoreID = luckyWinner.id;
-                                 assign.StoreName = luckyWinner.name;
-                                 assign.Color = luckyWinner.color; // Update color
-                                 assign.isAiOptimized = true;
-                                 storeCounts[luckyWinner.id]++;
-                                 storeCounts[assign.StoreID]--;
-                             }
+                if (hoarders.length && starving.length) {
+                    companyAssignments.sort((a: any, b: any) => b.DistanceKM - a.DistanceKM);
+                    companyAssignments.forEach(assign => {
+                        if (storeCounts[assign.StoreID] > overloadLimit) {
+                            if (assign.DistanceKM > 3) {
+                                 const luckyWinner = starving[0]; 
+                                 if (luckyWinner) {
+                                     assign.StoreID = luckyWinner.id;
+                                     assign.StoreName = luckyWinner.name;
+                                     assign.Color = luckyWinner.color;
+                                     assign.isAiOptimized = true;
+                                     storeCounts[luckyWinner.id]++;
+                                     storeCounts[assign.StoreID]--;
+                                 }
+                            }
                         }
-                    }
-                });
-            }
-        });
-    }
+                    });
+                }
+            });
+        }
 
-    finalAssignments.forEach(a => a.DistanceKM = typeof a.DistanceKM === 'number' ? a.DistanceKM.toFixed(2) : a.DistanceKM);
-    setAssignments(finalAssignments);
-    setProcessing(false);
+        finalAssignments.forEach(a => a.DistanceKM = typeof a.DistanceKM === 'number' ? a.DistanceKM.toFixed(2) : a.DistanceKM);
+        setAssignments(finalAssignments);
+        if (finalAssignments.length > 0) setSelectedParent(finalAssignments[0].ParentID);
+    }
     
-    if (finalAssignments.length > 0) setSelectedParent(finalAssignments[0].ParentID);
+    setProcessing(false);
   };
 
   // --- MERGE LOGIC ---
@@ -292,7 +329,8 @@ export default function BatchCoveragePage() {
       return data;
   }, [activeAssignments, selectedParent, searchStore]);
 
-  const masterSummary = useMemo(() => {
+  // --- SUMMARY GENERATORS ---
+  const polygonSummary = useMemo(() => {
       const groups: Record<string, string[]> = {};
       activeAssignments.forEach(a => {
           if (!groups[a.PolygonID]) groups[a.PolygonID] = [];
@@ -300,9 +338,23 @@ export default function BatchCoveragePage() {
       });
       return Object.entries(groups).map(([pid, sids]) => ({
           PolygonID: pid,
-          StoreIDs: sids.join(',')
+          AssignedStores: sids.join(', ')
       }));
   }, [activeAssignments]);
+
+  const storeSummary = useMemo(() => {
+      const groups: Record<string, string[]> = {};
+      activeAssignments.forEach(a => {
+          if (!groups[a.StoreID]) groups[a.StoreID] = [];
+          if (!groups[a.StoreID].includes(a.PolygonID)) groups[a.StoreID].push(a.PolygonID);
+      });
+      return Object.entries(groups).map(([sid, pids]) => ({
+          StoreID: sid,
+          CoveredPolygons: pids.join(', ')
+      }));
+  }, [activeAssignments]);
+
+  const currentSummary = summaryMode === 'polygon' ? polygonSummary : storeSummary;
 
   // --- VISUAL ACTIONS ---
   const handleMapClick = (assignment: any) => {
@@ -324,7 +376,7 @@ export default function BatchCoveragePage() {
       if (!newStoreId) return;
 
       const storeObj = processedStores.find(s => s.id === newStoreId);
-      const polyObj = activeAssignments.find(a => a.PolygonID === polyId);
+      const polyObj = activeAssignments.find(a => a.PolygonID === polyId && a.ParentID === parentId);
       
       if (!storeObj || !polyObj) return;
 
@@ -333,8 +385,9 @@ export default function BatchCoveragePage() {
           StoreID: storeObj.id,
           StoreName: storeObj.name,
           DistanceKM: "Manual",
-          Color: storeObj.color, // CRITICAL: Update Color
-          isManual: true
+          Color: storeObj.color, 
+          isManual: true,
+          isAiOptimized: false
       };
       
       setManualOverrides(prev => [
@@ -342,8 +395,8 @@ export default function BatchCoveragePage() {
           newEntry
       ]);
       
-      setPendingReassignStore(""); // Reset dropdown
-      toast({title: "Reassigned!", description: `Zone moved to ${storeObj.name}. Color updated.`});
+      setPendingReassignStore(""); 
+      toast({title: "Reassigned!", description: `Zone moved to ${storeObj.name}.`});
   };
 
   return (
@@ -443,10 +496,10 @@ export default function BatchCoveragePage() {
                     <FeatureGroup>
                         {viewData.map((a, i) => (
                             <GeoJSON 
-                                key={`${a.PolygonID}-${a.StoreID}-${a.isManual ? 'manual' : 'auto'}`} 
+                                key={`${a.PolygonID}-${a.StoreID}-${a.Color}-${reassignMode ? 'edit' : 'view'}`} 
                                 data={a.geometry} 
                                 style={{ 
-                                    color: 'white', // Bright borders
+                                    color: 'white', 
                                     weight: 2, 
                                     fillColor: a.Color, 
                                     fillOpacity: reassignMode ? 0.7 : 0.6 
@@ -506,7 +559,7 @@ export default function BatchCoveragePage() {
                         <Polyline positions={selectedPolyRoutes.route} color="black" weight={4} dashArray="10, 10" />
                     )}
 
-                    {/* Store Markers - Rendered LAST to be on TOP */}
+                    {/* Store Markers */}
                     {processedStores.filter(s => s.parentId === selectedParent).map((s, i) => (
                         <CircleMarker 
                             key={`store-${i}`} 
@@ -525,25 +578,50 @@ export default function BatchCoveragePage() {
 
             <TabsContent value="summary">
                 <Card>
-                    <CardHeader className="flex flex-row justify-between py-3">
-                        <CardTitle>Master Assignment Summary</CardTitle>
+                    <CardHeader className="flex flex-row justify-between py-3 items-center">
+                        <div className="flex items-center gap-4">
+                            <CardTitle>Master Assignment Summary</CardTitle>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                <button 
+                                    onClick={() => setSummaryMode('polygon')}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${summaryMode === 'polygon' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
+                                >
+                                    By Polygon
+                                </button>
+                                <button 
+                                    onClick={() => setSummaryMode('store')}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${summaryMode === 'store' ? 'bg-white shadow text-purple-600' : 'text-slate-500'}`}
+                                >
+                                    By Store
+                                </button>
+                            </div>
+                        </div>
                         <Button size="sm" variant="outline" onClick={() => {
-                             const csv = Papa.unparse(masterSummary);
+                             const csv = Papa.unparse(currentSummary as any); // FIXED HERE
                              const blob = new Blob([csv], { type: 'text/csv' });
                              const link = document.createElement('a');
                              link.href = URL.createObjectURL(blob);
-                             link.download = 'master_summary.csv';
+                             link.download = `coverage_summary_${summaryMode}.csv`;
                              link.click();
                         }}><Download className="h-4 w-4 mr-2"/> Download CSV</Button>
                     </CardHeader>
                     <CardContent className="h-[500px] overflow-auto">
                         <Table>
-                            <TableHeader><TableRow><TableHead>Polygon ID</TableHead><TableHead>Assigned Branches</TableHead></TableRow></TableHeader>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[150px]">{summaryMode === 'polygon' ? 'Polygon ID' : 'Store ID'}</TableHead>
+                                    <TableHead>{summaryMode === 'polygon' ? 'Assigned Branches' : 'Covered Polygons (Zones)'}</TableHead>
+                                </TableRow>
+                            </TableHeader>
                             <TableBody>
-                                {masterSummary.map((row, i) => (
+                                {currentSummary.map((row: any, i) => (
                                     <TableRow key={i}>
-                                        <TableCell className="font-mono text-blue-600 font-bold">{row.PolygonID}</TableCell>
-                                        <TableCell className="font-mono text-xs">{row.StoreIDs}</TableCell>
+                                        <TableCell className={`font-mono font-bold ${summaryMode === 'polygon' ? 'text-blue-600' : 'text-purple-600'}`}>
+                                            {summaryMode === 'polygon' ? row.PolygonID : row.StoreID}
+                                        </TableCell>
+                                        <TableCell className="font-mono text-xs leading-relaxed">
+                                            {summaryMode === 'polygon' ? row.AssignedStores : row.CoveredPolygons}
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
