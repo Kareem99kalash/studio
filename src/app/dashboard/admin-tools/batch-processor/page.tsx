@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save, FileSpreadsheet, AlertCircle, Layers } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -138,7 +138,7 @@ export default function BatchCoveragePage() {
   // Wizard State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardFile, setWizardFile] = useState<File | null>(null);
-  const [wizardType, setWizardType] = useState<'stores' | 'polygons'>('stores');
+  const [wizardType, setWizardType] = useState<'stores' | 'polygons_primary' | 'polygons_secondary'>('stores');
   const [wizardHeaders, setWizardHeaders] = useState<string[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
 
@@ -153,6 +153,9 @@ export default function BatchCoveragePage() {
   const [searchStore, setSearchStore] = useState("");
   const [reassignMode, setReassignMode] = useState(false);
   
+  // 🟢 NEW: Layer Filtering
+  const [viewLayer, setViewLayer] = useState<'all' | 'primary' | 'secondary'>('all');
+  
   // 3-Route Visualization State
   const [visualRoutes, setVisualRoutes] = useState<any[]>([]);
 
@@ -163,7 +166,7 @@ export default function BatchCoveragePage() {
   const [pendingReassignStore, setPendingReassignStore] = useState<string>("");
 
   // --- 1. FILE UPLOAD ---
-  const handleFile = (file: File, type: 'stores' | 'polygons') => {
+  const handleFile = (file: File, type: 'stores' | 'polygons_primary' | 'polygons_secondary') => {
     setWizardFile(file);
     setWizardType(type);
     
@@ -174,7 +177,10 @@ export default function BatchCoveragePage() {
             const headers = results.meta.fields || [];
             setWizardHeaders(headers);
             const initialMap: Record<string, string> = {};
-            REQUIRED_FIELDS[type].forEach(field => {
+            // Determine required fields based on base type
+            const fields = type === 'stores' ? REQUIRED_FIELDS.stores : REQUIRED_FIELDS.polygons;
+            
+            fields.forEach(field => {
                 const match = headers.find(h => 
                     h.toLowerCase().includes(field.key.toLowerCase()) || 
                     h.toLowerCase().includes(field.label.toLowerCase()) ||
@@ -204,9 +210,14 @@ export default function BatchCoveragePage() {
                       }
                   });
                   
-                  if (!mappedRow.id) mappedRow.id = `${wizardType}_${index + 1}`;
+                  // Default IDs with Group Prefix to prevent collision
+                  const prefix = wizardType === 'stores' ? 'S' : (wizardType === 'polygons_primary' ? 'PRI' : 'SEC');
+                  if (!mappedRow.id) mappedRow.id = `${prefix}_${index + 1}`;
                   if (!mappedRow.name) mappedRow.name = mappedRow.id;
                   
+                  // Tag the group for later filtering
+                  mappedRow.group = wizardType === 'polygons_secondary' ? 'secondary' : 'primary';
+
                   if (wizardType === 'stores') {
                       if (!mappedRow.parentId) mappedRow.parentId = "Unassigned";
                       if (!mappedRow.parentName) mappedRow.parentName = mappedRow.parentId;
@@ -219,9 +230,12 @@ export default function BatchCoveragePage() {
               });
 
               if (wizardType === 'stores') setStores(mappedData);
-              else setPolygons(mappedData);
+              else {
+                  // Append polygons instead of replacing, so we can have both groups
+                  setPolygons(prev => [...prev, ...mappedData]);
+              }
 
-              toast({ title: "Import Successful", description: `Loaded ${mappedData.length} ${wizardType}.` });
+              toast({ title: "Import Successful", description: `Loaded ${mappedData.length} items (${wizardType}).` });
               setIsWizardOpen(false);
               setWizardFile(null);
           }
@@ -254,8 +268,8 @@ export default function BatchCoveragePage() {
         storesByParent[pid].forEach((s, index) => {
             validStores.push({ 
                 ...s, 
-                id: s.id || `S-${index}`,
-                name: s.name || `Store ${index + 1}`,
+                id: s.id, // ID logic moved to mapping
+                name: s.name,
                 parentId: pid, 
                 parentName: s.parentName || pid,
                 color: getBranchColor(index) 
@@ -278,8 +292,9 @@ export default function BatchCoveragePage() {
             const centroid = turf.centroid(poly);
             
             return {
-                id: p.id || `P-${i}`,
-                name: p.name || `Zone ${i+1}`,
+                id: p.id,
+                name: p.name,
+                group: p.group || 'primary', // Preserve group tag
                 center: { lat: centroid.geometry.coordinates[1], lng: centroid.geometry.coordinates[0] },
                 geometry: poly.geometry,
                 vertices: pairs, 
@@ -291,6 +306,7 @@ export default function BatchCoveragePage() {
     const chunkSize = 25; 
     let hasError = false;
 
+    // Process ALL polygons (Primary + Secondary) in one go
     for (let i = 0; i < validPolys.length; i += chunkSize) {
         if (hasError) break; 
         
@@ -391,6 +407,7 @@ export default function BatchCoveragePage() {
                             initialResults.push({
                                 PolygonID: poly.id,
                                 PolygonName: poly.name,
+                                group: poly.group, // 🟢 PASS GROUP
                                 StoreID: winner.store.id,
                                 StoreName: winner.store.name,
                                 ParentID: winner.store.parentId,
@@ -411,12 +428,13 @@ export default function BatchCoveragePage() {
                         initialResults.push({
                             PolygonID: poly.id,
                             PolygonName: poly.name,
+                            group: poly.group, // 🟢 PASS GROUP
                             StoreID: "Uncovered",
                             StoreName: "No Coverage",
                             ParentID: "None",
                             ParentName: "Unassigned",
                             DistanceKM: bestFail ? bestFail.dist : 999,
-                            Color: '#94a3b8', 
+                            Color: poly.group === 'secondary' ? '#fdba74' : '#94a3b8', // Default color depends on group
                             geometry: poly.geometry,
                             center: poly.center,
                             feature: poly.feature,
@@ -466,13 +484,19 @@ export default function BatchCoveragePage() {
           .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }, [activeAssignments]);
   
+  // 🟢 VIEW FILTER LOGIC
   const viewData = useMemo(() => {
       let data = activeAssignments.filter(a => 
           (a.isCovered && a.ParentID === selectedParent) || (!a.isCovered)
       );
+      
+      // Filter by Layer (Primary vs Secondary)
+      if (viewLayer === 'primary') data = data.filter(a => a.group === 'primary');
+      if (viewLayer === 'secondary') data = data.filter(a => a.group === 'secondary');
+
       if (searchStore) data = data.filter(a => a.StoreName.toLowerCase().includes(searchStore.toLowerCase()));
       return data;
-  }, [activeAssignments, selectedParent, searchStore]);
+  }, [activeAssignments, selectedParent, searchStore, viewLayer]);
 
   const currentSummary = useMemo(() => {
       const groups: Record<string, string[]> = {};
@@ -480,6 +504,10 @@ export default function BatchCoveragePage() {
 
       activeAssignments.forEach(a => {
           if (!a.isCovered) return; 
+          // Respect layer filter in summary too
+          if (viewLayer === 'primary' && a.group !== 'primary') return;
+          if (viewLayer === 'secondary' && a.group !== 'secondary') return;
+
           const key = summaryMode === 'polygon' ? a.PolygonID : a.StoreID;
           const val = summaryMode === 'polygon' ? a.StoreID : a.PolygonID;
           if (!groups[key]) groups[key] = [];
@@ -499,7 +527,7 @@ export default function BatchCoveragePage() {
           
           return row;
       });
-  }, [activeAssignments, summaryMode, polygons.length]);
+  }, [activeAssignments, summaryMode, polygons.length, viewLayer]);
 
   const executeReassign = () => {
       if (!reassignDialogData || !pendingReassignStore) return;
@@ -562,7 +590,7 @@ export default function BatchCoveragePage() {
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                 <MapIcon className="h-6 w-6 text-purple-600"/> Coverage Commander
             </h1>
-            <p className="text-slate-500 text-xs">3-Point Logic • AI Load Balancing • Visual Reassignment</p>
+            <p className="text-slate-500 text-xs">Multi-Layer Analysis • Cross-Zone Logic • Visual Reassignment</p>
         </div>
         <div className="flex flex-wrap gap-3 items-end">
             <div className="w-24">
@@ -589,24 +617,35 @@ export default function BatchCoveragePage() {
       </div>
 
       {/* UPLOAD AREA */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <Card className={`border-dashed border-2 transition ${stores.length ? 'border-green-500 bg-green-50' : 'hover:bg-slate-50'}`}>
             <CardContent className="pt-6 text-center">
                 <UploadCloud className={`mx-auto h-8 w-8 mb-2 ${stores.length ? 'text-green-600' : 'text-blue-500'}`}/>
-                <h3 className="font-bold text-sm">{stores.length ? `${stores.length} Stores Loaded` : 'Upload Stores'}</h3>
+                <h3 className="font-bold text-sm">1. Stores</h3>
+                <p className="text-[10px] text-slate-400 mb-2">{stores.length} Loaded</p>
                 <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'stores')} className="text-xs ml-8 mt-2"/>
             </CardContent>
         </Card>
-        <Card className={`border-dashed border-2 transition ${polygons.length ? 'border-green-500 bg-green-50' : 'hover:bg-slate-50'}`}>
+        <Card className={`border-dashed border-2 transition ${polygons.some(p => p.group === 'primary') ? 'border-blue-500 bg-blue-50' : 'hover:bg-slate-50'}`}>
             <CardContent className="pt-6 text-center">
-                <UploadCloud className={`mx-auto h-8 w-8 mb-2 ${polygons.length ? 'text-green-600' : 'text-purple-500'}`}/>
-                <h3 className="font-bold text-sm">{polygons.length ? `${polygons.length} Polygons Loaded` : 'Upload Polygons'}</h3>
-                <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons')} className="text-xs ml-8 mt-2"/>
+                <Layers className={`mx-auto h-8 w-8 mb-2 ${polygons.some(p => p.group === 'primary') ? 'text-blue-600' : 'text-blue-400'}`}/>
+                <h3 className="font-bold text-sm">2. Primary Zones</h3>
+                <p className="text-[10px] text-slate-400 mb-2">{polygons.filter(p => p.group === 'primary').length} Zones</p>
+                <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons_primary')} className="text-xs ml-8 mt-2"/>
+            </CardContent>
+        </Card>
+        {/* 🟢 NEW: Secondary Zones Upload */}
+        <Card className={`border-dashed border-2 transition ${polygons.some(p => p.group === 'secondary') ? 'border-orange-500 bg-orange-50' : 'hover:bg-slate-50'}`}>
+            <CardContent className="pt-6 text-center">
+                <Layers className={`mx-auto h-8 w-8 mb-2 ${polygons.some(p => p.group === 'secondary') ? 'text-orange-600' : 'text-orange-400'}`}/>
+                <h3 className="font-bold text-sm">3. Secondary Zones</h3>
+                <p className="text-[10px] text-slate-400 mb-2">Cross-Zone / Overlap</p>
+                <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons_secondary')} className="text-xs ml-8 mt-2"/>
             </CardContent>
         </Card>
       </div>
 
-      {/* COLUMN MAPPING WIZARD (Z-Index Fixed) */}
+      {/* COLUMN MAPPING WIZARD */}
       <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
         <DialogContent className="max-w-xl z-[9999] bg-white backdrop-blur-sm">
             <DialogHeader>
@@ -614,11 +653,11 @@ export default function BatchCoveragePage() {
                     <FileSpreadsheet className="h-5 w-5 text-green-600"/> Map CSV Columns
                 </DialogTitle>
                 <DialogDescription>
-                    Match your file headers to the system requirements.
+                    Match your file headers. <Badge variant="outline">{wizardType === 'stores' ? 'Stores' : wizardType === 'polygons_primary' ? 'Primary Zones' : 'Secondary Zones'}</Badge>
                 </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-                {REQUIRED_FIELDS[wizardType].map((field) => (
+                {(wizardType === 'stores' ? REQUIRED_FIELDS.stores : REQUIRED_FIELDS.polygons).map((field) => (
                     <div key={field.key} className="grid grid-cols-4 items-center gap-4">
                         <Label className="text-right text-xs font-bold uppercase text-slate-500 col-span-1">
                             {field.label} {field.required && <span className="text-red-500">*</span>}
@@ -644,7 +683,7 @@ export default function BatchCoveragePage() {
         </DialogContent>
       </Dialog>
 
-      {/* REASSIGN DIALOG (OUTSIDE POPUP - Z-Index Fixed) */}
+      {/* REASSIGN DIALOG */}
       <Dialog open={!!reassignDialogData} onOpenChange={(open) => !open && setReassignDialogData(null)}>
         <DialogContent className="z-[9999] bg-white/95 backdrop-blur-sm shadow-2xl border border-slate-200">
             <DialogHeader>
@@ -689,9 +728,15 @@ export default function BatchCoveragePage() {
 
                 {activeTab === 'map' && (
                     <div className="flex gap-2">
-                        {/* FORMATTED DROPDOWN (Sorted A-Z by Name) */}
+                        {/* 🟢 NEW: LAYER FILTER */}
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                            <button onClick={() => setViewLayer('all')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'all' ? 'bg-white shadow text-slate-800' : 'text-slate-400'}`}>All</button>
+                            <button onClick={() => setViewLayer('primary')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'primary' ? 'bg-blue-100 text-blue-700' : 'text-slate-400'}`}>Primary</button>
+                            <button onClick={() => setViewLayer('secondary')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'secondary' ? 'bg-orange-100 text-orange-700' : 'text-slate-400'}`}>Secondary</button>
+                        </div>
+
                         <Select value={selectedParent} onValueChange={setSelectedParent}>
-                            <SelectTrigger className="w-[300px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
+                            <SelectTrigger className="w-[200px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
                                 <SelectValue placeholder="Select Parent" />
                             </SelectTrigger>
                             <SelectContent className="z-[9999] max-h-[300px]">
@@ -732,53 +777,69 @@ export default function BatchCoveragePage() {
                 <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     
-                    {/* Layer 1: Polygons (Bottom - zIndex 400) */}
+                    {/* Layer 1: Polygons */}
                     <Pane name="polygons" style={{ zIndex: 400 }}>
                         <FeatureGroup>
-                            {viewData.map((a, i) => (
-                                <GeoJSON 
-                                    key={`${a.PolygonID}-${a.StoreID}-${a.Color}-${reassignMode ? 'edit' : 'view'}`} 
-                                    data={a.geometry} 
-                                    style={{ color: 'white', weight: 2, fillColor: a.Color, fillOpacity: reassignMode ? 0.7 : 0.6 }} 
-                                    onEachFeature={(f, l) => l.on('click', () => handleMapClick(a))}
-                                >
-                                    <Popup pane="popupPane">
-                                        <div className="min-w-[200px] p-1">
-                                            <div className="font-bold text-base mb-1">{a.PolygonName}</div>
-                                            {!reassignMode ? (
-                                                <>
-                                                    {a.isCovered ? (
-                                                        <>
-                                                            <div className="bg-slate-100 p-2 rounded mb-2 border-l-4" style={{borderLeftColor: a.Color}}>
-                                                                <div className="text-xs font-bold text-slate-400 uppercase">Assigned Branch</div>
-                                                                <div className="font-bold text-slate-800">{a.StoreName}</div>
-                                                                <div className="text-xs text-slate-500">{a.DistanceKM} km</div>
-                                                            </div>
-                                                            <div className="text-[10px] text-center text-slate-400 mt-2">Click to view 3-point analysis</div>
-                                                        </>
-                                                    ) : (
-                                                        <div className="bg-red-50 p-3 rounded border border-red-100"><div className="flex items-center gap-2 text-red-600 font-bold text-sm mb-1"><AlertCircle className="h-4 w-4"/> Uncovered</div><p className="text-xs text-red-800">{a.failureReason}</p></div>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <div className="text-xs font-bold text-red-600 uppercase">Reassign Branch</div>
-                                                    {/* ⚡ TRIGGER DIALOG INSTEAD OF DROPDOWN */}
-                                                    <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-xs h-7" 
-                                                        onClick={() => setReassignDialogData({ polyId: a.PolygonID, parentId: a.ParentID, polyName: a.PolygonName })}
-                                                    >
-                                                        <Save className="h-3 w-3 mr-1" /> Change Branch
-                                                    </Button>
+                            {viewData.map((a, i) => {
+                                // Default colors for uncovered zones: Primary = Grey, Secondary = Orange-ish
+                                const defaultColor = a.group === 'secondary' ? '#fdba74' : '#94a3b8';
+                                const finalColor = a.isCovered ? a.Color : defaultColor;
+                                
+                                return (
+                                    <GeoJSON 
+                                        key={`${a.PolygonID}-${a.StoreID}-${a.Color}-${reassignMode ? 'edit' : 'view'}`} 
+                                        data={a.geometry} 
+                                        style={{ 
+                                            color: 'white', 
+                                            weight: 2, 
+                                            fillColor: finalColor, 
+                                            fillOpacity: reassignMode ? 0.7 : 0.6 
+                                        }} 
+                                        onEachFeature={(f, l) => l.on('click', () => handleMapClick(a))}
+                                    >
+                                        <Popup pane="popupPane">
+                                            <div className="min-w-[200px] p-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <div className="font-bold text-base">{a.PolygonName}</div>
+                                                    <Badge variant="outline" className={`text-[9px] ${a.group === 'secondary' ? 'text-orange-600 border-orange-200' : 'text-blue-600 border-blue-200'}`}>
+                                                        {a.group === 'secondary' ? 'Secondary' : 'Primary'}
+                                                    </Badge>
                                                 </div>
-                                            )}
-                                        </div>
-                                    </Popup>
-                                </GeoJSON>
-                            ))}
+                                                
+                                                {!reassignMode ? (
+                                                    <>
+                                                        {a.isCovered ? (
+                                                            <>
+                                                                <div className="bg-slate-100 p-2 rounded mb-2 border-l-4" style={{borderLeftColor: a.Color}}>
+                                                                    <div className="text-xs font-bold text-slate-400 uppercase">Assigned Branch</div>
+                                                                    <div className="font-bold text-slate-800">{a.StoreName}</div>
+                                                                    <div className="text-xs text-slate-500">{a.DistanceKM} km</div>
+                                                                </div>
+                                                                <div className="text-[10px] text-center text-slate-400 mt-2">Click to view 3-point analysis</div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="bg-red-50 p-3 rounded border border-red-100"><div className="flex items-center gap-2 text-red-600 font-bold text-sm mb-1"><AlertCircle className="h-4 w-4"/> Uncovered</div><p className="text-xs text-red-800">{a.failureReason}</p></div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        <div className="text-xs font-bold text-red-600 uppercase">Reassign Branch</div>
+                                                        <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-xs h-7" 
+                                                            onClick={() => setReassignDialogData({ polyId: a.PolygonID, parentId: a.ParentID, polyName: a.PolygonName })}
+                                                        >
+                                                            <Save className="h-3 w-3 mr-1" /> Change Branch
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Popup>
+                                    </GeoJSON>
+                                );
+                            })}
                         </FeatureGroup>
                     </Pane>
 
-                    {/* Layer 2: Visual Routes (Middle - zIndex 450) */}
+                    {/* Layer 2: Visual Routes */}
                     <Pane name="routes" style={{ zIndex: 450 }}>
                         {visualRoutes.map((r, i) => (
                             <Polyline 
@@ -793,7 +854,7 @@ export default function BatchCoveragePage() {
                         ))}
                     </Pane>
 
-                    {/* Layer 3: Stores (Top - zIndex 500) */}
+                    {/* Layer 3: Stores */}
                     <Pane name="stores" style={{ zIndex: 500 }}>
                         {processedStores.filter(s => s.parentId === selectedParent).map((s, i) => (
                             <CircleMarker key={`store-${i}`} center={[s.lat, s.lng]} radius={8} pathOptions={{ color: 'white', weight: 3, fillColor: s.color, fillOpacity: 1 }}>
