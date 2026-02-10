@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, UploadCloud, Play, Map as MapIcon, ShoppingBasket, Clock, Circle, FileSpreadsheet, AlertTriangle, Info } from 'lucide-react';
+import { Loader2, UploadCloud, Play, Map as MapIcon, ShoppingBasket, Clock, Info, FileSpreadsheet, AlertTriangle, Eye, Layers } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Badge } from '@/components/ui/badge';
 import L from 'leaflet';
@@ -25,7 +25,6 @@ const Polyline = dynamic(() => import('react-leaflet').then(m => m.Polyline), { 
 const Popup = dynamic(() => import('react-leaflet').then(m => m.Popup), { ssr: false });
 const Tooltip = dynamic(() => import('react-leaflet').then(m => m.Tooltip), { ssr: false });
 const Pane = dynamic(() => import('react-leaflet').then(m => m.Pane), { ssr: false });
-// 🟢 FIXED: Added missing FeatureGroup import
 const FeatureGroup = dynamic(() => import('react-leaflet').then(m => m.FeatureGroup), { ssr: false });
 
 import 'leaflet/dist/leaflet.css';
@@ -37,16 +36,27 @@ const OSRM_ENDPOINTS = {
 };
 const HF_TOKEN = process.env.NEXT_PUBLIC_HF_TOKEN;
 
-// Distinct Colors for Zones
-const ZONE_COLORS = [
-    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6'
+// Distinct Colors for Stores (Post-Analysis)
+const STORE_COLORS = [
+    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', 
+    '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', 
+    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', 
+    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'
 ];
 
+// Zone Group Colors (Pre-Analysis)
+const ZONE_GROUP_COLORS = [
+    '#64748b', '#0ea5e9', '#8b5cf6', '#ec4899', '#f97316', '#84cc16'
+];
+
+const getBranchColor = (index: number) => STORE_COLORS[index % STORE_COLORS.length];
+const getGroupColor = (index: number) => ZONE_GROUP_COLORS[index % ZONE_GROUP_COLORS.length];
+
 // --- ICONS ---
-const createStoreIcon = () => {
+const createStoreIcon = (color: string) => {
     return L.divIcon({
         className: 'custom-store-icon',
-        html: `<div style="background-color: #7e22ce; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+        html: `<div style="background-color: ${color}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8c.9 0 1.8-.7 2-1.6l1.7-7.4"/><path d="m9 11 1 9"/></svg>
                </div>`,
         iconSize: [32, 32],
@@ -60,7 +70,6 @@ const getGeoPoints = (polyFeature: any, storeCoords: {lat: number, lng: number})
     const center = turf.centroid(polyFeature);
     const vertices = turf.explode(polyFeature).features;
     const storePt = turf.point([storeCoords.lng, storeCoords.lat]);
-    
     let closestV = vertices[0], furthestV = vertices[0];
     let minD = Infinity, maxD = -Infinity;
 
@@ -108,16 +117,20 @@ export default function DarkStoreAnalyzerPage() {
   // Data
   const [stores, setStores] = useState<any[]>([]);
   const [polygons, setPolygons] = useState<any[]>([]);
-  const [results, setResults] = useState<Record<string, any>>({}); 
+  const [results, setResults] = useState<Record<string, any>>({}); // Key: PolyID, Val: CoverageData
   
+  // View Control
+  const [filterStore, setFilterStore] = useState<string>("all"); // 'all' or StoreID
+  const [analysisDone, setAnalysisDone] = useState(false);
+
   // Visuals
   const [visualRoutes, setVisualRoutes] = useState<any[]>([]);
   const [radiusCircles, setRadiusCircles] = useState<any[]>([]);
   
   // Settings
   const [region, setRegion] = useState("Iraq");
-  const [distThreshold, setDistThreshold] = useState(5); 
-  const [timeThreshold, setTimeThreshold] = useState(15); 
+  const [distThreshold, setDistThreshold] = useState(5); // km
+  const [timeThreshold, setTimeThreshold] = useState(15); // min
   const [useTime, setUseTime] = useState(false);
   const [showRadius, setShowRadius] = useState(false);
   
@@ -131,11 +144,17 @@ export default function DarkStoreAnalyzerPage() {
   const [wizardType, setWizardType] = useState<'stores' | 'polygons'>('stores');
   const [wizardHeaders, setWizardHeaders] = useState<string[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  
+  // 🟢 NEW: Zone Group Naming
+  const [zoneGroupName, setZoneGroupName] = useState("");
+  const [zoneGroupCount, setZoneGroupCount] = useState(0);
 
   // --- 1. UPLOAD LOGIC ---
   const handleFile = (file: File, type: 'stores' | 'polygons') => {
     setWizardFile(file);
     setWizardType(type);
+    setZoneGroupName(type === 'polygons' ? `Zone Group ${zoneGroupCount + 1}` : "");
+    
     Papa.parse(file, { header: true, preview: 1, complete: (res) => {
         setWizardHeaders(res.meta.fields || []);
         setColumnMapping({}); 
@@ -153,13 +172,18 @@ export default function DarkStoreAnalyzerPage() {
                   Object.entries(columnMapping).forEach(([key, col]) => {
                       if (col) obj[key] = key === 'lat' || key === 'lng' ? parseFloat(row[col]) : row[col];
                   });
-                  if (!obj.id) obj.id = `${wizardType}_${i}`;
+                  if (!obj.id) obj.id = `${wizardType}_${i}_${Date.now()}`;
                   if (!obj.name) obj.name = obj.id;
                   return obj;
               }).filter((d: any) => wizardType === 'stores' ? (!isNaN(d.lat)) : (!!d.wkt));
 
-              if (wizardType === 'stores') setStores(mapped);
-              else {
+              if (wizardType === 'stores') {
+                  // Assign colors to stores immediately
+                  const coloredStores = mapped.map((s, i) => ({ ...s, color: getBranchColor(stores.length + i) }));
+                  setStores(prev => [...prev, ...coloredStores]);
+              } else {
+                  // 🟢 ZONE GROUP LOGIC
+                  const groupColor = getGroupColor(zoneGroupCount);
                   const parsedPolys = mapped.map((p, i) => {
                       try {
                           const raw = p.wkt.replace(/^[A-Z]+\s*\(+/, '').replace(/\)+$/, '');
@@ -169,13 +193,21 @@ export default function DarkStoreAnalyzerPage() {
                           });
                           if (pairs[0][0] !== pairs[pairs.length-1][0]) pairs.push(pairs[0]);
                           const poly = turf.polygon([pairs]);
-                          return { ...p, geometry: poly.geometry, feature: poly, color: ZONE_COLORS[i % ZONE_COLORS.length] };
+                          return { 
+                              ...p, 
+                              geometry: poly.geometry, 
+                              feature: poly, 
+                              groupName: zoneGroupName, // Save Group Name
+                              initialColor: groupColor  // Save Group Color
+                          };
                       } catch { return null; }
                   }).filter(Boolean);
+                  
                   setPolygons(prev => [...prev, ...parsedPolys]); 
+                  setZoneGroupCount(prev => prev + 1);
               }
               setIsWizardOpen(false);
-              toast({ title: "Loaded", description: `Added ${mapped.length} items.` });
+              toast({ title: "Loaded", description: `Added ${mapped.length} items to ${zoneGroupName || 'Stores'}.` });
           }
       });
   };
@@ -183,13 +215,13 @@ export default function DarkStoreAnalyzerPage() {
   // --- 2. ANALYSIS ENGINE ---
   const runAnalysis = async () => {
       if (!stores.length || !polygons.length) return;
-      setProcessing(true); setProgress(0); setResults({});
+      setProcessing(true); setProgress(0); setResults({}); setAnalysisDone(false);
       
       const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
       const tempResults: Record<string, any> = {};
       const chunkSize = 20;
 
-      const circles = stores.map(s => turf.circle([s.lng, s.lat], distThreshold, { units: 'kilometers' }));
+      const circles = stores.map(s => turf.circle([s.lng, s.lat], distThreshold, { units: 'kilometers', properties: { color: s.color } }));
       setRadiusCircles(circles);
 
       for (let i = 0; i < polygons.length; i += chunkSize) {
@@ -261,6 +293,7 @@ export default function DarkStoreAnalyzerPage() {
       }
       setResults(tempResults);
       setProcessing(false);
+      setAnalysisDone(true);
   };
 
   const handlePolyClick = async (poly: any) => {
@@ -279,6 +312,16 @@ export default function DarkStoreAnalyzerPage() {
       setVisualRoutes(routes);
   };
 
+  // --- 3. FILTER LOGIC ---
+  const viewData = useMemo(() => {
+      if (filterStore === 'all') return polygons;
+      // Only return polygons assigned to the selected store
+      return polygons.filter(p => {
+          const res = results[p.id];
+          return res && res.store && res.store.id === filterStore;
+      });
+  }, [polygons, results, filterStore]);
+
   return (
     <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
         {/* TOP BAR */}
@@ -291,6 +334,32 @@ export default function DarkStoreAnalyzerPage() {
             </div>
             
             <div className="flex items-center gap-4">
+                {/* 🟢 STORE FILTER (Visible Only After Analysis) */}
+                {analysisDone && (
+                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
+                        <Badge variant="outline" className="h-8 px-3 bg-purple-50 text-purple-700 border-purple-200">
+                            <Eye className="h-3 w-3 mr-1"/> View Mode
+                        </Badge>
+                        <Select value={filterStore} onValueChange={setFilterStore}>
+                            <SelectTrigger className="w-40 h-9 font-bold">
+                                <SelectValue placeholder="All Stores" />
+                            </SelectTrigger>
+                            <SelectContent className="z-[9999]">
+                                <SelectItem value="all">🌍 All Stores</SelectItem>
+                                {stores.map(s => (
+                                    <SelectItem key={s.id} value={s.id}>
+                                        <span className="flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full" style={{backgroundColor: s.color}}></span>
+                                            {s.name}
+                                        </span>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <div className="h-8 w-px bg-slate-200 mx-2"></div>
+                    </div>
+                )}
+
                 <div className="flex flex-col items-end">
                     <div className="flex items-center gap-2 mb-1">
                         <Badge variant="outline" className="h-6 bg-slate-50">Region</Badge>
@@ -317,8 +386,6 @@ export default function DarkStoreAnalyzerPage() {
                     </div>
                 </div>
 
-                <div className="h-8 w-px bg-slate-200 mx-2"></div>
-
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center space-x-2">
                         <Switch id="time-mode" checked={useTime} onCheckedChange={setUseTime} />
@@ -332,7 +399,7 @@ export default function DarkStoreAnalyzerPage() {
 
                 <Button size="lg" onClick={runAnalysis} disabled={processing || !stores.length} className="bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-200">
                     {processing ? <Loader2 className="animate-spin mr-2"/> : <Play className="mr-2 fill-current"/>}
-                    {processing ? `${progress}%` : "Analyze"}
+                    {processing ? `${progress}%` : "Analyze Coverage"}
                 </Button>
             </div>
         </div>
@@ -355,15 +422,28 @@ export default function DarkStoreAnalyzerPage() {
                 </Card>
 
                 <Card className="border-dashed border-2 bg-slate-50/50">
-                    <CardHeader className="py-3"><CardTitle className="text-sm">2. Upload Zones (Multiple)</CardTitle></CardHeader>
-                    <CardContent>
+                    <CardHeader className="py-3"><CardTitle className="text-sm">2. Upload Zone Groups</CardTitle></CardHeader>
+                    <CardContent className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-500">{polygons.length} Polygons</span>
+                            <span className="text-xs text-slate-500">{polygons.length} Total Polygons</span>
                             <Button variant="outline" size="sm" className="h-7 text-xs relative overflow-hidden">
-                                <UploadCloud className="h-3 w-3 mr-1"/> Add CSV
+                                <UploadCloud className="h-3 w-3 mr-1"/> Add Group
                                 <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons')} />
                             </Button>
                         </div>
+                        {/* Zone Group Legend (Pre-Analysis) */}
+                        {!analysisDone && zoneGroupCount > 0 && (
+                            <div className="pt-2 border-t mt-2">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Active Groups</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {Array.from({length: zoneGroupCount}).map((_, i) => (
+                                        <Badge key={i} className="text-[10px]" style={{backgroundColor: getGroupColor(i)}}>
+                                            Group {i+1}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -386,10 +466,6 @@ export default function DarkStoreAnalyzerPage() {
                                     {Object.values(results).filter(r => r.status === 'dead').length} Zones
                                 </Badge>
                             </div>
-                            <div className="h-px bg-slate-100 my-2"></div>
-                            <div className="text-[10px] text-slate-400 text-center">
-                                Click any zone on the map to see route details.
-                            </div>
                         </CardContent>
                     </Card>
                 )}
@@ -400,28 +476,28 @@ export default function DarkStoreAnalyzerPage() {
                 <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     
-                    {/* Layer 1: Polygons (Bottom) */}
+                    {/* Layer 1: Polygons */}
                     <Pane name="polygons" style={{ zIndex: 400 }}>
                         <FeatureGroup>
-                            {polygons.map((p, i) => {
+                            {viewData.map((p, i) => {
                                 const res = results[p.id];
-                                let fillColor = p.color;
-                                let opacity = 0.4;
+                                let fillColor = p.initialColor; // Default: Zone Group Color
+                                let opacity = 0.5;
 
-                                if (res) {
+                                // 🟢 POST-ANALYSIS COLOR LOGIC
+                                if (analysisDone && res) {
                                     if (res.status === 'dead') {
-                                        fillColor = '#334155'; // Dark Slate (Dead)
+                                        fillColor = '#334155'; // Dead = Grey
                                         opacity = 0.8;
-                                    } else if (res.status === 'borderline') {
-                                        fillColor = '#f59e0b'; // Amber (Weak)
                                     } else {
+                                        fillColor = res.store.color; // Covered = Store Color
                                         opacity = 0.6;
                                     }
                                 }
 
                                 return (
                                     <GeoJSON 
-                                        key={`poly-${i}-${res?.status}`} 
+                                        key={`poly-${i}-${analysisDone}`} 
                                         data={p.geometry} 
                                         style={{ color: 'white', weight: 1, fillColor, fillOpacity: opacity }}
                                         onEachFeature={(f, l) => l.on('click', () => handlePolyClick(p))}
@@ -429,21 +505,21 @@ export default function DarkStoreAnalyzerPage() {
                                         <Popup pane="popupPane">
                                             <div className="p-1 min-w-[200px]">
                                                 <h4 className="font-bold">{p.name}</h4>
-                                                <div className="text-xs text-slate-500 mb-2">ID: {p.id}</div>
+                                                <Badge variant="outline" className="text-[10px] mb-2">{p.groupName}</Badge>
                                                 {res ? (
                                                     res.status === 'dead' ? (
-                                                        <div className="flex items-center gap-2 text-red-600 font-bold text-xs"><AlertTriangle className="h-3 w-3"/> Dead Zone (No Coverage)</div>
+                                                        <div className="flex items-center gap-2 text-red-600 font-bold text-xs"><AlertTriangle className="h-3 w-3"/> Dead Zone</div>
                                                     ) : (
-                                                        <div className="bg-slate-50 p-2 rounded border">
-                                                            <div className="text-[10px] uppercase font-bold text-slate-400">Covered By</div>
-                                                            <div className="font-bold text-purple-700">{res.store.name}</div>
+                                                        <div className="bg-slate-50 p-2 rounded border" style={{borderLeft: `4px solid ${res.store.color}`}}>
+                                                            <div className="text-[10px] uppercase font-bold text-slate-400">Assigned To</div>
+                                                            <div className="font-bold text-slate-800">{res.store.name}</div>
                                                             <div className="flex gap-2 mt-1 text-xs">
                                                                 <span className="bg-blue-100 text-blue-700 px-1 rounded">{res.dist.toFixed(2)} km</span>
                                                                 {res.time && <span className="bg-purple-100 text-purple-700 px-1 rounded">{res.time.toFixed(1)} min</span>}
                                                             </div>
                                                         </div>
                                                     )
-                                                ) : <span className="text-xs italic text-slate-400">Run analysis to see coverage</span>}
+                                                ) : <span className="text-xs italic text-slate-400">Zone Group: {p.groupName}</span>}
                                             </div>
                                         </Popup>
                                     </GeoJSON>
@@ -452,16 +528,16 @@ export default function DarkStoreAnalyzerPage() {
                         </FeatureGroup>
                     </Pane>
 
-                    {/* Layer 2: Radius Circles (Middle Low) */}
+                    {/* Layer 2: Radius Circles */}
                     {showRadius && (
                         <Pane name="radius" style={{ zIndex: 420 }}>
                             {radiusCircles.map((c, i) => (
-                                <GeoJSON key={`rad-${i}`} data={c} style={{ color: '#9333ea', weight: 1, fill: false, dashArray: '5, 5' }} />
+                                <GeoJSON key={`rad-${i}`} data={c} style={{ color: c.properties.color, weight: 1, fill: false, dashArray: '5, 5' }} />
                             ))}
                         </Pane>
                     )}
 
-                    {/* Layer 3: Visual Routes (Middle High) */}
+                    {/* Layer 3: Visual Routes */}
                     <Pane name="routes" style={{ zIndex: 450 }}>
                         {visualRoutes.map((r, i) => (
                             <Polyline 
@@ -476,16 +552,21 @@ export default function DarkStoreAnalyzerPage() {
                         ))}
                     </Pane>
 
-                    {/* Layer 4: Stores (Top) */}
+                    {/* Layer 4: Stores */}
                     <Pane name="stores" style={{ zIndex: 500 }}>
-                        {stores.map((s, i) => (
-                            <Marker key={`store-${i}`} position={[s.lat, s.lng]} icon={createStoreIcon()}>
-                                <Popup pane="popupPane">
-                                    <strong>{s.name}</strong><br/>
-                                    <span className="text-xs text-slate-500">{s.id}</span>
-                                </Popup>
-                            </Marker>
-                        ))}
+                        {stores.map((s, i) => {
+                            // Filter Stores if view mode is active
+                            if (filterStore !== 'all' && s.id !== filterStore) return null;
+                            
+                            return (
+                                <Marker key={`store-${i}`} position={[s.lat, s.lng]} icon={createStoreIcon(s.color)}>
+                                    <Popup pane="popupPane">
+                                        <strong>{s.name}</strong><br/>
+                                        <span className="text-xs text-slate-500">{s.id}</span>
+                                    </Popup>
+                                </Marker>
+                            );
+                        })}
                     </Pane>
                 </MapContainer>
             </div>
@@ -498,7 +579,22 @@ export default function DarkStoreAnalyzerPage() {
                     <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5 text-green-600"/> Map Columns</DialogTitle>
                     <DialogDescription>Match CSV headers for {wizardType}.</DialogDescription>
                 </DialogHeader>
+                
                 <div className="grid gap-4 py-4">
+                    {/* 🟢 NEW: Zone Group Name Input */}
+                    {wizardType === 'polygons' && (
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-2">
+                            <Label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Zone Group Name</Label>
+                            <Input 
+                                placeholder="e.g. North City, District 1..." 
+                                value={zoneGroupName} 
+                                onChange={e => setZoneGroupName(e.target.value)} 
+                                className="bg-white"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">This name will help identify these zones on the map.</p>
+                        </div>
+                    )}
+
                     {REQUIRED_FIELDS[wizardType].map(f => (
                         <div key={f.key} className="grid grid-cols-4 items-center gap-4">
                             <Label className="text-right text-xs font-bold uppercase text-slate-500">{f.label}</Label>
@@ -510,7 +606,7 @@ export default function DarkStoreAnalyzerPage() {
                     ))}
                 </div>
                 <DialogFooter>
-                    <Button onClick={confirmMapping} className="bg-green-600 hover:bg-green-700">Confirm Import</Button>
+                    <Button onClick={confirmMapping} className="bg-green-600 hover:bg-green-700" disabled={wizardType === 'polygons' && !zoneGroupName}>Confirm Import</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
