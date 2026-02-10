@@ -12,7 +12,8 @@ import {
   Wrench, 
   Loader2, 
   ShieldAlert,
-  Bell
+  Bell,
+  ShoppingBasket // Added for Dark Store Analyzer
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +30,16 @@ const tools = [
     color: "text-blue-500",
     bg: "bg-blue-50",
     requiredPermission: 'tool_batch',
+    locked: false
+  },
+  {
+    title: "Dark Store Analyzer", // 🟢 NEW TOOL ADDED
+    description: "Network planning, time-based analysis, and dead zone detection for delivery.",
+    icon: ShoppingBasket,
+    href: "/dashboard/admin-tools/dark-store-analyzer",
+    color: "text-pink-600",
+    bg: "bg-pink-50",
+    requiredPermission: 'tool_darkstore',
     locked: false
   },
   {
@@ -151,11 +162,11 @@ export default function AdminUtilitiesPage() {
         {/* Helper badge */}
         <div className="mt-2 inline-flex items-center gap-2">
            <Badge variant="outline" className="bg-white text-slate-600 border-slate-200">
-              Role: {user.role || 'Custom'}
+             Role: {user.role || 'Custom'}
            </Badge>
            {user.role === 'custom' && (
              <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 border-purple-200">
-                Custom Permissions Active
+               Custom Permissions Active
              </Badge>
            )}
         </div>
