@@ -450,16 +450,13 @@ export default function BatchCoveragePage() {
       return combined;
   }, [assignments, manualOverrides]);
 
-  // ⚡ UPDATED SORTING LOGIC: A-Z by NAME, then ID
   const sortedParents = useMemo(() => {
       const map: Record<string, string> = {};
       activeAssignments.forEach(a => {
           if (a.isCovered && a.ParentID !== 'None') {
-              map[a.ParentID] = a.ParentName || a.ParentID; // Fallback to ID if name is missing
+              map[a.ParentID] = a.ParentName || a.ParentID; 
           }
       });
-      
-      // Convert to array and sort
       return Object.entries(map)
           .map(([id, name]) => ({ id, name }))
           .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -473,8 +470,11 @@ export default function BatchCoveragePage() {
       return data;
   }, [activeAssignments, selectedParent, searchStore]);
 
+  // ⚡ UPDATED SUMMARY: Counts & Percentages
   const currentSummary = useMemo(() => {
       const groups: Record<string, string[]> = {};
+      const totalPolygons = polygons.length || 1; // Denominator for %
+
       activeAssignments.forEach(a => {
           if (!a.isCovered) return; 
           const key = summaryMode === 'polygon' ? a.PolygonID : a.StoreID;
@@ -482,8 +482,21 @@ export default function BatchCoveragePage() {
           if (!groups[key]) groups[key] = [];
           if (!groups[key].includes(val)) groups[key].push(val);
       });
-      return Object.entries(groups).map(([k, v]) => ({ ID: k, Items: v.join(', ') }));
-  }, [activeAssignments, summaryMode]);
+
+      return Object.entries(groups).map(([k, v]) => {
+          const row: any = { 
+              ID: k, 
+              Items: v.join(', '),
+              Count: v.length // Count of Assigned Stores OR Covered Polygons
+          };
+          
+          if (summaryMode === 'store') {
+              row.CoveragePercent = ((v.length / totalPolygons) * 100).toFixed(1) + '%';
+          }
+          
+          return row;
+      });
+  }, [activeAssignments, summaryMode, polygons.length]);
 
   const executeReassign = (polyId: string, parentId: string, newStoreId: string) => {
       if (!newStoreId) return;
@@ -776,6 +789,8 @@ export default function BatchCoveragePage() {
                                 <TableRow>
                                     <TableHead className="w-[150px]">{summaryMode === 'polygon' ? 'Polygon ID' : 'Store ID'}</TableHead>
                                     <TableHead>{summaryMode === 'polygon' ? 'Assigned Branches' : 'Covered Polygons (Zones)'}</TableHead>
+                                    <TableHead className="w-[100px]">{summaryMode === 'polygon' ? 'Branch Count' : 'Zone Count'}</TableHead>
+                                    {summaryMode === 'store' && <TableHead className="w-[100px]">Coverage %</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -783,6 +798,8 @@ export default function BatchCoveragePage() {
                                     <TableRow key={i}>
                                         <TableCell className={`font-mono font-bold ${summaryMode === 'polygon' ? 'text-blue-600' : 'text-purple-600'}`}>{row.ID}</TableCell>
                                         <TableCell className="font-mono text-xs leading-relaxed">{row.Items}</TableCell>
+                                        <TableCell className="font-mono font-bold">{row.Count}</TableCell>
+                                        {summaryMode === 'store' && <TableCell className="font-mono text-green-600 font-bold">{row.CoveragePercent}</TableCell>}
                                     </TableRow>
                                 ))}
                             </TableBody>
