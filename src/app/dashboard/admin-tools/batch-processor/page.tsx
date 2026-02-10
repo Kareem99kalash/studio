@@ -441,10 +441,18 @@ export default function BatchCoveragePage() {
   };
 
   // --- HELPERS ---
+  
+  // ⚡ FIXED REASSIGNMENT LOGIC
+  // We now correctly filter out the OLD assignment using 'originalParentID' (if present) or standard matching
   const activeAssignments = useMemo(() => {
       let combined = [...assignments];
+      
       manualOverrides.forEach(ov => {
-          combined = combined.filter(a => !(a.PolygonID === ov.PolygonID && a.ParentID === ov.ParentID));
+          // Identify the exact record to remove
+          // If we stored the original parent, use it. Otherwise use the current parent.
+          const targetParent = ov.originalParentID || ov.ParentID;
+          
+          combined = combined.filter(a => !(a.PolygonID === ov.PolygonID && a.ParentID === targetParent));
           combined.push(ov);
       });
       return combined;
@@ -470,10 +478,9 @@ export default function BatchCoveragePage() {
       return data;
   }, [activeAssignments, selectedParent, searchStore]);
 
-  // ⚡ UPDATED SUMMARY: Counts & Percentages
   const currentSummary = useMemo(() => {
       const groups: Record<string, string[]> = {};
-      const totalPolygons = polygons.length || 1; // Denominator for %
+      const totalPolygons = polygons.length || 1; 
 
       activeAssignments.forEach(a => {
           if (!a.isCovered) return; 
@@ -487,7 +494,7 @@ export default function BatchCoveragePage() {
           const row: any = { 
               ID: k, 
               Items: v.join(', '),
-              Count: v.length // Count of Assigned Stores OR Covered Polygons
+              Count: v.length
           };
           
           if (summaryMode === 'store') {
@@ -500,22 +507,31 @@ export default function BatchCoveragePage() {
 
   const executeReassign = (polyId: string, parentId: string, newStoreId: string) => {
       if (!newStoreId) return;
+      
       const storeObj = processedStores.find(s => s.id === newStoreId);
-      const polyObj = activeAssignments.find(a => a.PolygonID === polyId);
+      const polyObj = activeAssignments.find(a => a.PolygonID === polyId && a.ParentID === parentId);
+      
       if (!storeObj || !polyObj) return;
 
       const newEntry = {
           ...polyObj,
           StoreID: storeObj.id,
           StoreName: storeObj.name,
-          ParentID: storeObj.parentId, 
+          ParentID: storeObj.parentId, // New Parent
           ParentName: storeObj.parentName,
           DistanceKM: "Manual",
           Color: storeObj.color,
           isManual: true,
-          isCovered: true 
+          isCovered: true,
+          originalParentID: parentId // ⚡ SAVE ORIGINAL PARENT FOR FILTERING
       };
-      setManualOverrides(prev => [...prev.filter(x => x.PolygonID !== polyId), newEntry]);
+      
+      // Remove any existing overrides for this specific polygon to avoid duplicates in the override list
+      setManualOverrides(prev => [
+          ...prev.filter(x => x.PolygonID !== polyId), 
+          newEntry
+      ]);
+      
       setPendingReassignStore(""); 
       toast({title: "Reassigned!", description: `Zone moved to ${storeObj.name}.`});
   };
