@@ -49,6 +49,16 @@ const ROLE_PRESETS: Record<string, string[]> = {
 
 const PERMISSION_GROUPS = [
   {
+  category: "Admin Toolbox",
+  icon: Wrench,
+  actions: [
+    { id: 'tool_batch', label: 'Batch Coverage Processor' },
+    { id: 'tool_darkstore', label: 'Dark Store Analyzer' }, // 🟢 ADD THIS LINE
+    { id: 'tool_topology', label: 'Topology Architect' },
+    // ... others
+  ]
+  },
+  {
     category: "General Access",
     icon: LayoutGrid,
     actions: [
