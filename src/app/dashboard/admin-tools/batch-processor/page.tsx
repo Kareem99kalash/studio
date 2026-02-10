@@ -157,6 +157,9 @@ export default function BatchCoveragePage() {
   const [visualRoutes, setVisualRoutes] = useState<any[]>([]);
 
   const [summaryMode, setSummaryMode] = useState<'polygon' | 'store'>('polygon');
+  
+  // ⚡ NEW: Reassign Dialog State (Moving interaction out of Popup)
+  const [reassignDialogData, setReassignDialogData] = useState<{polyId: string, parentId: string, polyName: string} | null>(null);
   const [pendingReassignStore, setPendingReassignStore] = useState<string>("");
 
   // --- 1. FILE UPLOAD ---
@@ -498,10 +501,13 @@ export default function BatchCoveragePage() {
       });
   }, [activeAssignments, summaryMode, polygons.length]);
 
-  const executeReassign = (polyId: string, parentId: string, newStoreId: string) => {
-      if (!newStoreId) return;
-      const storeObj = processedStores.find(s => s.id === newStoreId);
+  const executeReassign = () => {
+      if (!reassignDialogData || !pendingReassignStore) return;
+      
+      const { polyId, parentId } = reassignDialogData;
+      const storeObj = processedStores.find(s => s.id === pendingReassignStore);
       const polyObj = activeAssignments.find(a => a.PolygonID === polyId && a.ParentID === parentId);
+      
       if (!storeObj || !polyObj) return;
 
       const newEntry = {
@@ -516,8 +522,14 @@ export default function BatchCoveragePage() {
           isCovered: true,
           originalParentID: parentId 
       };
-      setManualOverrides(prev => [...prev.filter(x => x.PolygonID !== polyId), newEntry]);
-      setPendingReassignStore(""); 
+      
+      setManualOverrides(prev => [
+          ...prev.filter(x => x.PolygonID !== polyId), 
+          newEntry
+      ]);
+      
+      setPendingReassignStore("");
+      setReassignDialogData(null); // Close Dialog
       toast({title: "Reassigned!", description: `Zone moved to ${storeObj.name}.`});
   };
 
@@ -632,6 +644,31 @@ export default function BatchCoveragePage() {
         </DialogContent>
       </Dialog>
 
+      {/* REASSIGN DIALOG (OUTSIDE POPUP) */}
+      <Dialog open={!!reassignDialogData} onOpenChange={(open) => !open && setReassignDialogData(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Reassign Polygon</DialogTitle>
+                <DialogDescription>
+                    Move <span className="font-bold text-slate-900">{reassignDialogData?.polyName}</span> to a new branch under <span className="font-bold text-slate-900">{selectedParent}</span>.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <Label className="text-xs mb-2 block">Select New Branch</Label>
+                <Select value={pendingReassignStore} onValueChange={setPendingReassignStore}>
+                    <SelectTrigger><SelectValue placeholder="Choose branch..." /></SelectTrigger>
+                    <SelectContent>
+                        {processedStores.filter(s => s.parentId === selectedParent).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setReassignDialogData(null)}>Cancel</Button>
+                <Button onClick={executeReassign} disabled={!pendingReassignStore} className="bg-purple-600 hover:bg-purple-700">Confirm Reassign</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Button onClick={runAnalysis} disabled={processing || !stores.length || !polygons.length} className="w-full bg-purple-600 hover:bg-purple-700 h-12 text-lg shadow-lg shadow-purple-200">
         {processing ? <Loader2 className="animate-spin mr-2" /> : <Play className="mr-2 fill-current" />} 
         {processing ? `Processing Matrix... ${progress}%` : "Run Intelligence Engine"}
@@ -648,7 +685,7 @@ export default function BatchCoveragePage() {
 
                 {activeTab === 'map' && (
                     <div className="flex gap-2">
-                        {/* FORMATTED DROPDOWN (Sorted A-Z by Name) */}
+                        {/* FORMATTED DROPDOWN */}
                         <Select value={selectedParent} onValueChange={setSelectedParent}>
                             <SelectTrigger className="w-[300px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
                                 <SelectValue placeholder="Select Parent" />
@@ -672,7 +709,7 @@ export default function BatchCoveragePage() {
                         <Button 
                             variant={reassignMode ? "destructive" : "outline"} 
                             size="sm" 
-                            onClick={() => { setReassignMode(!reassignMode); setVisualRoutes([]); setPendingReassignStore(""); }}
+                            onClick={() => { setReassignMode(!reassignMode); setVisualRoutes([]); }}
                             className="gap-2"
                         >
                             <Edit className="h-4 w-4" /> {reassignMode ? "Exit Reassign" : "Reassign Mode"}
@@ -722,16 +759,12 @@ export default function BatchCoveragePage() {
                                             ) : (
                                                 <div className="space-y-3">
                                                     <div className="text-xs font-bold text-red-600 uppercase">Reassign Branch</div>
-                                                    
-                                                    {/* ⚡ FIXED DROPDOWN (Added position="popper") */}
-                                                    <Select onValueChange={setPendingReassignStore}>
-                                                        <SelectTrigger className="h-8 text-xs w-full"><SelectValue placeholder="Choose branch..." /></SelectTrigger>
-                                                        <SelectContent className="z-[9999]" position="popper">
-                                                            {processedStores.filter(s => s.parentId === selectedParent).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    
-                                                    <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-xs h-7" disabled={!pendingReassignStore} onClick={() => executeReassign(a.PolygonID, a.ParentID, pendingReassignStore)}><Save className="h-3 w-3 mr-1" /> Confirm</Button>
+                                                    {/* ⚡ TRIGGER DIALOG INSTEAD OF DROPDOWN */}
+                                                    <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-xs h-7" 
+                                                        onClick={() => setReassignDialogData({ polyId: a.PolygonID, parentId: a.ParentID, polyName: a.PolygonName })}
+                                                    >
+                                                        <Save className="h-3 w-3 mr-1" /> Change Branch
+                                                    </Button>
                                                 </div>
                                             )}
                                         </div>
