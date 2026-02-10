@@ -25,6 +25,7 @@ const Polyline = dynamic(() => import('react-leaflet').then(m => m.Polyline), { 
 const Popup = dynamic(() => import('react-leaflet').then(m => m.Popup), { ssr: false });
 const FeatureGroup = dynamic(() => import('react-leaflet').then(m => m.FeatureGroup), { ssr: false });
 const Tooltip = dynamic(() => import('react-leaflet').then(m => m.Tooltip), { ssr: false });
+const Pane = dynamic(() => import('react-leaflet').then(m => m.Pane), { ssr: false }); // Added Pane for Z-Index control
 
 import 'leaflet/dist/leaflet.css';
 
@@ -44,7 +45,7 @@ const DISTINCT_COLORS = [
 
 const getBranchColor = (index: number) => DISTINCT_COLORS[index % DISTINCT_COLORS.length];
 
-// ⚡ OPTIMIZED GEOMETRY HELPER
+// ⚡ GEOMETRY HELPERS
 const getGeoPointsOptimized = (vertices: any[], centerCoords: any, storeCoords: {lat: number, lng: number}) => {
     let minSq = Infinity;
     let maxSq = -Infinity;
@@ -65,6 +66,30 @@ const getGeoPointsOptimized = (vertices: any[], centerCoords: any, storeCoords: 
         { lat: centerCoords.lat, lng: centerCoords.lng, type: 'centroid' },
         { lat: closestV[1], lng: closestV[0], type: 'closest' },
         { lat: furthestV[1], lng: furthestV[0], type: 'furthest' }
+    ];
+};
+
+// Re-implemented standard version for the single-click visualization
+const getGeoPointsForDisplay = (polyFeature: any, storeCoords: {lat: number, lng: number}) => {
+    const center = turf.centroid(polyFeature);
+    const vertices = turf.explode(polyFeature).features;
+    const storePt = turf.point([storeCoords.lng, storeCoords.lat]);
+    
+    let closestVertex = vertices[0];
+    let furthestVertex = vertices[0];
+    let minD = Infinity;
+    let maxD = -Infinity;
+
+    vertices.forEach(v => {
+        const d = turf.distance(storePt, v);
+        if (d < minD) { minD = d; closestVertex = v; }
+        if (d > maxD) { maxD = d; furthestVertex = v; }
+    });
+
+    return [
+        { lat: closestVertex.geometry.coordinates[1], lng: closestVertex.geometry.coordinates[0], type: 'closest', label: 'Closest Point' },
+        { lat: center.geometry.coordinates[1], lng: center.geometry.coordinates[0], type: 'centroid', label: 'Centroid' },
+        { lat: furthestVertex.geometry.coordinates[1], lng: furthestVertex.geometry.coordinates[0], type: 'furthest', label: 'Furthest Point' }
     ];
 };
 
@@ -128,7 +153,10 @@ export default function BatchCoveragePage() {
   const [selectedParent, setSelectedParent] = useState<string>(""); 
   const [searchStore, setSearchStore] = useState("");
   const [reassignMode, setReassignMode] = useState(false);
-  const [selectedPolyRoutes, setSelectedPolyRoutes] = useState<any>(null);
+  
+  // 3-Route Visualization State
+  const [visualRoutes, setVisualRoutes] = useState<any[]>([]);
+
   const [summaryMode, setSummaryMode] = useState<'polygon' | 'store'>('polygon');
   const [pendingReassignStore, setPendingReassignStore] = useState<string>("");
 
@@ -198,7 +226,7 @@ export default function BatchCoveragePage() {
       });
   };
 
-  // --- 2. FAST ENGINE ---
+  // --- 2. ENGINE ---
   const runAnalysis = async () => {
     if (!stores.length || !polygons.length) return;
     if (!HF_TOKEN) {
@@ -234,7 +262,7 @@ export default function BatchCoveragePage() {
     });
     setProcessedStores(validStores);
 
-    // ⚡ PRE-CALC POLYGONS
+    // PRE-CALC POLYGONS
     const validPolys = polygons.map((p, i) => {
         try {
             const rawCoords = p.wkt.replace(/^[A-Z]+\s*\(+/, '').replace(/\)+$/, '');
@@ -261,11 +289,9 @@ export default function BatchCoveragePage() {
     const chunkSize = 25; 
     let hasError = false;
 
-    // BATCH LOOP
     for (let i = 0; i < validPolys.length; i += chunkSize) {
         if (hasError) break; 
         
-        // ⚡ YIELD
         await new Promise(r => setTimeout(r, 0));
 
         const chunk = validPolys.slice(i, i + chunkSize);
@@ -305,7 +331,6 @@ export default function BatchCoveragePage() {
                     });
 
                     for (const cand of candidates) {
-                        // ⚡ Optimization
                         if (cand.centroidDist < threshold * 0.5) {
                              const existing = bestPerParent[cand.store.parentId];
                              if (!existing || cand.centroidDist < existing.dist) {
@@ -314,7 +339,6 @@ export default function BatchCoveragePage() {
                              continue;
                         }
 
-                        // 3-Point Check
                         const pts = getGeoPointsOptimized(poly.vertices, poly.center, cand.store);
                         let validPoints = 0;
                         const detailedDists: number[] = [];
@@ -337,11 +361,7 @@ export default function BatchCoveragePage() {
                         
                         if (isCovered) {
                             if (!existing || (!existing.pointsScore && isCovered) || (existing.pointsScore && finalDist < existing.dist)) {
-                                bestPerParent[cand.store.parentId] = { 
-                                    store: cand.store, 
-                                    dist: finalDist, 
-                                    pointsScore: 3 
-                                };
+                                bestPerParent[cand.store.parentId] = { store: cand.store, dist: finalDist, pointsScore: 3 };
                             }
                         } else {
                             if (!existing) {
@@ -362,7 +382,6 @@ export default function BatchCoveragePage() {
                         }
                     }
 
-                    // Save Result
                     let hasCoverage = false;
                     Object.values(bestPerParent).forEach(winner => {
                         if (winner.pointsScore > 0) {
@@ -378,13 +397,13 @@ export default function BatchCoveragePage() {
                                 Color: winner.store.color,
                                 geometry: poly.geometry,
                                 center: poly.center,
+                                feature: poly.feature, // Pass full feature for visualizer
                                 isAiOptimized: false,
                                 isCovered: true
                             });
                         }
                     });
 
-                    // Fail State
                     if (!hasCoverage) {
                         const bestFail = Object.values(bestPerParent).sort((a,b) => a.dist - b.dist)[0];
                         initialResults.push({
@@ -398,6 +417,7 @@ export default function BatchCoveragePage() {
                             Color: '#94a3b8', 
                             geometry: poly.geometry,
                             center: poly.center,
+                            feature: poly.feature,
                             isCovered: false,
                             failureReason: bestFail ? bestFail.failureReason : "No branches nearby"
                         });
@@ -411,14 +431,7 @@ export default function BatchCoveragePage() {
         setProgress(Math.round(((i + chunkSize) / validPolys.length) * 100));
     }
 
-    // ⚡ FIX: Define finalAssignments here
     let finalAssignments = initialResults;
-
-    // AI Logic would go here if enabled...
-    if (useAiBalance && !hasError) {
-        // ... (Skipped for brevity but logic fits here)
-    }
-
     finalAssignments.forEach(a => a.DistanceKM = typeof a.DistanceKM === 'number' ? a.DistanceKM.toFixed(2) : a.DistanceKM);
     setAssignments(finalAssignments);
     setProcessing(false);
@@ -439,6 +452,15 @@ export default function BatchCoveragePage() {
   }, [assignments, manualOverrides]);
 
   const uniqueParents = useMemo(() => Array.from(new Set(activeAssignments.filter(a => a.isCovered).map(a => a.ParentID))).sort(), [activeAssignments]);
+  const parentNames = useMemo(() => {
+      const map: Record<string, string> = {};
+      activeAssignments.forEach(a => {
+          if (a.isCovered && a.ParentID !== 'None') {
+              map[a.ParentID] = a.ParentName;
+          }
+      });
+      return map;
+  }, [activeAssignments]);
   
   const viewData = useMemo(() => {
       let data = activeAssignments.filter(a => 
@@ -485,10 +507,23 @@ export default function BatchCoveragePage() {
   const handleMapClick = async (assignment: any) => {
       if (reassignMode) return;
       if (!assignment.isCovered) return; 
+      
       const store = processedStores.find(s => s.id === assignment.StoreID);
       if (!store) return;
-      const routeData = await fetchRouteGeometry({lat: store.lat, lng: store.lng}, assignment.center, OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS]);
-      if (routeData) setSelectedPolyRoutes({ assignment, route: routeData.geom });
+
+      // 3-Route Calculation
+      const pts = getGeoPointsForDisplay(assignment.feature || { type: 'Polygon', coordinates: [] }, store);
+      
+      const routes = [];
+      const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
+
+      for (const pt of pts) {
+          const route = await fetchRouteGeometry({lat: store.lat, lng: store.lng}, {lat: pt.lat, lng: pt.lng}, osrmUrl);
+          if (route) {
+              routes.push({ ...pt, geom: route.geom, dist: route.dist });
+          }
+      }
+      setVisualRoutes(routes);
   };
 
   return (
@@ -551,10 +586,9 @@ export default function BatchCoveragePage() {
                     <FileSpreadsheet className="h-5 w-5 text-green-600"/> Map CSV Columns
                 </DialogTitle>
                 <DialogDescription>
-                    Match your file headers to the system requirements for <strong>{wizardType === 'stores' ? 'Stores' : 'Polygons'}</strong>.
+                    Match your file headers to the system requirements.
                 </DialogDescription>
             </DialogHeader>
-            
             <div className="grid gap-4 py-4">
                 {REQUIRED_FIELDS[wizardType].map((field) => (
                     <div key={field.key} className="grid grid-cols-4 items-center gap-4">
@@ -569,15 +603,12 @@ export default function BatchCoveragePage() {
                                 <SelectValue placeholder={field.required ? "Select Column..." : "Optional"} />
                             </SelectTrigger>
                             <SelectContent>
-                                {wizardHeaders.map(h => (
-                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                ))}
+                                {wizardHeaders.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
                 ))}
             </div>
-
             <DialogFooter>
                 <Button variant="outline" onClick={() => setIsWizardOpen(false)}>Cancel</Button>
                 <Button onClick={confirmMapping} className="bg-green-600 hover:bg-green-700">Confirm Mapping</Button>
@@ -601,13 +632,18 @@ export default function BatchCoveragePage() {
 
                 {activeTab === 'map' && (
                     <div className="flex gap-2">
+                        {/* FORMATTED DROPDOWN */}
                         <Select value={selectedParent} onValueChange={setSelectedParent}>
-                            <SelectTrigger className="w-[200px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
+                            <SelectTrigger className="w-[300px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
                                 <SelectValue placeholder="Select Parent" />
                             </SelectTrigger>
                             <SelectContent className="z-[9999] max-h-[300px]">
                                 {uniqueParents.map(p => (
-                                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                                    <SelectItem key={p} value={p}>
+                                        <span className="font-mono text-xs">{p}</span>
+                                        <span className="mx-2 text-slate-300">|</span>
+                                        <span className="font-bold">{parentNames[p] || 'Unknown'}</span>
+                                    </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -620,7 +656,7 @@ export default function BatchCoveragePage() {
                         <Button 
                             variant={reassignMode ? "destructive" : "outline"} 
                             size="sm" 
-                            onClick={() => { setReassignMode(!reassignMode); setSelectedPolyRoutes(null); setPendingReassignStore(""); }}
+                            onClick={() => { setReassignMode(!reassignMode); setVisualRoutes([]); setPendingReassignStore(""); }}
                             className="gap-2"
                         >
                             <Edit className="h-4 w-4" /> {reassignMode ? "Exit Reassign" : "Reassign Mode"}
@@ -638,68 +674,78 @@ export default function BatchCoveragePage() {
 
                 <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    <FeatureGroup>
-                        {viewData.map((a, i) => (
-                            <GeoJSON 
-                                key={`${a.PolygonID}-${a.StoreID}-${a.Color}-${reassignMode ? 'edit' : 'view'}`} 
-                                data={a.geometry} 
-                                style={{ color: 'white', weight: 2, fillColor: a.Color, fillOpacity: reassignMode ? 0.7 : 0.6 }} 
-                                onEachFeature={(f, l) => l.on('click', () => handleMapClick(a))}
+                    
+                    {/* Layer 1: Polygons (Bottom) */}
+                    <Pane name="polygons" style={{ zIndex: 400 }}>
+                        <FeatureGroup>
+                            {viewData.map((a, i) => (
+                                <GeoJSON 
+                                    key={`${a.PolygonID}-${a.StoreID}-${a.Color}-${reassignMode ? 'edit' : 'view'}`} 
+                                    data={a.geometry} 
+                                    style={{ color: 'white', weight: 2, fillColor: a.Color, fillOpacity: reassignMode ? 0.7 : 0.6 }} 
+                                    onEachFeature={(f, l) => l.on('click', () => handleMapClick(a))}
+                                >
+                                    <Popup>
+                                        <div className="min-w-[200px] p-1">
+                                            <div className="font-bold text-base mb-1">{a.PolygonName}</div>
+                                            {!reassignMode ? (
+                                                <>
+                                                    {a.isCovered ? (
+                                                        <>
+                                                            <div className="bg-slate-100 p-2 rounded mb-2 border-l-4" style={{borderLeftColor: a.Color}}>
+                                                                <div className="text-xs font-bold text-slate-400 uppercase">Assigned Branch</div>
+                                                                <div className="font-bold text-slate-800">{a.StoreName}</div>
+                                                                <div className="text-xs text-slate-500">{a.DistanceKM} km</div>
+                                                            </div>
+                                                            <div className="text-[10px] text-center text-slate-400 mt-2">Click to view 3-point analysis</div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="bg-red-50 p-3 rounded border border-red-100"><div className="flex items-center gap-2 text-red-600 font-bold text-sm mb-1"><AlertCircle className="h-4 w-4"/> Uncovered</div><p className="text-xs text-red-800">{a.failureReason}</p></div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    <div className="text-xs font-bold text-red-600 uppercase">Reassign Branch</div>
+                                                    <Select onValueChange={setPendingReassignStore}>
+                                                        <SelectTrigger className="h-8 text-xs w-full"><SelectValue placeholder="Choose branch..." /></SelectTrigger>
+                                                        <SelectContent className="z-[9999]">
+                                                            {processedStores.filter(s => s.parentId === selectedParent).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-xs h-7" disabled={!pendingReassignStore} onClick={() => executeReassign(a.PolygonID, a.ParentID, pendingReassignStore)}><Save className="h-3 w-3 mr-1" /> Confirm</Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Popup>
+                                </GeoJSON>
+                            ))}
+                        </FeatureGroup>
+                    </Pane>
+
+                    {/* Layer 2: Visual Routes (Middle) - Z-Index 450 */}
+                    <Pane name="routes" style={{ zIndex: 450 }}>
+                        {visualRoutes.map((r, i) => (
+                            <Polyline 
+                                key={i} 
+                                positions={r.geom} 
+                                color={r.type === 'closest' ? '#22c55e' : r.type === 'centroid' ? '#3b82f6' : '#ef4444'} 
+                                weight={4} 
+                                dashArray={r.type === 'centroid' ? '10, 10' : r.type === 'furthest' ? '1, 5' : undefined}
                             >
-                                <Popup>
-                                    <div className="min-w-[200px] p-1">
-                                        <div className="font-bold text-base mb-1">{a.PolygonName}</div>
-                                        <div className="text-xs text-slate-500 mb-2">ID: {a.PolygonID}</div>
-                                        {!reassignMode ? (
-                                            <>
-                                                {a.isCovered ? (
-                                                    <>
-                                                        <div className="bg-slate-100 p-2 rounded mb-2 border-l-4" style={{borderLeftColor: a.Color}}>
-                                                            <div className="text-xs font-bold text-slate-400 uppercase">Assigned Branch</div>
-                                                            <div className="font-bold text-slate-800">{a.StoreName}</div>
-                                                            <div className="text-xs text-slate-500">{a.DistanceKM} km</div>
-                                                        </div>
-                                                        {a.isAiOptimized && <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px] w-full justify-center">✨ AI Rebalanced</Badge>}
-                                                        {a.isManual && <Badge variant="secondary" className="bg-purple-100 text-purple-700 text-[10px] w-full justify-center">🔧 Manually Set</Badge>}
-                                                        <div className="text-[10px] text-center text-slate-400 mt-2">Click to view route</div>
-                                                    </>
-                                                ) : (
-                                                    <div className="bg-red-50 p-3 rounded border border-red-100">
-                                                        <div className="flex items-center gap-2 text-red-600 font-bold text-sm mb-1">
-                                                            <AlertCircle className="h-4 w-4"/> Uncovered Zone
-                                                        </div>
-                                                        <p className="text-xs text-red-800 leading-tight">
-                                                            {a.failureReason || "No branches within threshold."}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                <div className="text-xs font-bold text-red-600 uppercase">Reassign Branch</div>
-                                                <Select onValueChange={setPendingReassignStore}>
-                                                    <SelectTrigger className="h-8 text-xs w-full"><SelectValue placeholder="Choose branch..." /></SelectTrigger>
-                                                    <SelectContent className="z-[9999]">
-                                                        {processedStores.filter(s => s.parentId === selectedParent).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                                    </SelectContent>
-                                                </Select>
-                                                <Button size="sm" className="w-full bg-red-600 hover:bg-red-700 text-xs h-7" disabled={!pendingReassignStore} onClick={() => executeReassign(a.PolygonID, a.ParentID, pendingReassignStore)}>
-                                                    <Save className="h-3 w-3 mr-1" /> Confirm Change
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </Popup>
-                                <Tooltip sticky>{a.PolygonName}</Tooltip>
-                            </GeoJSON>
+                                <Tooltip sticky>{r.label}: {r.dist.toFixed(2)} km</Tooltip>
+                            </Polyline>
                         ))}
-                    </FeatureGroup>
-                    {selectedPolyRoutes && !reassignMode && <Polyline positions={selectedPolyRoutes.route} color="black" weight={4} dashArray="10, 10" />}
-                    {processedStores.filter(s => s.parentId === selectedParent).map((s, i) => (
-                        <CircleMarker key={`store-${i}`} center={[s.lat, s.lng]} radius={8} pathOptions={{ color: 'white', weight: 3, fillColor: s.color, fillOpacity: 1 }}>
-                            <Popup><strong>{s.name}</strong><br/><span className="text-xs text-slate-500">{s.id}</span></Popup>
-                        </CircleMarker>
-                    ))}
+                    </Pane>
+
+                    {/* Layer 3: Stores (Top) - Z-Index 500 */}
+                    <Pane name="stores" style={{ zIndex: 500 }}>
+                        {processedStores.filter(s => s.parentId === selectedParent).map((s, i) => (
+                            <CircleMarker key={`store-${i}`} center={[s.lat, s.lng]} radius={8} pathOptions={{ color: 'white', weight: 3, fillColor: s.color, fillOpacity: 1 }}>
+                                <Popup><strong>{s.name}</strong><br/><span className="text-xs text-slate-500">{s.id}</span></Popup>
+                            </CircleMarker>
+                        ))}
+                    </Pane>
+
                 </MapContainer>
             </TabsContent>
 
