@@ -25,7 +25,7 @@ const Polyline = dynamic(() => import('react-leaflet').then(m => m.Polyline), { 
 const Popup = dynamic(() => import('react-leaflet').then(m => m.Popup), { ssr: false });
 const FeatureGroup = dynamic(() => import('react-leaflet').then(m => m.FeatureGroup), { ssr: false });
 const Tooltip = dynamic(() => import('react-leaflet').then(m => m.Tooltip), { ssr: false });
-const Pane = dynamic(() => import('react-leaflet').then(m => m.Pane), { ssr: false }); // Added Pane for Z-Index control
+const Pane = dynamic(() => import('react-leaflet').then(m => m.Pane), { ssr: false }); 
 
 import 'leaflet/dist/leaflet.css';
 
@@ -69,7 +69,6 @@ const getGeoPointsOptimized = (vertices: any[], centerCoords: any, storeCoords: 
     ];
 };
 
-// Re-implemented standard version for the single-click visualization
 const getGeoPointsForDisplay = (polyFeature: any, storeCoords: {lat: number, lng: number}) => {
     const center = turf.centroid(polyFeature);
     const vertices = turf.explode(polyFeature).features;
@@ -397,7 +396,7 @@ export default function BatchCoveragePage() {
                                 Color: winner.store.color,
                                 geometry: poly.geometry,
                                 center: poly.center,
-                                feature: poly.feature, // Pass full feature for visualizer
+                                feature: poly.feature, 
                                 isAiOptimized: false,
                                 isCovered: true
                             });
@@ -451,15 +450,19 @@ export default function BatchCoveragePage() {
       return combined;
   }, [assignments, manualOverrides]);
 
-  const uniqueParents = useMemo(() => Array.from(new Set(activeAssignments.filter(a => a.isCovered).map(a => a.ParentID))).sort(), [activeAssignments]);
-  const parentNames = useMemo(() => {
+  // ⚡ UPDATED SORTING LOGIC: A-Z by NAME, then ID
+  const sortedParents = useMemo(() => {
       const map: Record<string, string> = {};
       activeAssignments.forEach(a => {
           if (a.isCovered && a.ParentID !== 'None') {
-              map[a.ParentID] = a.ParentName;
+              map[a.ParentID] = a.ParentName || a.ParentID; // Fallback to ID if name is missing
           }
       });
-      return map;
+      
+      // Convert to array and sort
+      return Object.entries(map)
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }, [activeAssignments]);
   
   const viewData = useMemo(() => {
@@ -511,7 +514,6 @@ export default function BatchCoveragePage() {
       const store = processedStores.find(s => s.id === assignment.StoreID);
       if (!store) return;
 
-      // 3-Route Calculation
       const pts = getGeoPointsForDisplay(assignment.feature || { type: 'Polygon', coordinates: [] }, store);
       
       const routes = [];
@@ -632,17 +634,17 @@ export default function BatchCoveragePage() {
 
                 {activeTab === 'map' && (
                     <div className="flex gap-2">
-                        {/* FORMATTED DROPDOWN */}
+                        {/* FORMATTED DROPDOWN (Sorted A-Z by Name) */}
                         <Select value={selectedParent} onValueChange={setSelectedParent}>
                             <SelectTrigger className="w-[300px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
                                 <SelectValue placeholder="Select Parent" />
                             </SelectTrigger>
                             <SelectContent className="z-[9999] max-h-[300px]">
-                                {uniqueParents.map(p => (
-                                    <SelectItem key={p} value={p}>
-                                        <span className="font-mono text-xs">{p}</span>
-                                        <span className="mx-2 text-slate-300">|</span>
-                                        <span className="font-bold">{parentNames[p] || 'Unknown'}</span>
+                                {sortedParents.map(p => (
+                                    <SelectItem key={p.id} value={p.id}>
+                                        <span className="font-mono text-xs">{p.id}</span>
+                                        <span className="mx-2 text-slate-300">-</span>
+                                        <span className="font-bold">{p.name}</span>
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -675,7 +677,7 @@ export default function BatchCoveragePage() {
                 <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     
-                    {/* Layer 1: Polygons (Bottom) */}
+                    {/* Layer 1: Polygons (Bottom - zIndex 400) */}
                     <Pane name="polygons" style={{ zIndex: 400 }}>
                         <FeatureGroup>
                             {viewData.map((a, i) => (
@@ -685,7 +687,7 @@ export default function BatchCoveragePage() {
                                     style={{ color: 'white', weight: 2, fillColor: a.Color, fillOpacity: reassignMode ? 0.7 : 0.6 }} 
                                     onEachFeature={(f, l) => l.on('click', () => handleMapClick(a))}
                                 >
-                                    <Popup>
+                                    <Popup pane="popupPane">
                                         <div className="min-w-[200px] p-1">
                                             <div className="font-bold text-base mb-1">{a.PolygonName}</div>
                                             {!reassignMode ? (
@@ -722,7 +724,7 @@ export default function BatchCoveragePage() {
                         </FeatureGroup>
                     </Pane>
 
-                    {/* Layer 2: Visual Routes (Middle) - Z-Index 450 */}
+                    {/* Layer 2: Visual Routes (Middle - zIndex 450) */}
                     <Pane name="routes" style={{ zIndex: 450 }}>
                         {visualRoutes.map((r, i) => (
                             <Polyline 
@@ -737,7 +739,7 @@ export default function BatchCoveragePage() {
                         ))}
                     </Pane>
 
-                    {/* Layer 3: Stores (Top) - Z-Index 500 */}
+                    {/* Layer 3: Stores (Top - zIndex 500) */}
                     <Pane name="stores" style={{ zIndex: 500 }}>
                         {processedStores.filter(s => s.parentId === selectedParent).map((s, i) => (
                             <CircleMarker key={`store-${i}`} center={[s.lat, s.lng]} radius={8} pathOptions={{ color: 'white', weight: 3, fillColor: s.color, fillOpacity: 1 }}>
