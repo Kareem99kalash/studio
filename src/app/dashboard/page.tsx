@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Papa from 'papaparse';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,11 +11,12 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search, ScrollText } from 'lucide-react';
+import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search, FileSpreadsheet, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { logActivity } from '@/lib/logger'; 
 
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
@@ -38,15 +40,26 @@ function getRoughDistKm(lat1: number, lng1: number, lat2: number, lng2: number) 
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+const REQUIRED_FIELDS = [
+    { key: 'lat', label: 'Latitude', required: true },
+    { key: 'lng', label: 'Longitude', required: true },
+    { key: 'name', label: 'Store Name', required: false },
+    { key: 'category', label: 'Category (Retail/Wholesale)', required: false },
+];
+
 export default function DashboardPage() {
   const { toast } = useToast();
+  
+  // Data State
   const [cities, setCities] = useState<any[]>([]);
   const [selectedCity, setSelectedCity] = useState<any>(null);
   const [stores, setStores] = useState<any[]>([]);
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [activeSubZones, setActiveSubZones] = useState<any[]>([]);
+  
+  // Rule State (Read-Only from City)
+  const [availableRules, setAvailableRules] = useState<any[]>([]); 
 
   useEffect(() => { fetchCities(); }, []);
 
@@ -57,7 +70,7 @@ export default function DashboardPage() {
           const data = d.data();
           let subZones = data.subZones || [];
           
-          // Legacy Support
+          // Legacy Support: Handle old single-polygon cities
           if (!subZones.length && data.polygons) {
               let polys = data.polygons;
               if (typeof polys === 'string') {
@@ -72,6 +85,7 @@ export default function DashboardPage() {
               }
           }
 
+          // Ensure polygons inside subZones are Objects, not Strings
           subZones = subZones.map((z: any) => ({
               ...z,
               polygons: typeof z.polygons === 'string' ? JSON.parse(z.polygons) : z.polygons
@@ -95,7 +109,8 @@ export default function DashboardPage() {
         setSelectedCity(city);
         setStores([]); 
         setAnalysisData(null); 
-        setActiveSubZones(city.subZones || []);
+        // Load Custom Rules defined in City Thresholds Page
+        setAvailableRules(city.subThresholds || []);
     }
   };
 
@@ -124,8 +139,14 @@ export default function DashboardPage() {
 
   const getZoneKeyPoints = (store: any, feature: any) => {
       const center = feature.properties.centroid;
+      // Safety check for geometry
+      if (!feature.geometry || !feature.geometry.coordinates || !feature.geometry.coordinates[0]) {
+          return { id: "error", name: "Invalid Poly", points: [] };
+      }
+      
       const vertices = feature.geometry.coordinates[0].map((p: any) => ({ lat: p[1], lng: p[0] }));
       let close = vertices[0], minSq = Infinity;
+      
       vertices.forEach((v: any) => {
           const d = getDistSq(store.lat, store.lng, v.lat, v.lng);
           if (d < minSq) { minSq = d; close = v; }
@@ -205,11 +226,13 @@ export default function DashboardPage() {
 
     try {
         const finalAssignments: Record<string, any> = {};
-        
         const allPolygons: any[] = [];
+        
+        // 1. Flatten all polygons
         selectedCity.subZones.forEach((zone: any) => {
             if (zone.polygons && zone.polygons.features) {
                 zone.polygons.features.forEach((f: any) => {
+                    // Attach zone-specific rules
                     f.properties.zoneRules = zone.thresholds || { green: 2, yellow: 5 };
                     f.properties.zoneName = zone.name;
                     if (f.properties.centroid) allPolygons.push(f);
@@ -217,9 +240,21 @@ export default function DashboardPage() {
             }
         });
 
+        if (allPolygons.length === 0) {
+            toast({ variant: "destructive", title: "Data Error", description: "No valid polygons found in this city." });
+            setAnalyzing(false);
+            return;
+        }
+
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             const MAX_SCAN_RADIUS_KM = 30; 
+
+            // Determine if Store has a category override
+            let storeRule = null;
+            if (store.category && store.category !== 'default') {
+                storeRule = availableRules.find(r => r.name === store.category);
+            }
 
             const zoneMeta: any[] = [], flatPoints: any[] = [];
             
@@ -229,7 +264,11 @@ export default function DashboardPage() {
                 
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
-                    zoneMeta.push({ ...kp, rules: f.properties.zoneRules }); 
+                    
+                    // 🟢 RULE PRIORITY: Store Category Override > Zone Default
+                    const activeRule = storeRule || f.properties.zoneRules;
+                    
+                    zoneMeta.push({ ...kp, rules: activeRule }); 
                     flatPoints.push(...kp.points); 
                 } else { 
                     zoneMeta.push({ id: f.properties.id || f.properties.name, name: f.properties.name, tooFar: true }); 
@@ -295,7 +334,10 @@ export default function DashboardPage() {
 
         setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments, displayPolygons });
         toast({ title: "Analysis Complete", description: "Optimization finished." });
-    } catch (e) { toast({ variant: "destructive", title: "Error", description: "Analysis failed due to a network or OSRM timeout." }); } finally { setAnalyzing(false); }
+    } catch (e) { 
+        console.error(e);
+        toast({ variant: "destructive", title: "Error", description: "Analysis failed." }); 
+    } finally { setAnalyzing(false); }
   };
 
   const downloadCSV = () => {
@@ -311,11 +353,10 @@ export default function DashboardPage() {
       document.body.removeChild(link);
   };
 
-  // 🟢 HELPER: Construct display polygons whether analyzed or not
+  // 🟢 HELPER: Show map even before analysis
   const getDisplayPolygons = () => {
       if (analysisData?.displayPolygons) return analysisData.displayPolygons;
       
-      // Fallback: Flatten sub-zones so map isn't empty initially
       if (selectedCity?.subZones) {
           const allFeatures: any[] = [];
           selectedCity.subZones.forEach((z: any) => {
@@ -358,10 +399,6 @@ export default function DashboardPage() {
            )}
            {analysisData && !analyzing && (
                 <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 gap-1.5 py-1.5 pl-1.5 pr-3 shadow-sm">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
                     <span className="text-[10px] font-black uppercase tracking-wider">System Online</span>
                 </Badge>
            )}
@@ -405,35 +442,28 @@ export default function DashboardPage() {
 
                 <Separator className="bg-slate-200" />
 
-                {/* 2. Rules Visualization */}
+                {/* 2. Read-Only Rules View */}
                 <div className="space-y-4">
                     <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> Zone Rules (Thresholds)
+                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> Operational Rules
                     </Label>
                     
-                    {activeSubZones.length > 0 ? (
+                    {availableRules.length > 0 ? (
                         <div className="space-y-2">
-                            {activeSubZones.map((zone, idx) => (
-                                <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="secondary" className="text-[10px] bg-slate-100">{zone.name}</Badge>
-                                    </div>
-                                    <div className="flex gap-3 text-[10px] font-mono">
-                                        <div className="flex items-center gap-1 text-emerald-600 font-bold">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                            {zone.thresholds?.green || 2}km
-                                        </div>
-                                        <div className="flex items-center gap-1 text-amber-600 font-bold">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                                            {zone.thresholds?.yellow || 5}km
-                                        </div>
+                            {availableRules.map((rule, idx) => (
+                                <div key={idx} className="bg-white p-2 rounded border border-slate-200 shadow-sm flex justify-between items-center">
+                                    <span className="text-xs font-bold text-slate-600">{rule.name}</span>
+                                    <div className="flex gap-1 text-[10px] font-mono bg-slate-50 px-2 py-1 rounded">
+                                        <span className="text-emerald-600 font-bold">{rule.green}km</span>
+                                        <span className="text-slate-300">/</span>
+                                        <span className="text-amber-600 font-bold">{rule.yellow}km</span>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     ) : (
-                        <div className="p-4 text-center text-[10px] text-slate-400 bg-slate-100 rounded-lg">
-                            No zones configured.
+                        <div className="p-3 text-center text-[10px] text-slate-400 bg-slate-100 rounded-lg italic">
+                            No custom category rules defined for this city.
                         </div>
                     )}
                 </div>
@@ -447,9 +477,7 @@ export default function DashboardPage() {
                             <Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes
                         </Label>
                         <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={addStore} 
+                            variant="ghost" size="sm" onClick={addStore} 
                             className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide"
                         >
                             <Plus className="h-3 w-3 mr-1.5" /> Add Node
@@ -468,34 +496,30 @@ export default function DashboardPage() {
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-2 w-full">
-                                                <div className="h-5 w-5 rounded bg-slate-100 flex items-center justify-center text-slate-500 text-[10px] font-black shrink-0">
-                                                    {idx + 1}
-                                                </div>
-                                                <Input 
-                                                    className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" 
-                                                    value={store.name} 
-                                                    onChange={e => updateStoreName(store.id, e.target.value)}
-                                                    placeholder="Node Name"
-                                                />
+                                                <div className="h-5 w-5 rounded bg-slate-100 flex items-center justify-center text-slate-500 text-[10px] font-black shrink-0">{idx + 1}</div>
+                                                <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} placeholder="Node Name" />
                                             </div>
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" 
-                                                onClick={() => removeStore(store.id)}
-                                            >
+                                            <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" onClick={() => removeStore(store.id)}>
                                                 <Trash2 className="h-3 w-3" />
                                             </Button>
                                     </div>
-                                    
                                     <div className="bg-slate-50 rounded px-2 py-1 flex items-center gap-2 border border-slate-100">
                                         <code className="text-[9px] text-slate-400 font-bold uppercase tracking-wider shrink-0">LOC:</code>
-                                        <Input 
-                                            className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-slate-600 focus-visible:ring-0 w-full" 
-                                            value={store.coordinates} 
-                                            onChange={e => updateStoreCoordinates(store.id, e.target.value)}
-                                            placeholder="LAT, LNG" 
-                                        />
+                                        <Input className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-slate-600 focus-visible:ring-0 w-full" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} placeholder="LAT, LNG" />
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-50 mt-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">Rule:</span>
+                                            <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
+                                                <SelectTrigger className="h-6 w-full text-[10px] border-slate-200 bg-slate-50"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="default" className="text-xs">Zone Default</SelectItem>
+                                                    {availableRules.map((c, i) => (
+                                                        <SelectItem key={i} value={c.name} className="text-xs">{c.name} ({c.green}km)</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -505,11 +529,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="p-5 border-t border-slate-200 bg-white">
-                <Button 
-                    className="w-full h-12 rounded-lg bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-800 shadow-md active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-not-allowed group"
-                    onClick={handleAnalyze} 
-                    disabled={analyzing || !selectedCity}
-                >
+                <Button className="w-full h-12 rounded-lg bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-800 shadow-md active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
                     <div className="flex items-center gap-3">
                         {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-indigo-400" /> : <Zap className="h-4 w-4 text-yellow-400 group-hover:scale-110 transition-transform" />}
                         <span>{analyzing ? "Processing Grid..." : "Initiate Analysis"}</span>
@@ -549,8 +569,8 @@ export default function DashboardPage() {
                     
                     <div className="flex-1 relative bg-slate-50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
-                             {/* 🟢 FIXED: Use Helper to show map even before analysis */}
-                             {selectedCity.subZones.length > 0 || selectedCity.polygons ? (
+                             {/* 🟢 FIXED: Map logic to always show */}
+                             {getDisplayPolygons().features.length > 0 ? (
                                 <MapView 
                                     key={selectedCity.id} 
                                     selectedCity={{
@@ -576,7 +596,7 @@ export default function DashboardPage() {
                                     <div className="p-6 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-10">
                                         <div>
                                             <h3 className="font-black text-lg text-slate-800 uppercase tracking-tight">Assignment Matrix</h3>
-                                            <p className="text-[11px] text-slate-400 font-bold uppercase mt-1">Optimization Results • {new Date().toLocaleDateString()}</p>
+                                            <p className="text-[11px] text-slate-400 font-bold uppercase mt-1">Optimization Results</p>
                                         </div>
                                         {analysisData?.assignments && (
                                             <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 rounded-lg shadow-md shadow-indigo-100" onClick={downloadCSV}>
@@ -600,19 +620,11 @@ export default function DashboardPage() {
                                                     {Object.values(analysisData.assignments).map((row: any, i) => (
                                                         <TableRow key={i} className="hover:bg-indigo-50/10 transition-colors border-slate-50">
                                                             <TableCell className="font-bold text-xs text-slate-700">{row.name}</TableCell>
-                                                            <TableCell>
-                                                                <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] font-bold border-none uppercase tracking-wide">
-                                                                    {row.storeName}
-                                                                </Badge>
-                                                            </TableCell>
+                                                            <TableCell><Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] font-bold border-none uppercase tracking-wide">{row.storeName}</Badge></TableCell>
                                                             <TableCell className="text-[10px] font-mono text-slate-400">{row.category || 'Standard'}</TableCell>
                                                             <TableCell className="text-xs font-mono font-bold text-slate-500">{row.distance} km</TableCell>
                                                             <TableCell className="text-right">
-                                                              <Badge className={`${
-                                                                row.status === 'in' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 
-                                                                row.status === 'warning' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' : 
-                                                                'bg-rose-100 text-rose-700 hover:bg-rose-100'
-                                                              } text-[9px] font-black border-none shadow-none uppercase tracking-wider px-2`}>
+                                                              <Badge className={`${row.status === 'in' ? 'bg-emerald-100 text-emerald-700' : row.status === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'} text-[9px] font-black border-none shadow-none uppercase tracking-wider px-2`}>
                                                                     {row.status}
                                                               </Badge>
                                                             </TableCell>
@@ -622,9 +634,7 @@ export default function DashboardPage() {
                                             </Table>
                                         ) : (
                                             <div className="flex flex-col items-center justify-center h-[400px] gap-4">
-                                                <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center">
-                                                    <Activity className="h-8 w-8 text-slate-300" />
-                                                </div>
+                                                <Activity className="h-8 w-8 text-slate-300" />
                                                 <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No Analysis Data Available</p>
                                             </div>
                                         )}
