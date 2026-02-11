@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search } from 'lucide-react';
+import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { logActivity } from '@/lib/logger'; 
 import * as turf from '@turf/turf';
 
-// Maintenance Imports
+// Maintenance & System Imports
 import { MaintenanceScreen } from '@/components/system/maintenance-screen';
 import { MaintenanceControl } from '@/components/system/maintenance-control';
 
@@ -27,7 +27,7 @@ const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m =
   loading: () => (
     <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loading Engine...</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loading Visualization Core...</span>
     </div>
   )
 });
@@ -43,7 +43,6 @@ function getRoughDistKm(lat1: number, lng1: number, lat2: number, lng2: number) 
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// Helper: Identify which Sub-Zone the store is physically inside
 const getStoreSubZone = (storeLat: number, storeLng: number, allPolygons: any[]) => {
     try {
         const pt = turf.point([storeLng, storeLat]);
@@ -56,7 +55,6 @@ const getStoreSubZone = (storeLat: number, storeLng: number, allPolygons: any[])
     return null; 
 };
 
-// Helper: Get distance to the NEAREST polygon of a specific zone
 const getMinDistToZone = (storeLat: number, storeLng: number, targetZoneName: string, allPolygons: any[]) => {
     try {
         const storePt = turf.point([storeLng, storeLat]);
@@ -87,7 +85,6 @@ export default function DashboardPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [user, setUser] = useState<any>(null); 
   
-  // Rule State
   const [availableRules, setAvailableRules] = useState<any[]>([]); 
 
   // MAINTENANCE STATE
@@ -95,14 +92,12 @@ export default function DashboardPage() {
   const [maintenanceMsg, setMaintenanceMsg] = useState('');
   const [isCheckingStatus, setIsCheckingStatus] = useState(true);
 
-  // 🟢 1. Check User & Maintenance Status (With Error Handling)
+  // 1. Check User & Maintenance Status
   useEffect(() => {
-     // Get User
      const stored = localStorage.getItem('geo_user');
      const parsedUser = stored ? JSON.parse(stored) : null;
      setUser(parsedUser);
 
-     // Safety Timeout: If Firebase fails, let user in after 3 seconds
      const safetyTimer = setTimeout(() => {
          if (isCheckingStatus) {
              console.warn("Maintenance check timed out - forcing load.");
@@ -110,7 +105,6 @@ export default function DashboardPage() {
          }
      }, 3000);
 
-     // Listen to System Status
      const unsub = onSnapshot(
         doc(db, 'system_metadata', 'maintenance'), 
         (docSnap) => {
@@ -123,23 +117,16 @@ export default function DashboardPage() {
             setIsCheckingStatus(false);
         },
         (error) => {
-            console.error("Maintenance Check Ignored (Permissions/Network):", error);
-            // 🟢 FAIL OPEN: If check fails, assume system is online
+            console.error("Maintenance Check Ignored:", error);
             clearTimeout(safetyTimer);
             setIsCheckingStatus(false);
         }
      );
 
-     return () => {
-         unsub();
-         clearTimeout(safetyTimer);
-     };
+     return () => { unsub(); clearTimeout(safetyTimer); };
   }, []);
 
-  // 🟢 2. Fetch Cities only after maintenance check is done
-  useEffect(() => { 
-      if (!isCheckingStatus) fetchCities(); 
-  }, [isCheckingStatus]);
+  useEffect(() => { if (!isCheckingStatus) fetchCities(); }, [isCheckingStatus]);
 
   const fetchCities = async () => {
     try {
@@ -150,23 +137,10 @@ export default function DashboardPage() {
           
           if (!subZones.length && data.polygons) {
               let polys = data.polygons;
-              if (typeof polys === 'string') {
-                  try { polys = JSON.parse(polys); } catch (e) { polys = null; }
-              }
-              if (polys) {
-                  subZones = [{
-                      name: 'Default',
-                      thresholds: data.thresholds || { green: 2, yellow: 5 },
-                      polygons: polys 
-                  }];
-              }
+              if (typeof polys === 'string') { try { polys = JSON.parse(polys); } catch (e) { polys = null; } }
+              if (polys) { subZones = [{ name: 'Default', thresholds: data.thresholds || { green: 2, yellow: 5 }, polygons: polys }]; }
           }
-
-          subZones = subZones.map((z: any) => ({
-              ...z,
-              polygons: typeof z.polygons === 'string' ? JSON.parse(z.polygons) : z.polygons
-          }));
-
+          subZones = subZones.map((z: any) => ({ ...z, polygons: typeof z.polygons === 'string' ? JSON.parse(z.polygons) : z.polygons }));
           return { id: d.id, ...data, subZones };
       });
       setCities(cityList);
@@ -174,19 +148,12 @@ export default function DashboardPage() {
     } catch (e) { 
       console.error("Fetch Error:", e);
       toast({ variant: "destructive", title: "Connection Error", description: "Failed to load cities." });
-    } finally { 
-      setLoading(false); 
-    }
+    } finally { setLoading(false); }
   };
 
   const handleCityChange = (cityId: string, cityList = cities) => {
     const city = cityList.find(c => c.id === cityId);
-    if (city) {
-        setSelectedCity(city);
-        setStores([]); 
-        setAnalysisData(null); 
-        setAvailableRules(city.subThresholds || []);
-    }
+    if (city) { setSelectedCity(city); setStores([]); setAnalysisData(null); setAvailableRules(city.subThresholds || []); }
   };
 
   const addStore = () => { 
@@ -195,13 +162,13 @@ export default function DashboardPage() {
           name: `Hub ${stores.length + 1}`, 
           coordinates: '', lat: '', lng: '', 
           cityId: selectedCity?.id,
-          category: 'default'
+          category: 'default',
       }]); 
   };
 
   const updateStoreName = (id: number, name: string) => { setStores(stores.map(s => s.id === id ? { ...s, name } : s)); };
   const updateStoreCategory = (id: number, category: string) => { setStores(stores.map(s => s.id === id ? { ...s, category } : s)); };
-
+  
   const updateStoreCoordinates = (id: number, input: string) => {
     let lat = ''; let lng = ''; const parts = input.split(',');
     if (parts.length === 2) {
@@ -214,104 +181,84 @@ export default function DashboardPage() {
 
   const getZoneKeyPoints = (store: any, feature: any) => {
       const center = feature.properties.centroid;
-      if (!feature.geometry || !feature.geometry.coordinates || !feature.geometry.coordinates[0]) {
-          return { id: "error", name: "Invalid Poly", points: [] };
-      }
-      
+      if (!feature.geometry || !feature.geometry.coordinates || !feature.geometry.coordinates[0]) return { id: "error", name: "Invalid Poly", points: [] };
       const vertices = feature.geometry.coordinates[0].map((p: any) => ({ lat: p[1], lng: p[0] }));
       let close = vertices[0], minSq = Infinity;
-      
       vertices.forEach((v: any) => {
           const d = getDistSq(store.lat, store.lng, v.lat, v.lng);
           if (d < minSq) { minSq = d; close = v; }
       });
-      return { 
-          id: feature.properties.id || feature.properties.name, 
-          name: feature.properties.name, 
-          points: [close, center] 
-      };
+      return { id: feature.properties.id || feature.properties.name, name: feature.properties.name, points: [close, center] };
   };
 
-  // 🟢 SECURE: Calls internal /api/routing proxy
   const fetchMatrixBatch = async (store: any, allZonePoints: any[], engineUrl: string) => {
-    const uncachedPoints = [];
-    const cachedResults = new Array(allZonePoints.length).fill(null);
-    const indexMap: number[] = []; 
+      const uncachedPoints = [];
+      const cachedResults = new Array(allZonePoints.length).fill(null);
+      const indexMap: number[] = []; 
 
-    // 1. Check Cache
-    for (let i = 0; i < allZonePoints.length; i++) {
-        const p = allZonePoints[i];
-        const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
-        if (DISTANCE_CACHE[key] !== undefined) {
-            cachedResults[i] = DISTANCE_CACHE[key];
-        } else {
-            uncachedPoints.push(p);
-            indexMap.push(i);
-        }
-    }
+      for (let i = 0; i < allZonePoints.length; i++) {
+          const p = allZonePoints[i];
+          const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+          if (DISTANCE_CACHE[key] !== undefined) {
+              cachedResults[i] = DISTANCE_CACHE[key];
+          } else {
+              uncachedPoints.push(p);
+              indexMap.push(i);
+          }
+      }
 
-    if (uncachedPoints.length === 0) return cachedResults;
+      if (uncachedPoints.length === 0) return cachedResults;
 
-    const chunkSize = 50; 
-    const promises = [];
-    // If no engine is selected/saved, default to public
-    const targetEngine = engineUrl || "https://router.project-osrm.org";
-    
-    for (let i = 0; i < uncachedPoints.length; i += chunkSize) {
-        const chunk = uncachedPoints.slice(i, i + chunkSize);
-        const chunkIndices = indexMap.slice(i, i + chunkSize);
-        
-        const storeStr = `${store.lng},${store.lat}`;
-        const destStr = chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
-        const coords = `${storeStr};${destStr}`;
-        
-        // 🟢 SECURE CALL: Send to our own API Route
-        promises.push(
-            fetch('/api/routing', { 
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    coordinates: coords,
-                    engineUrl: targetEngine
-                })
-            })
-            .then(async (res) => {
-                if (res.status === 429) {
-                    toast({ variant: "destructive", title: "Traffic Limit", description: "Please wait a moment before retrying." });
-                    return null;
-                }
-                if (!res.ok) throw new Error("Routing failed");
-                return res.json();
-            })
-            .then(data => {
-                if (!data) return; 
-
-                const distances = data.distances?.[0]?.slice(1);
-                if (distances) {
-                    distances.forEach((d: number, idx: number) => { 
-                        if (d !== null) {
-                            const km = d / 1000;
-                            const originalIdx = chunkIndices[idx];
-                            cachedResults[originalIdx] = km;
-                            const p = chunk[idx];
-                            const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
-                            DISTANCE_CACHE[key] = km;
-                        } 
-                    });
-                }
-            })
-            .catch(e => console.error("Proxy Chunk Fail", e))
-        );
-    }
-    
-    await Promise.all(promises); 
-    return cachedResults;
-};
+      const chunkSize = 50; 
+      const promises = [];
+      const targetEngine = engineUrl || "https://router.project-osrm.org";
+      
+      for (let i = 0; i < uncachedPoints.length; i += chunkSize) {
+          const chunk = uncachedPoints.slice(i, i + chunkSize);
+          const chunkIndices = indexMap.slice(i, i + chunkSize);
+          
+          const storeStr = `${store.lng},${store.lat}`;
+          const destStr = chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+          const coords = `${storeStr};${destStr}`;
+          
+          promises.push(
+              fetch('/api/routing', { 
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ coordinates: coords, engineUrl: targetEngine })
+              })
+              .then(async (res) => {
+                  if (res.status === 429) { toast({ variant: "destructive", title: "Traffic Limit", description: "Please wait a moment before retrying." }); return null; }
+                  if (!res.ok) throw new Error("Routing failed");
+                  return res.json();
+              })
+              .then(data => {
+                  if (!data) return; 
+                  const distances = data.distances?.[0]?.slice(1);
+                  if (distances) {
+                      distances.forEach((d: number, idx: number) => { 
+                          if (d !== null) {
+                              const km = d / 1000;
+                              const originalIdx = chunkIndices[idx];
+                              cachedResults[originalIdx] = km;
+                              const p = chunk[idx];
+                              const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+                              DISTANCE_CACHE[key] = km;
+                          } 
+                      });
+                  }
+              })
+              .catch(e => console.error("Proxy Chunk Fail", e))
+          );
+      }
+      await Promise.all(promises); 
+      return cachedResults;
+  };
 
   const handleAnalyze = async () => {
     if (!selectedCity || stores.length === 0) return toast({ variant: "destructive", title: "Action Required", description: "Select a city and add at least one branch." });
     const validStores = stores.filter(s => !isNaN(parseFloat(s.lat)) && !isNaN(parseFloat(s.lng)));
-    if (validStores.length === 0) return toast({ variant: "destructive", title: "Invalid Data", description: "Ensure all branches have valid Lat, Lng coordinates." });
+    if (validStores.length === 0) return toast({ variant: "destructive", title: "Invalid Data", description: "Ensure branches have valid coordinates." });
 
     setAnalyzing(true);
     
@@ -333,21 +280,8 @@ export default function DashboardPage() {
                     if (!f.properties.centroid) {
                         try {
                             const centroid = turf.centroid(f);
-                            f.properties.centroid = {
-                                lat: centroid.geometry.coordinates[1],
-                                lng: centroid.geometry.coordinates[0]
-                            };
-                        } catch (err) {
-                            try {
-                                const coords = f.geometry.coordinates[0];
-                                let sumLat = 0, sumLng = 0;
-                                coords.forEach((c: any) => { sumLng += c[0]; sumLat += c[1]; });
-                                f.properties.centroid = {
-                                    lat: sumLat / coords.length,
-                                    lng: sumLng / coords.length
-                                };
-                            } catch (e2) {}
-                        }
+                            f.properties.centroid = { lat: centroid.geometry.coordinates[1], lng: centroid.geometry.coordinates[0] };
+                        } catch (err) { /* geometry fallback */ }
                     }
                     if (f.properties.centroid) allPolygons.push(f);
                 });
@@ -355,15 +289,13 @@ export default function DashboardPage() {
         });
 
         if (allPolygons.length === 0) {
-            toast({ variant: "destructive", title: "Data Error", description: "No valid polygons found. Check upload." });
-            setAnalyzing(false);
-            return;
+            toast({ variant: "destructive", title: "Data Error", description: "No valid polygons found." });
+            setAnalyzing(false); return;
         }
 
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             const MAX_SCAN_RADIUS_KM = 50; 
-
             const storeHomeZone = getStoreSubZone(storeObj.lat, storeObj.lng, allPolygons);
 
             let storeRule = null;
@@ -379,30 +311,19 @@ export default function DashboardPage() {
                 
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
-                    
                     const polyZone = f.properties.zoneGroup || f.properties.zoneName;
                     const zoneConfig = f.properties.zoneRules; 
-
                     let activeRule = { green: 2, yellow: 5 }; 
 
-                    if (storeRule) {
-                        activeRule = storeRule;
-                    } else if (zoneConfig.internal && zoneConfig.external) {
-                        if (storeHomeZone === polyZone) {
-                            activeRule = zoneConfig.internal;
-                        } else {
+                    if (storeRule) { activeRule = storeRule; } 
+                    else if (zoneConfig.internal && zoneConfig.external) {
+                        if (storeHomeZone === polyZone) { activeRule = zoneConfig.internal; } 
+                        else {
                             const distToBorder = getMinDistToZone(storeObj.lat, storeObj.lng, polyZone, allPolygons);
                             const proximityLimit = zoneConfig.borderProximity || 1.0;
-
-                            if (distToBorder <= proximityLimit && zoneConfig.border) {
-                                activeRule = zoneConfig.border;
-                            } else {
-                                activeRule = zoneConfig.external;
-                            }
+                            activeRule = (distToBorder <= proximityLimit && zoneConfig.border) ? zoneConfig.border : zoneConfig.external;
                         }
-                    } else {
-                        activeRule = zoneConfig; 
-                    }
+                    } else { activeRule = zoneConfig; }
                     
                     zoneMeta.push({ ...kp, rules: activeRule }); 
                     flatPoints.push(...kp.points); 
@@ -424,18 +345,12 @@ export default function DashboardPage() {
                     const dClose = flatDistances[pointIdx];
                     const dCenter = flatDistances[pointIdx + 1];
                     pointIdx += 2; 
-
-                    if (dCenter !== null && dClose !== null) {
-                        v1 = dClose; v2 = dCenter;
-                        voteV1 = v1; voteV2 = v2;
-                    }
+                    if (dCenter !== null && dClose !== null) { v1 = dClose; v2 = dCenter; voteV1 = v1; voteV2 = v2; }
                 }
                 
                 const activeRules = z.rules || { green: 2, yellow: 5 };
-
                 const points = [voteV1, voteV2];
                 let greenCount = 0, yellowCount = 0;
-                
                 points.forEach(dist => { if (dist <= activeRules.green) greenCount++; else if (dist <= activeRules.yellow) yellowCount++; });
                 
                 let status = 'out', color = '#ef4444';
@@ -465,11 +380,7 @@ export default function DashboardPage() {
         });
         await Promise.all(storePromises);
         
-        const displayPolygons = {
-            type: "FeatureCollection",
-            features: allPolygons
-        };
-
+        const displayPolygons = { type: "FeatureCollection", features: allPolygons };
         setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments, displayPolygons });
         toast({ title: "Analysis Complete", description: "Optimization finished." });
     } catch (e) { 
@@ -495,17 +406,13 @@ export default function DashboardPage() {
       if (analysisData?.displayPolygons) return analysisData.displayPolygons;
       if (selectedCity?.subZones) {
           const allFeatures: any[] = [];
-          selectedCity.subZones.forEach((z: any) => {
-              if (z.polygons?.features) {
-                  allFeatures.push(...z.polygons.features);
-              }
-          });
+          selectedCity.subZones.forEach((z: any) => { if (z.polygons?.features) allFeatures.push(...z.polygons.features); });
           return { type: 'FeatureCollection', features: allFeatures };
       }
       return { type: 'FeatureCollection', features: [] };
   };
 
-  // 🟢 2. Render Loading or Maintenance Screen
+  // 2. Render Loading or Maintenance Screen
   if (isCheckingStatus || loading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
@@ -515,139 +422,56 @@ export default function DashboardPage() {
     );
   }
 
-  // 🟢 3. BLOCK ACCESS IF MAINTENANCE IS ON AND USER IS NOT ADMIN
+  // 3. Maintenance Logic
   const isAdmin = user?.role === 'admin' || user?.permissions?.can_bypass_maintenance;
-  
-  if (isMaintenance && !isAdmin) {
-      return <MaintenanceScreen message={maintenanceMsg} />;
-  }
+  if (isMaintenance && !isAdmin) return <MaintenanceScreen message={maintenanceMsg} />;
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden font-sans relative">
-      
-      {/* 🟢 Maintenance Banner for Admins */}
-      {isMaintenance && isAdmin && (
-          <div className="bg-amber-100 text-amber-900 text-[10px] font-bold text-center py-1 border-b border-amber-300 shrink-0">
-              ⚠️ MAINTENANCE MODE ACTIVE - USER ACCESS RESTRICTED
-          </div>
-      )}
+      {isMaintenance && isAdmin && <div className="bg-amber-100 text-amber-900 text-[10px] font-bold text-center py-1 border-b border-amber-300">⚠️ MAINTENANCE MODE ACTIVE</div>}
 
-      {/* HEADER */}
       <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
         <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-2 rounded-lg shadow-md shadow-indigo-100">
-                <Radar className="text-white h-5 w-5" />
-            </div>
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-2 rounded-lg shadow-md"><Radar className="text-white h-5 w-5" /></div>
             <div>
                 <h1 className="font-black text-lg tracking-tight text-slate-800 leading-none">COMMAND CENTER</h1>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Spatial Intelligence Unit</p>
             </div>
         </div>
         <div className="flex items-center gap-4">
-           {/* 🟢 Insert Admin Control Toggle Here */}
            {isAdmin && <MaintenanceControl />}
-
-           {analyzing && (
-               <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
-                   <Loader2 className="h-3 w-3 animate-spin" />
-                   <span className="text-[10px] font-black uppercase tracking-wider">Processing Grid</span>
-               </div>
-           )}
-           {analysisData && !analyzing && (
-                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 gap-1.5 py-1.5 pl-1.5 pr-3 shadow-sm">
-                    <span className="text-[10px] font-black uppercase tracking-wider">System Online</span>
-                </Badge>
-           )}
+           {analyzing && <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100"><Loader2 className="h-3 w-3 animate-spin" /><span className="text-[10px] font-black uppercase tracking-wider">Processing Grid</span></div>}
+           {analysisData && !analyzing && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 gap-1.5 py-1.5 pl-1.5 pr-3 shadow-sm"><span className="text-[10px] font-black uppercase tracking-wider">System Online</span></Badge>}
         </div>
       </header>
 
-      {/* MAIN CONTAINER */}
       <div className="flex-1 flex overflow-hidden">
-        {/* SIDEBAR CONFIGURATION */}
         <div className="w-[380px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20">
-            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Settings2 className="h-3 w-3" /> Configuration
-                </span>
-            </div>
-
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm"><span className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Settings2 className="h-3 w-3" /> Configuration</span></div>
             <div className="flex-1 overflow-y-auto p-5 space-y-8 scrollbar-hide">
-                
-                {/* 1. Region Selector */}
                 <div className="space-y-3">
-                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                        <MapIcon className="h-3.5 w-3.5 text-indigo-500" /> Target Region
-                    </Label>
-                    <div className="relative">
-                        <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id}>
-                            <SelectTrigger className="h-11 border-slate-200 bg-white hover:border-indigo-300 transition-all text-sm font-bold shadow-sm focus:ring-indigo-500">
-                                <SelectValue placeholder="Select Territory" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {cities.map(c => <SelectItem key={c.id} value={c.id} className="font-medium text-xs">{c.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                        {selectedCity && (
-                            <div className="absolute top-1/2 -translate-y-1/2 right-9 pointer-events-none">
-                                <Badge variant="secondary" className="text-[9px] bg-slate-100 text-slate-500 font-mono">ID: {selectedCity.id.slice(0,4)}</Badge>
-                            </div>
-                        )}
-                    </div>
+                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-2"><MapIcon className="h-3.5 w-3.5 text-indigo-500" /> Target Region</Label>
+                    <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id}>
+                        <SelectTrigger className="h-11 border-slate-200 bg-white hover:border-indigo-300 transition-all text-sm font-bold shadow-sm"><SelectValue placeholder="Select Territory" /></SelectTrigger>
+                        <SelectContent>{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-medium text-xs">{c.name}</SelectItem>)}</SelectContent>
+                    </Select>
                 </div>
-
                 <Separator className="bg-slate-200" />
-
-                {/* 2. Read-Only Rules View */}
-                <div className="space-y-4">
-                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> Operational Rules
-                    </Label>
-                    
-                    {availableRules.length > 0 ? (
-                        <div className="space-y-2">
-                            {availableRules.map((rule, idx) => (
-                                <div key={idx} className="bg-white p-2 rounded border border-slate-200 shadow-sm flex justify-between items-center">
-                                    <span className="text-xs font-bold text-slate-600">{rule.name}</span>
-                                    <div className="flex gap-1 text-[10px] font-mono bg-slate-50 px-2 py-1 rounded">
-                                        <span className="text-emerald-600 font-bold">{rule.green}km</span>
-                                        <span className="text-slate-300">/</span>
-                                        <span className="text-amber-600 font-bold">{rule.yellow}km</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="p-3 text-center text-[10px] text-slate-400 bg-slate-100 rounded-lg italic">
-                            No custom category rules defined for this city.
-                        </div>
-                    )}
-                </div>
-
-                <Separator className="bg-slate-200" />
-
-                {/* 3. Hubs Input */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                            <Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes
-                        </Label>
-                        <Button variant="ghost" size="sm" onClick={addStore} className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide">
-                            <Plus className="h-3 w-3 mr-1.5" /> Add Node
-                        </Button>
+                        <Label className="text-xs font-bold text-slate-700 flex items-center gap-2"><Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes</Label>
+                        <Button variant="ghost" size="sm" onClick={addStore} className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide"><Plus className="h-3 w-3 mr-1.5" /> Add Node</Button>
                     </div>
-                    
                     <div className="space-y-3 min-h-[100px]">
                         {stores.map((store, idx) => (
-                            <div key={store.id} className="relative group bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:border-indigo-300 transition-all duration-200">
+                            <div key={store.id} className="relative group bg-white rounded-lg border p-3 shadow-sm border-slate-200 hover:border-indigo-300 transition-all">
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-2 w-full">
                                                 <div className="h-5 w-5 rounded bg-slate-100 flex items-center justify-center text-slate-500 text-[10px] font-black shrink-0">{idx + 1}</div>
-                                                <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} placeholder="Node Name" />
+                                                <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" onClick={() => removeStore(store.id)}>
-                                                <Trash2 className="h-3 w-3" />
-                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" onClick={() => removeStore(store.id)}><Trash2 className="h-3 w-3" /></Button>
                                     </div>
                                     <div className="bg-slate-50 rounded px-2 py-1 flex items-center gap-2 border border-slate-100">
                                         <code className="text-[9px] text-slate-400 font-bold uppercase tracking-wider shrink-0">LOC:</code>
@@ -660,9 +484,7 @@ export default function DashboardPage() {
                                                 <SelectTrigger className="h-6 w-full text-[10px] border-slate-200 bg-slate-50"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="default" className="text-xs">Zone Default</SelectItem>
-                                                    {availableRules.map((c, i) => (
-                                                        <SelectItem key={i} value={c.name} className="text-xs">{c.name} ({c.green}km)</SelectItem>
-                                                    ))}
+                                                    {availableRules.map((c, i) => (<SelectItem key={i} value={c.name} className="text-xs">{c.name} ({c.green}km)</SelectItem>))}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -673,7 +495,6 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
-
             <div className="p-5 border-t border-slate-200 bg-white">
                 <Button className="w-full h-12 rounded-lg bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-800 shadow-md active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
                     <div className="flex items-center gap-3">
@@ -684,13 +505,10 @@ export default function DashboardPage() {
             </div>
         </div>
 
-        {/* MAIN CONTENT AREA */}
         <div className="flex-1 bg-slate-100 overflow-hidden flex flex-col relative z-10">
             {!selectedCity ? (
                 <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50/50 gap-4">
-                    <div className="h-24 w-24 bg-slate-200 rounded-full flex items-center justify-center">
-                        <MapIcon className="h-10 w-10 text-slate-400" />
-                    </div>
+                    <div className="h-24 w-24 bg-slate-200 rounded-full flex items-center justify-center"><MapIcon className="h-10 w-10 text-slate-400" /></div>
                     <p className="font-black uppercase tracking-[0.2em] text-xs text-slate-400">Awaiting Regional Selection</p>
                 </div>
             ) : (
@@ -699,12 +517,8 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Active View:</span>
                             <TabsList className="bg-slate-100 p-1 h-8 rounded-lg">
-                                <TabsTrigger value="map" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all">
-                                    <MapIcon className="h-3 w-3 mr-2" /> Geo-Map
-                                </TabsTrigger>
-                                <TabsTrigger value="table" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all">
-                                    <TableIcon className="h-3 w-3 mr-2" /> Data Grid
-                                </TabsTrigger>
+                                <TabsTrigger value="map" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all"><MapIcon className="h-3 w-3 mr-2" /> Geo-Map</TabsTrigger>
+                                <TabsTrigger value="table" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all"><TableIcon className="h-3 w-3 mr-2" /> Data Grid</TabsTrigger>
                             </TabsList>
                         </div>
                         <div className="flex items-center gap-2">
@@ -712,9 +526,9 @@ export default function DashboardPage() {
                             <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{selectedCity.name} Dataset</span>
                         </div>
                     </div>
-                    
                     <div className="flex-1 relative bg-slate-50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
+                             {/* 🟢 GOD VIEW ENABLED: Passes stores to map logic */}
                              {getDisplayPolygons().features.length > 0 ? (
                                 <MapView 
                                     key={selectedCity.id} 
@@ -734,7 +548,6 @@ export default function DashboardPage() {
                                 </div>
                             )}
                         </TabsContent>
-                        
                         <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto">
                             <div className="p-8 max-w-5xl mx-auto">
                                 <Card className="border-none shadow-sm rounded-xl overflow-hidden">
