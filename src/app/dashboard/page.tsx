@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore'; // 🟢 Added doc, onSnapshot
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { logActivity } from '@/lib/logger'; 
 import * as turf from '@turf/turf';
+
+// 🟢 NEW IMPORTS FOR MAINTENANCE SYSTEM
+import { MaintenanceScreen } from '@/components/system/maintenance-screen';
+import { MaintenanceControl } from '@/components/system/maintenance-control';
 
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
@@ -39,7 +43,7 @@ function getRoughDistKm(lat1: number, lng1: number, lat2: number, lng2: number) 
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// 🟢 Helper: Identify which Sub-Zone the store is physically inside
+// Helper: Identify which Sub-Zone the store is physically inside
 const getStoreSubZone = (storeLat: number, storeLng: number, allPolygons: any[]) => {
     try {
         const pt = turf.point([storeLng, storeLat]);
@@ -52,17 +56,15 @@ const getStoreSubZone = (storeLat: number, storeLng: number, allPolygons: any[])
     return null; 
 };
 
-// 🟢 Helper: Get distance to the NEAREST polygon of a specific zone
+// Helper: Get distance to the NEAREST polygon of a specific zone
 const getMinDistToZone = (storeLat: number, storeLng: number, targetZoneName: string, allPolygons: any[]) => {
     try {
         const storePt = turf.point([storeLng, storeLat]);
         let minDist = Infinity;
         
-        // Filter polygons belonging to the target zone
         const targetPolys = allPolygons.filter(p => (p.properties.zoneGroup || p.properties.zoneName) === targetZoneName);
         
         targetPolys.forEach(poly => {
-            // For speed, check vertices (accurate enough for this purpose)
             const vertices = poly.geometry.coordinates[0];
             vertices.forEach((v: any) => {
                  const d = turf.distance(storePt, turf.point(v), { units: 'kilometers' });
@@ -83,11 +85,39 @@ export default function DashboardPage() {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [user, setUser] = useState<any>(null); // 🟢 Added User State
   
   // Rule State (Read-Only from City)
   const [availableRules, setAvailableRules] = useState<any[]>([]); 
 
-  useEffect(() => { fetchCities(); }, []);
+  // 🟢 MAINTENANCE STATE
+  const [isMaintenance, setIsMaintenance] = useState(false);
+  const [maintenanceMsg, setMaintenanceMsg] = useState('');
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
+
+  // 🟢 1. Check User & Maintenance Status
+  useEffect(() => {
+     // Get User
+     const stored = localStorage.getItem('geo_user');
+     const parsedUser = stored ? JSON.parse(stored) : null;
+     setUser(parsedUser);
+
+     // Listen to System Status
+     const unsub = onSnapshot(doc(db, 'system_metadata', 'maintenance'), (docSnap) => {
+         if (docSnap.exists()) {
+             const data = docSnap.data();
+             setIsMaintenance(data.isActive);
+             setMaintenanceMsg(data.message);
+         }
+         setIsCheckingStatus(false);
+     });
+
+     return () => unsub();
+  }, []);
+
+  useEffect(() => { 
+      if (!isCheckingStatus) fetchCities(); 
+  }, [isCheckingStatus]);
 
   const fetchCities = async () => {
     try {
@@ -96,7 +126,6 @@ export default function DashboardPage() {
           const data = d.data();
           let subZones = data.subZones || [];
           
-          // Legacy Support
           if (!subZones.length && data.polygons) {
               let polys = data.polygons;
               if (typeof polys === 'string') {
@@ -181,7 +210,6 @@ export default function DashboardPage() {
       };
   };
 
-  // 🟢 UPDATED: Uses Custom Engine from City Config
   const fetchMatrixBatch = async (store: any, allZonePoints: any[], engineUrl: string) => {
       const uncachedPoints = [];
       const cachedResults = new Array(allZonePoints.length).fill(null);
@@ -260,14 +288,12 @@ export default function DashboardPage() {
         const finalAssignments: Record<string, any> = {};
         const allPolygons: any[] = [];
         
-        // 🟢 1. Flatten all polygons
         selectedCity.subZones.forEach((zone: any) => {
             if (zone.polygons && zone.polygons.features) {
                 zone.polygons.features.forEach((f: any) => {
                     f.properties.zoneRules = zone.thresholds || { green: 2, yellow: 5 };
                     f.properties.zoneName = zone.name;
                     
-                    // ⚡ FIX: Calculate missing centroid
                     if (!f.properties.centroid) {
                         try {
                             const centroid = turf.centroid(f);
@@ -302,7 +328,6 @@ export default function DashboardPage() {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             const MAX_SCAN_RADIUS_KM = 50; 
 
-            // 🟢 2. Identify Store Location (Internal vs External)
             const storeHomeZone = getStoreSubZone(storeObj.lat, storeObj.lng, allPolygons);
 
             let storeRule = null;
@@ -319,36 +344,27 @@ export default function DashboardPage() {
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
                     
-                    // 🟢 3. TRI-STATE LOGIC (Internal / External / Border)
                     const polyZone = f.properties.zoneGroup || f.properties.zoneName;
                     const zoneConfig = f.properties.zoneRules; 
 
                     let activeRule = { green: 2, yellow: 5 }; 
 
                     if (storeRule) {
-                        // Category Override
                         activeRule = storeRule;
                     } else if (zoneConfig.internal && zoneConfig.external) {
-                        // Dual Logic
                         if (storeHomeZone === polyZone) {
-                            // A: Same Zone
                             activeRule = zoneConfig.internal;
                         } else {
-                            // B: Cross Zone
-                            // Check Border Proximity (Distance from Store to Target Zone Border)
                             const distToBorder = getMinDistToZone(storeObj.lat, storeObj.lng, polyZone, allPolygons);
                             const proximityLimit = zoneConfig.borderProximity || 1.0;
 
                             if (distToBorder <= proximityLimit && zoneConfig.border) {
-                                // B1: Near Border (Stricter)
                                 activeRule = zoneConfig.border;
                             } else {
-                                // B2: Far from Border (Standard External)
                                 activeRule = zoneConfig.external;
                             }
                         }
                     } else {
-                        // Legacy Single Rule
                         activeRule = zoneConfig; 
                     }
                     
@@ -359,7 +375,6 @@ export default function DashboardPage() {
                 }
             });
             
-            // 🟢 4. Pass Engine URL
             let flatDistances: number[] = [];
             if (flatPoints.length > 0) {
                 flatDistances = await fetchMatrixBatch(storeObj, flatPoints, selectedCity.routingEngine);
@@ -454,15 +469,33 @@ export default function DashboardPage() {
       return { type: 'FeatureCollection', features: [] };
   };
 
-  if (loading) return (
-    <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
-        <Loader2 className="animate-spin h-10 w-10 text-indigo-600" />
-        <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-xs animate-pulse">Loading Environment...</p>
-    </div>
-  );
+  // 🟢 2. Render Loading or Maintenance Screen
+  if (isCheckingStatus || loading) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
+          <Loader2 className="animate-spin h-10 w-10 text-indigo-600" />
+          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-xs animate-pulse">Initializing...</p>
+      </div>
+    );
+  }
+
+  // 🟢 3. BLOCK ACCESS IF MAINTENANCE IS ON AND USER IS NOT ADMIN
+  const isAdmin = user?.role === 'admin' || user?.permissions?.can_bypass_maintenance;
+  
+  if (isMaintenance && !isAdmin) {
+      return <MaintenanceScreen message={maintenanceMsg} />;
+  }
 
   return (
-    <div className="h-screen flex flex-col bg-white overflow-hidden font-sans">
+    <div className="h-screen flex flex-col bg-white overflow-hidden font-sans relative">
+      
+      {/* 🟢 Maintenance Banner for Admins */}
+      {isMaintenance && isAdmin && (
+          <div className="bg-amber-100 text-amber-900 text-[10px] font-bold text-center py-1 border-b border-amber-300">
+              ⚠️ MAINTENANCE MODE ACTIVE - USER ACCESS RESTRICTED
+          </div>
+      )}
+
       {/* HEADER */}
       <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
         <div className="flex items-center gap-3">
@@ -475,6 +508,9 @@ export default function DashboardPage() {
             </div>
         </div>
         <div className="flex items-center gap-4">
+           {/* 🟢 Insert Admin Control Toggle Here */}
+           {isAdmin && <MaintenanceControl />}
+
            {analyzing && (
                <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
                    <Loader2 className="h-3 w-3 animate-spin" />
@@ -634,6 +670,10 @@ export default function DashboardPage() {
                                     <TableIcon className="h-3 w-3 mr-2" /> Data Grid
                                 </TabsTrigger>
                             </TabsList>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{selectedCity.name} Dataset</span>
                         </div>
                     </div>
                     
