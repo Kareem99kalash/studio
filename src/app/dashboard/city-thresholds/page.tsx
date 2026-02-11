@@ -33,13 +33,19 @@ import {
   Trash2, 
   Store,
   ShieldAlert,
-  Lock
+  Lock,
+  ArrowRightLeft,
+  Layers
 } from 'lucide-react';
 
-interface SubThreshold {
-  name: string;
-  green: number;
-  yellow: number;
+interface Threshold {
+    green: number;
+    yellow: number;
+}
+
+interface DualThreshold {
+    internal: Threshold;
+    external: Threshold;
 }
 
 export default function CityThresholdsPage() {
@@ -56,13 +62,14 @@ export default function CityThresholdsPage() {
 
   // UI State
   const [expandedCityId, setExpandedCityId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editThresholds, setEditThresholds] = useState({ green: 0, yellow: 0 });
-
-  // New Rule Form State
+  
+  // 🟢 Edit State (Now supports Dual Thresholds per Zone)
+  const [editZoneRules, setEditZoneRules] = useState<Record<string, DualThreshold>>({});
+  
+  // New Store Category Rule State
   const [newRuleName, setNewRuleName] = useState('');
-  const [newRuleGreen, setNewRuleGreen] = useState<string>('');
-  const [newRuleYellow, setNewRuleYellow] = useState<string>('');
+  const [newRuleInternal, setNewRuleInternal] = useState<Threshold>({ green: 2, yellow: 5 });
+  const [newRuleExternal, setNewRuleExternal] = useState<Threshold>({ green: 1, yellow: 3 });
 
   useEffect(() => {
     const checkAuth = () => {
@@ -71,11 +78,9 @@ export default function CityThresholdsPage() {
         const parsedUser = JSON.parse(stored);
         setUser(parsedUser);
         
-        // 🛡️ PERMISSION CHECK: manage_thresholds OR admin
         const hasAccess = parsedUser.permissions?.manage_thresholds || parsedUser.role === 'admin';
         setCanManage(hasAccess);
         
-        // If they can't even view cities, kick them out
         if (!parsedUser.permissions?.view_cities && !hasAccess && parsedUser.role !== 'manager') {
            router.push('/dashboard');
            return;
@@ -99,86 +104,79 @@ export default function CityThresholdsPage() {
     }
   };
 
-  // --- MAIN THRESHOLD HANDLERS ---
-  const startEdit = (city: any) => {
-    if (!canManage) return;
-    setEditingId(city.id);
-    setEditThresholds({
-      green: city.thresholds?.green || 2,
-      yellow: city.thresholds?.yellow || 5
-    });
+  const toggleCity = (city: any) => {
+    if (expandedCityId === city.id) {
+      setExpandedCityId(null);
+      setEditZoneRules({});
+    } else {
+      setExpandedCityId(city.id);
+      // Load existing sub-zone rules into edit state
+      const initialRules: Record<string, DualThreshold> = {};
+      
+      // Load from subZones array (The actual geo-zones)
+      if (city.subZones) {
+          city.subZones.forEach((z: any) => {
+              initialRules[z.name] = z.thresholds?.internal ? z.thresholds : {
+                  internal: z.thresholds || { green: 2, yellow: 5 },
+                  external: z.thresholds || { green: 2, yellow: 5 }
+              };
+          });
+      }
+
+      setEditZoneRules(initialRules);
+    }
   };
 
-  const saveMainThresholds = async (id: string) => {
+  // 🟢 SAVE HANDLER: Updates the subZones array in Firestore
+  const saveZoneThresholds = async (cityId: string) => {
     if (!canManage) return;
     try {
-      await updateDoc(doc(db, 'cities', id), { thresholds: editThresholds });
-      toast({ title: "Updated", description: "Default city thresholds saved." });
-      setEditingId(null);
-      fetchCities();
+        const city = cities.find(c => c.id === cityId);
+        if (!city || !city.subZones) return;
+
+        // Map the edits back into the subZones array structure
+        const updatedSubZones = city.subZones.map((z: any) => ({
+            ...z,
+            thresholds: editZoneRules[z.name] || z.thresholds
+        }));
+
+        await updateDoc(doc(db, 'cities', cityId), { subZones: updatedSubZones });
+        
+        toast({ title: "Updated", description: "Zone thresholds saved." });
+        fetchCities();
     } catch (e) {
       toast({ variant: "destructive", title: "Error", description: "Could not update." });
     }
   };
 
-  // --- SUB-THRESHOLD HANDLERS ---
-  const toggleSubRules = (cityId: string) => {
-    if (expandedCityId === cityId) {
-      setExpandedCityId(null);
-    } else {
-      setExpandedCityId(cityId);
-      setNewRuleName('');
-      setNewRuleGreen('');
-      setNewRuleYellow('');
-    }
-  };
-
-  const handleAddSubRule = async (city: any) => {
+  // --- STORE CATEGORY RULES (OPTIONAL EXTRA LAYER) ---
+  const handleAddCategoryRule = async (city: any) => {
     if (!canManage) return;
-    if (!newRuleName || !newRuleGreen || !newRuleYellow) {
-      toast({ variant: "destructive", title: "Missing Data", description: "Please fill all fields." });
-      return;
-    }
+    if (!newRuleName) return toast({ variant: "destructive", title: "Missing Name" });
 
-    const newRule: SubThreshold = {
+    const newRule = {
       name: newRuleName.trim(),
-      green: Number(newRuleGreen),
-      yellow: Number(newRuleYellow)
+      internal: newRuleInternal,
+      external: newRuleExternal
     };
 
-    const existingRules: SubThreshold[] = city.subThresholds || [];
-    
-    if (existingRules.some(r => r.name.toLowerCase() === newRule.name.toLowerCase())) {
-      toast({ variant: "destructive", title: "Duplicate", description: "Rule name already exists." });
-      return;
-    }
-
+    const existingRules = city.subThresholds || []; // Note: subThresholds = Store Categories
     const updatedRules = [...existingRules, newRule];
 
     try {
       await updateDoc(doc(db, 'cities', city.id), { subThresholds: updatedRules });
-      toast({ title: "Rule Added", description: `Added logic for ${newRule.name}` });
-      setNewRuleName(''); setNewRuleGreen(''); setNewRuleYellow('');
+      toast({ title: "Category Added", description: `Added logic for ${newRule.name}` });
+      setNewRuleName(''); 
       fetchCities();
-    } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to add rule." });
-    }
+    } catch (e) { toast({ variant: "destructive", title: "Error" }); }
   };
 
-  const handleDeleteSubRule = async (city: any, ruleName: string) => {
+  const handleDeleteCategoryRule = async (city: any, ruleName: string) => {
     if (!canManage) return;
-    if (!confirm(`Delete rule "${ruleName}"?`)) return;
-    
-    const existingRules: SubThreshold[] = city.subThresholds || [];
-    const updatedRules = existingRules.filter(r => r.name !== ruleName);
-
-    try {
-      await updateDoc(doc(db, 'cities', city.id), { subThresholds: updatedRules });
-      toast({ title: "Rule Deleted" });
-      fetchCities();
-    } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to delete rule." });
-    }
+    if (!confirm("Delete this rule?")) return;
+    const updated = (city.subThresholds || []).filter((r: any) => r.name !== ruleName);
+    await updateDoc(doc(db, 'cities', city.id), { subThresholds: updated });
+    fetchCities();
   };
 
   if (loading) return <div className="h-96 w-full flex items-center justify-center"><Loader2 className="animate-spin text-purple-600" /></div>;
@@ -188,7 +186,7 @@ export default function CityThresholdsPage() {
       <div className="flex items-center justify-between">
         <div>
            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Coverage Thresholds</h1>
-           <p className="text-sm text-slate-500 mt-1">Define acceptance criteria (km) for coverage analysis.</p>
+           <p className="text-sm text-slate-500 mt-1">Manage Internal (Local) vs External (Cross-Zone) limits.</p>
         </div>
         {!canManage && (
           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 pr-3">
@@ -200,117 +198,175 @@ export default function CityThresholdsPage() {
       <Card className="border-t-4 border-t-purple-600 shadow-sm">
         <CardHeader>
           <CardTitle>City Configuration</CardTitle>
-          <CardDescription>Set default rules per city, or create specific rules for store types.</CardDescription>
+          <CardDescription>Adjust limits for specific sub-zones (e.g. Left/Right Coast).</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow>
                 <TableHead className="pl-6 w-[200px]">City Name</TableHead>
-                <TableHead>Default Thresholds (Green / Yellow)</TableHead>
-                <TableHead>Special Rules</TableHead>
+                <TableHead>Active Zones</TableHead>
                 <TableHead className="text-right pr-6">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {cities.map(city => (
-                // FIX: Key applied to Fragment
                 <React.Fragment key={city.id}>
                   
-                  {/* MAIN CITY ROW */}
+                  {/* MAIN ROW */}
                   <TableRow className={expandedCityId === city.id ? "bg-slate-50 border-b-0" : ""}>
                     <TableCell className="font-bold pl-6 text-slate-700">{city.name}</TableCell>
-                    
                     <TableCell>
-                      {editingId === city.id && canManage ? (
-                        <div className="flex items-center gap-2">
-                          <Input type="number" className="w-16 h-8 text-xs bg-green-50 border-green-200 text-green-700 font-bold" value={editThresholds.green} onChange={e => setEditThresholds({...editThresholds, green: Number(e.target.value)})} />
-                          <span className="text-slate-300">/</span>
-                          <Input type="number" className="w-16 h-8 text-xs bg-yellow-50 border-yellow-200 text-yellow-700 font-bold" value={editThresholds.yellow} onChange={e => setEditThresholds({...editThresholds, yellow: Number(e.target.value)})} />
-                          <Button size="icon" className="h-8 w-8 bg-purple-600 hover:bg-purple-700" onClick={() => saveMainThresholds(city.id)}><Save className="h-4 w-4" /></Button>
-                        </div>
-                      ) : (
-                        <div className={`flex items-center gap-3 group ${canManage ? 'cursor-pointer' : 'cursor-default'}`} onClick={() => startEdit(city)}>
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-1 rounded bg-green-100 text-green-700 font-mono text-xs font-bold border border-green-200">&lt; {city.thresholds?.green || 2} km</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-700 font-mono text-xs font-bold border border-yellow-200">&lt; {city.thresholds?.yellow || 5} km</span>
-                          </div>
-                          {canManage && <Settings2 className="h-3 w-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />}
-                        </div>
-                      )}
+                      <div className="flex gap-2">
+                          {city.subZones?.map((z: any) => (
+                              <Badge key={z.name} variant="outline" className="bg-white border-slate-300 text-slate-600">{z.name}</Badge>
+                          )) || <Badge variant="outline">Default</Badge>}
+                      </div>
                     </TableCell>
-
-                    <TableCell>
-                      <Badge variant="outline" className="font-normal text-slate-500 bg-white">
-                        {city.subThresholds?.length || 0} Custom Rules
-                      </Badge>
-                    </TableCell>
-
                     <TableCell className="text-right pr-6">
-                      <Button variant={expandedCityId === city.id ? "secondary" : "ghost"} size="sm" onClick={() => toggleSubRules(city.id)} className={expandedCityId === city.id ? "bg-purple-100 text-purple-700" : "text-slate-500"}>
-                         {expandedCityId === city.id ? "Close Rules" : "Manage Sub-Rules"}
-                         {expandedCityId === city.id ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+                      <Button variant={expandedCityId === city.id ? "secondary" : "ghost"} size="sm" onClick={() => toggleCity(city)} className={expandedCityId === city.id ? "bg-purple-100 text-purple-700" : "text-slate-500"}>
+                          {expandedCityId === city.id ? "Close" : "Manage Rules"}
+                          {expandedCityId === city.id ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
                       </Button>
                     </TableCell>
                   </TableRow>
 
-                  {/* EXPANDED SUB-RULES PANEL */}
+                  {/* EXPANDED PANEL */}
                   {expandedCityId === city.id && (
                     <TableRow className="bg-slate-50 hover:bg-slate-50">
-                      <TableCell colSpan={4} className="p-4 pt-0">
-                        <div className="ml-10 p-4 bg-white rounded-lg border border-slate-200 shadow-inner">
-                           <div className="flex items-center gap-2 mb-4">
-                              <Store className="h-4 w-4 text-purple-500" />
-                              <h3 className="text-sm font-bold text-slate-800">Custom Rules for {city.name}</h3>
-                           </div>
-
-                           {/* Rules List */}
-                           <div className="space-y-2 mb-4">
-                              {city.subThresholds && city.subThresholds.length > 0 ? (
-                                city.subThresholds.map((rule: SubThreshold, idx: number) => (
-                                  <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-100">
-                                     <div className="flex items-center gap-3">
-                                        <Badge className="bg-slate-800 text-white">{rule.name}</Badge>
-                                        <span className="text-xs text-slate-500">Target:</span>
-                                        <span className="text-xs font-mono font-bold text-green-600">{rule.green} km</span>
-                                        <span className="text-xs text-slate-300">|</span>
-                                        <span className="text-xs font-mono font-bold text-yellow-600">{rule.yellow} km</span>
-                                     </div>
-                                     {canManage && (
-                                       <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-red-500" onClick={() => handleDeleteSubRule(city, rule.name)}>
-                                          <Trash2 className="h-3 w-3" />
+                      <TableCell colSpan={3} className="p-4 pt-0">
+                        <div className="ml-6 p-6 bg-white rounded-lg border border-slate-200 shadow-inner space-y-6">
+                           
+                           {/* 🟢 SECTION 1: GEO-ZONE RULES */}
+                           <div>
+                               <div className="flex items-center justify-between mb-4">
+                                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                       <Layers className="h-4 w-4 text-purple-500" /> Geographic Zone Limits
+                                   </h3>
+                                   {canManage && (
+                                       <Button size="sm" className="bg-green-600 hover:bg-green-700 h-8" onClick={() => saveZoneThresholds(city.id)}>
+                                           <Save className="h-3 w-3 mr-2" /> Save Changes
                                        </Button>
-                                     )}
-                                  </div>
-                                ))
-                              ) : <p className="text-xs text-slate-400 italic pl-1">No custom rules defined yet.</p>}
+                                   )}
+                               </div>
+
+                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                   {(city.subZones || []).map((z: any) => {
+                                       const rules = editZoneRules[z.name] || { internal: {green:2, yellow:5}, external: {green:2, yellow:5} };
+                                       
+                                       return (
+                                           <div key={z.name} className="border rounded-lg p-3 bg-slate-50 space-y-3">
+                                               <div className="font-bold text-xs text-slate-700 uppercase border-b pb-1 mb-2">{z.name}</div>
+                                               
+                                               {/* Internal */}
+                                               <div className="space-y-1">
+                                                   <div className="flex justify-between text-[10px] text-emerald-700 font-bold uppercase">
+                                                       <span>Inside Zone</span>
+                                                       <span>(Local)</span>
+                                                   </div>
+                                                   <div className="flex gap-2">
+                                                       <div className="relative w-full">
+                                                           <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
+                                                           <Input 
+                                                               type="number" 
+                                                               className="h-7 text-xs pl-5 bg-white border-emerald-200" 
+                                                               value={rules.internal?.green} 
+                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, green: Number(e.target.value)}} }))}
+                                                               disabled={!canManage}
+                                                           />
+                                                       </div>
+                                                       <div className="relative w-full">
+                                                           <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
+                                                           <Input 
+                                                               type="number" 
+                                                               className="h-7 text-xs pl-5 bg-white border-emerald-200" 
+                                                               value={rules.internal?.yellow} 
+                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, yellow: Number(e.target.value)}} }))}
+                                                               disabled={!canManage}
+                                                           />
+                                                       </div>
+                                                   </div>
+                                               </div>
+
+                                               {/* External */}
+                                               <div className="space-y-1">
+                                                   <div className="flex justify-between text-[10px] text-amber-700 font-bold uppercase">
+                                                       <span>Cross-Zone</span>
+                                                       <span>(Remote)</span>
+                                                   </div>
+                                                   <div className="flex gap-2">
+                                                       <div className="relative w-full">
+                                                           <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
+                                                           <Input 
+                                                               type="number" 
+                                                               className="h-7 text-xs pl-5 bg-white border-amber-200" 
+                                                               value={rules.external?.green} 
+                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, green: Number(e.target.value)}} }))}
+                                                               disabled={!canManage}
+                                                           />
+                                                       </div>
+                                                       <div className="relative w-full">
+                                                           <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
+                                                           <Input 
+                                                               type="number" 
+                                                               className="h-7 text-xs pl-5 bg-white border-amber-200" 
+                                                               value={rules.external?.yellow} 
+                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, yellow: Number(e.target.value)}} }))}
+                                                               disabled={!canManage}
+                                                           />
+                                                       </div>
+                                                   </div>
+                                               </div>
+                                           </div>
+                                       );
+                                   })}
+                               </div>
                            </div>
 
-                           {/* Add New Rule Form (Protected) */}
-                           {canManage ? (
-                             <div className="flex items-end gap-2 pt-2 border-t border-slate-100">
-                                <div className="space-y-1 flex-1">
-                                   <label className="text-[10px] font-bold text-slate-400 uppercase">Category Name</label>
-                                   <Input placeholder="e.g. Retail..." className="h-8 text-xs" value={newRuleName} onChange={e => setNewRuleName(e.target.value)} />
-                                </div>
-                                <div className="space-y-1 w-24">
-                                   <label className="text-[10px] font-bold text-green-600 uppercase">Green (km)</label>
-                                   <Input type="number" className="h-8 text-xs bg-green-50/50" value={newRuleGreen} onChange={e => setNewRuleGreen(e.target.value)} />
-                                </div>
-                                <div className="space-y-1 w-24">
-                                   <label className="text-[10px] font-bold text-yellow-600 uppercase">Yellow (km)</label>
-                                   <Input type="number" className="h-8 text-xs bg-yellow-50/50" value={newRuleYellow} onChange={e => setNewRuleYellow(e.target.value)} />
-                                </div>
-                                <Button size="sm" className="h-8 bg-slate-900 hover:bg-black text-xs font-bold" onClick={() => handleAddSubRule(city)}>
-                                   <Plus className="mr-1 h-3 w-3" /> Add Rule
-                                </Button>
-                             </div>
-                           ) : (
-                             <div className="pt-2 border-t border-slate-100 text-center text-xs text-slate-400 italic">
-                               Editing restricted. Contact administrator to modify rules.
-                             </div>
-                           )}
+                           <div className="h-px bg-slate-100 my-4"></div>
+
+                           {/* 🟢 SECTION 2: STORE CATEGORY OVERRIDES */}
+                           <div>
+                               <div className="flex items-center gap-2 mb-3">
+                                   <Store className="h-4 w-4 text-indigo-500" />
+                                   <h3 className="text-sm font-bold text-slate-800">Store Category Overrides (Optional)</h3>
+                               </div>
+                               
+                               <div className="space-y-2">
+                                   {(city.subThresholds || []).map((cat: any, i: number) => (
+                                       <div key={i} className="flex items-center justify-between p-2 bg-slate-50 border rounded text-xs">
+                                           <div className="flex items-center gap-3">
+                                               <Badge className="bg-indigo-600">{cat.name}</Badge>
+                                               <div className="flex gap-4 text-slate-500">
+                                                   <span>Internal: <b className="text-slate-800">{cat.internal?.green}/{cat.internal?.yellow}</b></span>
+                                                   <span>External: <b className="text-slate-800">{cat.external?.green}/{cat.external?.yellow}</b></span>
+                                               </div>
+                                           </div>
+                                           {canManage && <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400" onClick={() => handleDeleteCategoryRule(city, cat.name)}><Trash2 className="h-3 w-3"/></Button>}
+                                       </div>
+                                   ))}
+                                   
+                                   {canManage && (
+                                       <div className="flex items-end gap-2 mt-2 bg-slate-50 p-2 rounded border border-dashed border-slate-300">
+                                            <div className="flex-1">
+                                                <span className="text-[9px] font-bold uppercase text-slate-400">Category Name</span>
+                                                <Input className="h-7 text-xs bg-white" placeholder="e.g. Retail" value={newRuleName} onChange={e=>setNewRuleName(e.target.value)} />
+                                            </div>
+                                            {/* Simplified input for category creation - Expand if needed */}
+                                            <div className="w-20">
+                                                <span className="text-[9px] font-bold uppercase text-green-600">In (G)</span>
+                                                <Input type="number" className="h-7 text-xs bg-white" value={newRuleInternal.green} onChange={e=>setNewRuleInternal({...newRuleInternal, green: Number(e.target.value)})} />
+                                            </div>
+                                            <div className="w-20">
+                                                <span className="text-[9px] font-bold uppercase text-yellow-600">In (Y)</span>
+                                                <Input type="number" className="h-7 text-xs bg-white" value={newRuleInternal.yellow} onChange={e=>setNewRuleInternal({...newRuleInternal, yellow: Number(e.target.value)})} />
+                                            </div>
+                                            <Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700" onClick={() => handleAddCategoryRule(city)}><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                                       </div>
+                                   )}
+                               </div>
+                           </div>
+
                         </div>
                       </TableCell>
                     </TableRow>
