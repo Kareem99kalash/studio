@@ -17,11 +17,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      {/* 🛑 FIX: Added suppressHydrationWarning to body. 
-         This tells React to ignore attributes added by browser extensions 
-         (like Grammarly, LastPass, etc.) to prevent the hydration error.
+      {/* 1. suppressHydrationWarning: Fixes browser extension errors.
+        2. min-h-screen: Ensures the background covers the full page.
+        3. antialiased: Makes fonts look sharper (standard for dashboards).
       */}
-      <body className={inter.className} suppressHydrationWarning={true}>
+      <body 
+        className={`${inter.className} min-h-screen bg-background antialiased`} 
+        suppressHydrationWarning={true}
+      >
         {children}
         <Toaster />
       </body>

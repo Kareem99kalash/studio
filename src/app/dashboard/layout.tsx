@@ -165,7 +165,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-slate-50 flex flex-col">
       
       {/* 🟢 TOP NAVIGATION BAR */}
-      <header className="h-16 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-50 shadow-md">
+      {/* FIX: Increased z-index from z-50 to z-[100] to ensure it stays above all page content */}
+      <header className="h-16 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-[100] shadow-md">
         
         {/* LEFT: HAMBURGER (Mobile) & LOGO */}
         <div className="flex items-center gap-4">
@@ -342,14 +343,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* 1. Dark Backdrop */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] lg:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] lg:hidden animate-in fade-in duration-200"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* 2. Sliding Panel */}
       <div className={`
-        fixed top-0 left-0 h-full w-[280px] bg-white z-[70] shadow-2xl transform transition-transform duration-300 ease-in-out lg:hidden
+        fixed top-0 left-0 h-full w-[280px] bg-white z-[120] shadow-2xl transform transition-transform duration-300 ease-in-out lg:hidden
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         {/* Mobile Header */}
@@ -397,7 +398,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Mobile User Info Footer */}
         <div className="absolute bottom-6 left-0 w-full px-6">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center gap-3">
+           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center gap-3">
                  <Avatar className="h-10 w-10">
                     <AvatarFallback className="bg-blue-100 text-blue-700 font-bold">
                         {user.username?.[0]?.toUpperCase()}
