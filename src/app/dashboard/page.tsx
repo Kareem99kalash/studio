@@ -232,67 +232,81 @@ export default function DashboardPage() {
       };
   };
 
+  // 🟢 SECURE: Calls internal /api/routing proxy
   const fetchMatrixBatch = async (store: any, allZonePoints: any[], engineUrl: string) => {
-      const uncachedPoints = [];
-      const cachedResults = new Array(allZonePoints.length).fill(null);
-      const indexMap: number[] = []; 
+    const uncachedPoints = [];
+    const cachedResults = new Array(allZonePoints.length).fill(null);
+    const indexMap: number[] = []; 
 
-      for (let i = 0; i < allZonePoints.length; i++) {
-          const p = allZonePoints[i];
-          const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
-          if (DISTANCE_CACHE[key] !== undefined) {
-              cachedResults[i] = DISTANCE_CACHE[key];
-          } else {
-              uncachedPoints.push(p);
-              indexMap.push(i);
-          }
-      }
+    // 1. Check Cache
+    for (let i = 0; i < allZonePoints.length; i++) {
+        const p = allZonePoints[i];
+        const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+        if (DISTANCE_CACHE[key] !== undefined) {
+            cachedResults[i] = DISTANCE_CACHE[key];
+        } else {
+            uncachedPoints.push(p);
+            indexMap.push(i);
+        }
+    }
 
-      if (uncachedPoints.length === 0) return cachedResults;
+    if (uncachedPoints.length === 0) return cachedResults;
 
-      const chunkSize = 50; 
-      const promises = [];
-      const activeUrl = engineUrl || "https://router.project-osrm.org";
-      
-      for (let i = 0; i < uncachedPoints.length; i += chunkSize) {
-          const chunk = uncachedPoints.slice(i, i + chunkSize);
-          const chunkIndices = indexMap.slice(i, i + chunkSize);
-          
-          const storeStr = `${store.lng},${store.lat}`;
-          const destStr = chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
-          const coords = `${storeStr};${destStr}`;
-          const url = `${activeUrl}/table/v1/driving/${coords}?sources=0&annotations=distance`;
-          
-          const headers: any = {};
-          if (activeUrl.includes('hf.space')) {
-              headers['Authorization'] = `Bearer ${process.env.NEXT_PUBLIC_HF_TOKEN}`;
-          }
-
-          promises.push(
-              fetch(url, { headers })
-                .then(res => res.json())
-                .then(data => {
-                    const distances = data.distances?.[0]?.slice(1);
-                    if (distances) {
-                        distances.forEach((d: number, idx: number) => { 
-                            if (d !== null) {
-                                const km = d / 1000;
-                                const originalIdx = chunkIndices[idx];
-                                cachedResults[originalIdx] = km;
-                                const p = chunk[idx];
-                                const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
-                                DISTANCE_CACHE[key] = km;
-                            } 
-                        });
-                    }
+    const chunkSize = 50; 
+    const promises = [];
+    // If no engine is selected/saved, default to public
+    const targetEngine = engineUrl || "https://router.project-osrm.org";
+    
+    for (let i = 0; i < uncachedPoints.length; i += chunkSize) {
+        const chunk = uncachedPoints.slice(i, i + chunkSize);
+        const chunkIndices = indexMap.slice(i, i + chunkSize);
+        
+        const storeStr = `${store.lng},${store.lat}`;
+        const destStr = chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+        const coords = `${storeStr};${destStr}`;
+        
+        // 🟢 SECURE CALL: Send to our own API Route
+        promises.push(
+            fetch('/api/routing', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    coordinates: coords,
+                    engineUrl: targetEngine
                 })
-                .catch(e => console.error("OSRM Chunk Fail", e))
-          );
-      }
-      
-      await Promise.all(promises); 
-      return cachedResults;
-  };
+            })
+            .then(async (res) => {
+                if (res.status === 429) {
+                    toast({ variant: "destructive", title: "Traffic Limit", description: "Please wait a moment before retrying." });
+                    return null;
+                }
+                if (!res.ok) throw new Error("Routing failed");
+                return res.json();
+            })
+            .then(data => {
+                if (!data) return; 
+
+                const distances = data.distances?.[0]?.slice(1);
+                if (distances) {
+                    distances.forEach((d: number, idx: number) => { 
+                        if (d !== null) {
+                            const km = d / 1000;
+                            const originalIdx = chunkIndices[idx];
+                            cachedResults[originalIdx] = km;
+                            const p = chunk[idx];
+                            const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+                            DISTANCE_CACHE[key] = km;
+                        } 
+                    });
+                }
+            })
+            .catch(e => console.error("Proxy Chunk Fail", e))
+        );
+    }
+    
+    await Promise.all(promises); 
+    return cachedResults;
+};
 
   const handleAnalyze = async () => {
     if (!selectedCity || stores.length === 0) return toast({ variant: "destructive", title: "Action Required", description: "Select a city and add at least one branch." });
