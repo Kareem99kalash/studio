@@ -15,7 +15,7 @@ import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { logActivity } from '@/lib/logger'; // <--- 1. NEW IMPORT
+import { logActivity } from '@/lib/logger'; 
 
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
@@ -27,7 +27,7 @@ const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m =
   )
 });
 
-// --- CACHE (Persists during session) ---
+// --- CACHE ---
 const DISTANCE_CACHE: Record<string, number> = {};
 
 // --- HELPERS ---
@@ -47,9 +47,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   
-  // Rules State
-  const [defaultRules, setDefaultRules] = useState({ green: 2, yellow: 5 });
-  const [activeSubRules, setActiveSubRules] = useState<any[]>([]);
+  // 🟢 NEW: Active Sub-Zones State
+  const [activeSubZones, setActiveSubZones] = useState<any[]>([]);
 
   useEffect(() => { fetchCities(); }, []);
 
@@ -58,18 +57,38 @@ export default function DashboardPage() {
       const snap = await getDocs(collection(db, 'cities'));
       const cityList = snap.docs.map(d => {
           const data = d.data();
-          let polygons = data.polygons;
-          if (typeof polygons === 'string') {
-              try { polygons = JSON.parse(polygons); } 
-              catch (e) { console.error("Parse Error", e); polygons = null; }
+          
+          // 🟢 PARSE SUB-ZONES
+          let subZones = data.subZones || [];
+          
+          // Legacy Support: Convert old single-polygon cities to new format
+          if (!subZones.length && data.polygons) {
+              let polys = data.polygons;
+              if (typeof polys === 'string') {
+                  try { polys = JSON.parse(polys); } catch (e) { polys = null; }
+              }
+              if (polys) {
+                  subZones = [{
+                      name: 'Default',
+                      thresholds: data.thresholds || { green: 2, yellow: 5 },
+                      polygons: polys // Already an object or string
+                  }];
+              }
           }
-          return { id: d.id, ...data, polygons };
+
+          // Parse strings back to objects
+          subZones = subZones.map((z: any) => ({
+              ...z,
+              polygons: typeof z.polygons === 'string' ? JSON.parse(z.polygons) : z.polygons
+          }));
+
+          return { id: d.id, ...data, subZones };
       });
       setCities(cityList);
       if (cityList.length > 0) handleCityChange(cityList[0].id, cityList);
     } catch (e) { 
       console.error("Fetch Error:", e);
-      toast({ variant: "destructive", title: "Connection Error", description: "Failed to load cities from database." });
+      toast({ variant: "destructive", title: "Connection Error", description: "Failed to load cities." });
     } finally { 
       setLoading(false); 
     }
@@ -81,19 +100,7 @@ export default function DashboardPage() {
         setSelectedCity(city);
         setStores([]); 
         setAnalysisData(null); 
-        
-        if (city.thresholds) {
-            setDefaultRules({
-                green: Number(city.thresholds.green) || 2,
-                yellow: Number(city.thresholds.yellow) || 5
-            });
-        }
-
-        if (city.subThresholds && Array.isArray(city.subThresholds)) {
-            setActiveSubRules(city.subThresholds);
-        } else {
-            setActiveSubRules([]);
-        }
+        setActiveSubZones(city.subZones || []);
     }
   };
 
@@ -101,9 +108,7 @@ export default function DashboardPage() {
       setStores([...stores, { 
           id: Date.now(), 
           name: `Hub ${stores.length + 1}`, 
-          coordinates: '', 
-          lat: '', 
-          lng: '', 
+          coordinates: '', lat: '', lng: '', 
           cityId: selectedCity?.id,
           category: 'default'
       }]); 
@@ -125,20 +130,14 @@ export default function DashboardPage() {
   };
   const removeStore = (id: number) => { setStores(stores.filter(s => s.id !== id)); };
 
-  // --- OPTIMIZED GEOMETRY SELECTOR ---
   const getZoneKeyPoints = (store: any, feature: any) => {
-      // Simplification: We grab the centroid + the closest vertex.
-      // We skip the "far" vertex to save 33% of API calls unless absolutely necessary.
       const center = feature.properties.centroid;
       const vertices = feature.geometry.coordinates[0].map((p: any) => ({ lat: p[1], lng: p[0] }));
-      
       let close = vertices[0], minSq = Infinity;
       vertices.forEach((v: any) => {
           const d = getDistSq(store.lat, store.lng, v.lat, v.lng);
           if (d < minSq) { minSq = d; close = v; }
       });
-      
-      // We return 2 points instead of 3 to speed up initial pass
       return { 
           id: feature.properties.id || feature.properties.name, 
           name: feature.properties.name, 
@@ -147,10 +146,9 @@ export default function DashboardPage() {
   };
 
   const fetchMatrixBatch = async (store: any, allZonePoints: any[]) => {
-      // 🚀 CACHE CHECK
       const uncachedPoints = [];
       const cachedResults = new Array(allZonePoints.length).fill(null);
-      const indexMap: number[] = []; // Maps uncached index back to original index
+      const indexMap: number[] = []; 
 
       for (let i = 0; i < allZonePoints.length; i++) {
           const p = allZonePoints[i];
@@ -163,11 +161,9 @@ export default function DashboardPage() {
           }
       }
 
-      // If everything is cached, return immediately
       if (uncachedPoints.length === 0) return cachedResults;
 
-      // Only fetch missing data
-      const chunkSize = 50; // Smaller chunks are faster on public OSRM
+      const chunkSize = 50; 
       const promises = [];
       
       for (let i = 0; i < uncachedPoints.length; i += chunkSize) {
@@ -188,8 +184,6 @@ export default function DashboardPage() {
                                 const km = d / 1000;
                                 const originalIdx = chunkIndices[idx];
                                 cachedResults[originalIdx] = km;
-                                
-                                // Save to Cache
                                 const p = chunk[idx];
                                 const key = `${store.lat.toFixed(4)},${store.lng.toFixed(4)}-${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
                                 DISTANCE_CACHE[key] = km;
@@ -212,52 +206,44 @@ export default function DashboardPage() {
 
     setAnalyzing(true);
     
-    // 2. LOG THE ACTIVITY
     try {
         const currentUser = JSON.parse(localStorage.getItem('geo_user') || '{}');
-        logActivity(
-            currentUser.username, 
-            'Tool Execution', 
-            `Ran coverage analysis for ${selectedCity.name} with ${validStores.length} hubs.`
-        );
-    } catch (e) {
-        console.error("Logging failed", e);
-    }
+        logActivity(currentUser.username, 'Tool Execution', `Ran analysis for ${selectedCity.name}`);
+    } catch (e) { console.error("Log fail", e); }
 
     try {
         const finalAssignments: Record<string, any> = {};
-        const features = selectedCity.polygons.features.filter((f: any) => f.properties?.centroid);
         
+        // 🟢 1. Flatten all polygons from all sub-zones into one list
+        // And attach the correct thresholds to each polygon
+        const allPolygons: any[] = [];
+        selectedCity.subZones.forEach((zone: any) => {
+            if (zone.polygons && zone.polygons.features) {
+                zone.polygons.features.forEach((f: any) => {
+                    // Attach zone-specific rules to the feature
+                    f.properties.zoneRules = zone.thresholds || { green: 2, yellow: 5 };
+                    f.properties.zoneName = zone.name;
+                    if (f.properties.centroid) allPolygons.push(f);
+                });
+            }
+        });
+
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
-            
-            // 1. Determine Max Range
-            let activeRules = defaultRules; 
-            if (store.category && store.category !== 'default' && selectedCity.subThresholds) {
-                const customRule = selectedCity.subThresholds.find((r: any) => r.name === store.category);
-                if (customRule) {
-                    activeRules = { green: Number(customRule.green), yellow: Number(customRule.yellow) };
-                }
-            }
-
-            // 🚀 OPTIMIZATION: Max Scan Radius
-            // If yellow limit is 5km, checking anything beyond 15km straight-line is useless.
-            // It will surely be > 5km by road.
-            const MAX_SCAN_RADIUS_KM = Math.max(activeRules.yellow * 3, 20);
+            const MAX_SCAN_RADIUS_KM = 30; // Scan wide enough to catch cross-zone coverage
 
             const zoneMeta: any[] = [], flatPoints: any[] = [];
             
-            features.forEach((f: any) => {
+            allPolygons.forEach((f: any) => {
                 const center = f.properties.centroid;
                 const roughDist = getRoughDistKm(storeObj.lat, storeObj.lng, center.lat, center.lng);
                 
-                // 🚀 SMART FILTER
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
-                    zoneMeta.push(kp); 
+                    // Pass rules along
+                    zoneMeta.push({ ...kp, rules: f.properties.zoneRules }); 
                     flatPoints.push(...kp.points); 
                 } else { 
-                    // Auto-fail distant zones without API call
                     zoneMeta.push({ id: f.properties.id || f.properties.name, name: f.properties.name, tooFar: true }); 
                 }
             });
@@ -272,19 +258,17 @@ export default function DashboardPage() {
                 if (!z.tooFar) {
                     const dClose = flatDistances[pointIdx];
                     const dCenter = flatDistances[pointIdx + 1];
-                    pointIdx += 2; // We only fetched 2 points (Close + Center)
+                    pointIdx += 2; 
 
                     if (dCenter !== null && dClose !== null) {
-                        v1 = dClose; 
-                        v2 = dCenter;
-                        
-                        // Heuristic: If center is way further than edge, the zone is likely huge or weirdly shaped.
-                        // We average them to get a "representative" distance.
-                        voteV1 = v1; 
-                        voteV2 = v2;
+                        v1 = dClose; v2 = dCenter;
+                        voteV1 = v1; voteV2 = v2;
                     }
                 }
                 
+                // 🟢 2. Use the ZONE-SPECIFIC Rules
+                const activeRules = z.rules || { green: 2, yellow: 5 };
+
                 const points = [voteV1, voteV2];
                 let greenCount = 0, yellowCount = 0;
                 
@@ -316,7 +300,14 @@ export default function DashboardPage() {
             });
         });
         await Promise.all(storePromises);
-        setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments });
+        
+        // Flatten polygons again for visualizer
+        const displayPolygons = {
+            type: "FeatureCollection",
+            features: allPolygons
+        };
+
+        setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments, displayPolygons });
         toast({ title: "Analysis Complete", description: "Optimization finished." });
     } catch (e) { toast({ variant: "destructive", title: "Error", description: "Analysis failed due to a network or OSRM timeout." }); } finally { setAnalyzing(false); }
   };
@@ -401,58 +392,40 @@ export default function DashboardPage() {
                                 {cities.map(c => <SelectItem key={c.id} value={c.id} className="font-medium text-xs">{c.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
-                        {selectedCity && (
-                            <div className="absolute top-1/2 -translate-y-1/2 right-9 pointer-events-none">
-                                <Badge variant="secondary" className="text-[9px] bg-slate-100 text-slate-500 font-mono">ID: {selectedCity.id.slice(0,4)}</Badge>
-                            </div>
-                        )}
                     </div>
                 </div>
 
                 <Separator className="bg-slate-200" />
 
-                {/* 2. Rules Visualization */}
+                {/* 2. Rules Visualization (UPDATED FOR SUB-ZONES) */}
                 <div className="space-y-4">
                     <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> Coverage Rules (SLA)
+                        <Activity className="h-3.5 w-3.5 text-indigo-500" /> Zone Rules (Thresholds)
                     </Label>
                     
-                    {/* Default Rules */}
-                    <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-2">
-                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                            <span className="text-[10px] font-black uppercase text-slate-500">City Default</span>
-                            <Badge variant="secondary" className="text-[9px] h-5">Standard</Badge>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="flex flex-col items-center bg-emerald-50 rounded p-1">
-                                <span className="text-[9px] font-bold text-emerald-600">Optimal</span>
-                                <span className="text-xs font-black text-emerald-700">{defaultRules.green} km</span>
-                            </div>
-                            <div className="flex flex-col items-center bg-amber-50 rounded p-1">
-                                <span className="text-[9px] font-bold text-amber-600">Max Limit</span>
-                                <span className="text-xs font-black text-amber-700">{defaultRules.yellow} km</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Specialized Rules List */}
-                    {activeSubRules.length > 0 && (
+                    {activeSubZones.length > 0 ? (
                         <div className="space-y-2">
-                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                                <ScrollText className="h-3 w-3" /> Specialized Categories available
-                            </div>
-                            <div className="grid grid-cols-1 gap-2">
-                                {activeSubRules.map((rule, idx) => (
-                                    <div key={idx} className="bg-slate-100 border border-slate-200 rounded p-2 flex justify-between items-center">
-                                        <span className="text-xs font-bold text-slate-600">{rule.name}</span>
-                                        <div className="flex gap-2 text-[10px] font-mono">
-                                            <span className="text-emerald-600 font-bold">{rule.green}km</span>
-                                            <span className="text-slate-300">/</span>
-                                            <span className="text-amber-600 font-bold">{rule.yellow}km</span>
+                            {activeSubZones.map((zone, idx) => (
+                                <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="secondary" className="text-[10px] bg-slate-100">{zone.name}</Badge>
+                                    </div>
+                                    <div className="flex gap-3 text-[10px] font-mono">
+                                        <div className="flex items-center gap-1 text-emerald-600 font-bold">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                            {zone.thresholds?.green || 2}km
+                                        </div>
+                                        <div className="flex items-center gap-1 text-amber-600 font-bold">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
+                                            {zone.thresholds?.yellow || 5}km
                                         </div>
                                     </div>
-                                ))}
-                            </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="p-4 text-center text-[10px] text-slate-400 bg-slate-100 rounded-lg">
+                            No zones configured.
                         </div>
                     )}
                 </div>
@@ -466,9 +439,7 @@ export default function DashboardPage() {
                             <Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes
                         </Label>
                         <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={addStore} 
+                            variant="ghost" size="sm" onClick={addStore} 
                             className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide"
                         >
                             <Plus className="h-3 w-3 mr-1.5" /> Add Node
@@ -498,8 +469,7 @@ export default function DashboardPage() {
                                                 />
                                             </div>
                                             <Button 
-                                                variant="ghost" 
-                                                size="icon" 
+                                                variant="ghost" size="icon" 
                                                 className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" 
                                                 onClick={() => removeStore(store.id)}
                                             >
@@ -515,25 +485,6 @@ export default function DashboardPage() {
                                             onChange={e => updateStoreCoordinates(store.id, e.target.value)}
                                             placeholder="LAT, LNG" 
                                         />
-                                    </div>
-
-                                    <div className="pt-2 border-t border-slate-50 mt-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">Service Rule:</span>
-                                            <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
-                                                <SelectTrigger className="h-6 w-full text-[10px] border-slate-200 bg-slate-50">
-                                                    <SelectValue placeholder="Default" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="default" className="text-xs font-bold">Standard (Default)</SelectItem>
-                                                    {activeSubRules.map((r: any, i: number) => (
-                                                        <SelectItem key={i} value={r.name} className="text-xs">
-                                                            {r.name} <span className="text-slate-400 ml-1">({r.green}/{r.yellow}km)</span>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -587,10 +538,14 @@ export default function DashboardPage() {
                     
                     <div className="flex-1 relative bg-slate-50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
-                             {selectedCity.polygons ? (
+                             {selectedCity.subZones.length > 0 ? (
                                 <MapView 
                                     key={selectedCity.id} 
-                                    selectedCity={selectedCity} 
+                                    // 🟢 PASS SUBZONES (Use default view prop, logic handles internal flattening)
+                                    selectedCity={{
+                                        ...selectedCity,
+                                        polygons: analysisData?.displayPolygons || { type: 'FeatureCollection', features: [] }
+                                    }}
                                     stores={stores} 
                                     analysisData={analysisData} 
                                     isLoading={analyzing} 
@@ -647,7 +602,7 @@ export default function DashboardPage() {
                                                                 row.status === 'warning' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' : 
                                                                 'bg-rose-100 text-rose-700 hover:bg-rose-100'
                                                               } text-[9px] font-black border-none shadow-none uppercase tracking-wider px-2`}>
-                                                                        {row.status}
+                                                                    {row.status}
                                                               </Badge>
                                                             </TableCell>
                                                         </TableRow>
