@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, UploadCloud, Play, ShoppingBasket, Clock, Info, FileSpreadsheet, AlertTriangle, Eye, Layers, Scale } from 'lucide-react';
+import { Loader2, UploadCloud, Play, ShoppingBasket, Clock, Info, FileSpreadsheet, AlertTriangle, Eye, EyeOff, Layers, Scale, Trash2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Badge } from '@/components/ui/badge';
 import L from 'leaflet';
@@ -47,13 +47,15 @@ const getBranchColor = (index: number) => STORE_COLORS[index % STORE_COLORS.leng
 const getGroupColor = (index: number) => ZONE_GROUP_COLORS[index % ZONE_GROUP_COLORS.length];
 
 // --- ICONS ---
-const createStoreIcon = (color: string, weight: number) => {
-    // Icon size scales slightly with weight (Visual feedback)
+const createStoreIcon = (color: string, weight: number, isActive: boolean) => {
+    // 🟢 VISUAL UPDATE: Gray out inactive stores
+    const displayColor = isActive ? color : '#94a3b8'; 
+    const opacity = isActive ? 1 : 0.6;
     const size = weight > 1.5 ? 40 : weight < 0.8 ? 24 : 32; 
     
     return L.divIcon({
         className: 'custom-store-icon',
-        html: `<div style="background-color: ${color}; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+        html: `<div style="background-color: ${displayColor}; opacity: ${opacity}; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
                  <svg xmlns="http://www.w3.org/2000/svg" width="${size/2}" height="${size/2}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8c.9 0 1.8-.7 2-1.6l1.7-7.4"/><path d="m9 11 1 9"/></svg>
                </div>`,
         iconSize: [size, size],
@@ -64,14 +66,10 @@ const createStoreIcon = (color: string, weight: number) => {
 
 // --- HELPERS ---
 const parsePercentage = (value: any) => {
-    if (!value) return 1; // Default to 1 (100% or standard weight)
+    if (!value) return 1; 
     const str = String(value).replace('%', '').trim();
     const num = parseFloat(str);
     if (isNaN(num)) return 1;
-    // If user types "50", assume 0.5 (unless it's > 100, then assume scale)
-    // Actually, simpler logic: "Weight" usually relative. 
-    // "50%" -> 0.5. "50" -> 50.
-    // For normalization, let's treat "50%" as 0.5
     if (String(value).includes('%')) return num / 100;
     return num; 
 };
@@ -113,13 +111,13 @@ const REQUIRED_FIELDS = {
         { key: 'lng', label: 'Longitude', required: true },
         { key: 'id', label: 'Store ID', required: false },
         { key: 'name', label: 'Store Name', required: false },
-        { key: 'weight', label: 'Capacity / Weight %', required: false }, // 🟢 NEW
+        { key: 'weight', label: 'Capacity / Weight %', required: false },
     ],
     polygons: [
         { key: 'wkt', label: 'WKT Geometry', required: true },
         { key: 'id', label: 'Polygon ID', required: false },
         { key: 'name', label: 'Polygon Name', required: false },
-        { key: 'demand', label: 'Order Volume / Demand %', required: false }, // 🟢 NEW
+        { key: 'demand', label: 'Order Volume / Demand %', required: false },
     ]
 };
 
@@ -186,9 +184,12 @@ export default function DarkStoreAnalyzerPage() {
                   if (!obj.id) obj.id = `${wizardType}_${i}_${Date.now()}`;
                   if (!obj.name) obj.name = obj.id;
                   
-                  // 🟢 PARSE WEIGHTS
-                  if (wizardType === 'stores') obj.weight = parsePercentage(obj.weight); // Capacity
-                  if (wizardType === 'polygons') obj.demand = parsePercentage(obj.demand); // Traffic Load
+                  // PARSE WEIGHTS
+                  if (wizardType === 'stores') {
+                      obj.weight = parsePercentage(obj.weight); 
+                      obj.active = true; // 🟢 Default to active
+                  }
+                  if (wizardType === 'polygons') obj.demand = parsePercentage(obj.demand); 
 
                   return obj;
               }).filter((d: any) => wizardType === 'stores' ? (!isNaN(d.lat)) : (!!d.wkt));
@@ -226,30 +227,49 @@ export default function DarkStoreAnalyzerPage() {
       });
   };
 
+  // 🟢 TOGGLE STORE ACTIVE STATE
+  const toggleStoreActive = (storeId: string) => {
+      setStores(prev => prev.map(s => s.id === storeId ? { ...s, active: !s.active } : s));
+      // Optionally reset analysis if you want to force re-run
+      // setAnalysisDone(false); 
+  };
+
+  // 🟢 DELETE STORE
+  const deleteStore = (storeId: string) => {
+      setStores(prev => prev.filter(s => s.id !== storeId));
+  };
+
   // --- 2. WEIGHTED ANALYSIS ENGINE ---
   const runAnalysis = async () => {
-      if (!stores.length || !polygons.length) return;
+      // 🟢 Filter out inactive stores before analysis
+      const activeStores = stores.filter(s => s.active !== false);
+
+      if (!activeStores.length || !polygons.length) {
+          toast({ variant: "destructive", title: "Action Required", description: "Enable at least one store to analyze." });
+          return;
+      }
+
       setProcessing(true); setProgress(0); setResults({}); setAnalysisDone(false);
       
       const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
       const tempResults: Record<string, any> = {};
       const chunkSize = 20;
 
-      // Radius circles based on threshold
-      const circles = stores.map(s => turf.circle([s.lng, s.lat], distThreshold, { units: 'kilometers', properties: { color: s.color } }));
+      // Radius circles based on threshold (Only for active stores)
+      const circles = activeStores.map(s => turf.circle([s.lng, s.lat], distThreshold, { units: 'kilometers', properties: { color: s.color } }));
       setRadiusCircles(circles);
 
       for (let i = 0; i < polygons.length; i += chunkSize) {
           const chunk = polygons.slice(i, i + chunkSize);
           await new Promise(r => setTimeout(r, 0)); 
 
-          const storeCoords = stores.map(s => `${s.lng},${s.lat}`).join(';');
+          const storeCoords = activeStores.map(s => `${s.lng},${s.lat}`).join(';');
           const polyCoords = chunk.map((p: any) => {
               const c = turf.centroid(p.feature);
               return `${c.geometry.coordinates[0]},${c.geometry.coordinates[1]}`;
           }).join(';');
 
-          const url = `${osrmUrl}/table/v1/driving/${storeCoords};${polyCoords}?sources=${stores.map((_,idx)=>idx).join(';')}&destinations=${chunk.map((_,idx)=>idx+stores.length).join(';')}&annotations=distance,duration`;
+          const url = `${osrmUrl}/table/v1/driving/${storeCoords};${polyCoords}?sources=${activeStores.map((_,idx)=>idx).join(';')}&destinations=${chunk.map((_,idx)=>idx+activeStores.length).join(';')}&annotations=distance,duration`;
           
           try {
               const res = await fetch(url, { headers: { 'Authorization': `Bearer ${HF_TOKEN}` } });
@@ -260,7 +280,7 @@ export default function DarkStoreAnalyzerPage() {
                       let bestStore: any = null;
                       let bestScore = -Infinity; 
 
-                      stores.forEach((store, sIdx) => {
+                      activeStores.forEach((store, sIdx) => {
                           const distM = data.distances[sIdx][pIdx]; 
                           const durS = data.durations[sIdx][pIdx]; 
                           
@@ -274,26 +294,21 @@ export default function DarkStoreAnalyzerPage() {
                           if (useTime && durMin > timeThreshold * 1.5) return;
 
                           // 2. WEIGHTED SCORING (Gravity Model)
-                          // Effective Distance = Actual Distance / Store Weight
-                          // A store with weight 2.0 pulls zones as if it's half as far away.
                           const effectiveDist = distKm / (store.weight || 1);
 
                           const distPass = distKm <= distThreshold;
                           const timePass = !useTime || (durMin <= timeThreshold);
 
                           if (distPass && timePass) {
-                              // Score: Higher is better. 
-                              // Use inverse of effective distance so closer (and heavier) stores win.
-                              // Add 100 base points for passing thresholds to ensure they beat any "borderline" logic.
                               let score = 100 - effectiveDist; 
                               
                               if (score > bestScore) {
                                   bestScore = score;
                                   bestStore = { 
                                       store, 
-                                      dist: distKm, // Keep visual distance REAL
+                                      dist: distKm, 
                                       time: durMin,
-                                      weightedDist: effectiveDist, // For debugging
+                                      weightedDist: effectiveDist, 
                                       status: 'covered'
                                   };
                               }
@@ -335,18 +350,20 @@ export default function DarkStoreAnalyzerPage() {
   const storeStats = useMemo(() => {
       const stats: Record<string, { count: number, demand: number, name: string, color: string, cap: number }> = {};
       
-      // Init
+      // Init active stores
       stores.forEach(s => {
-          stats[s.id] = { count: 0, demand: 0, name: s.name, color: s.color, cap: s.weight || 1 };
+          if (s.active !== false) {
+            stats[s.id] = { count: 0, demand: 0, name: s.name, color: s.color, cap: s.weight || 1 };
+          }
       });
 
       // Aggregate
       Object.keys(results).forEach(polyId => {
           const res = results[polyId];
           const poly = polygons.find(p => p.id === polyId);
-          if (res.status === 'covered' && res.store && poly) {
+          if (res.status === 'covered' && res.store && poly && stats[res.store.id]) {
               stats[res.store.id].count += 1;
-              stats[res.store.id].demand += (poly.demand || 1); // Add Order Volume
+              stats[res.store.id].demand += (poly.demand || 1); 
           }
       });
 
@@ -382,7 +399,7 @@ export default function DarkStoreAnalyzerPage() {
                             <SelectTrigger className="w-40 h-9 font-bold"><SelectValue placeholder="All Stores" /></SelectTrigger>
                             <SelectContent className="z-[9999]">
                                 <SelectItem value="all">🌍 All Stores</SelectItem>
-                                {stores.map(s => (
+                                {stores.filter(s => s.active !== false).map(s => (
                                     <SelectItem key={s.id} value={s.id}><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{backgroundColor: s.color}}></span>{s.name}</span></SelectItem>
                                 ))}
                             </SelectContent>
@@ -439,16 +456,47 @@ export default function DarkStoreAnalyzerPage() {
         <div className="grid grid-cols-12 gap-6 flex-1 min-h-0">
             {/* LEFT SIDEBAR */}
             <div className="col-span-3 space-y-4 overflow-y-auto pr-1">
+                {/* STORE MANAGEMENT CARD */}
                 <Card className="border-dashed border-2 bg-slate-50/50">
-                    <CardHeader className="py-3"><CardTitle className="text-sm">1. Upload Stores</CardTitle></CardHeader>
+                    <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
+                        <CardTitle className="text-sm">1. Manage Stores</CardTitle>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => document.getElementById('store-upload')?.click()}>
+                            <UploadCloud className="h-4 w-4 text-purple-600"/>
+                        </Button>
+                        <input id="store-upload" type="file" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'stores')} />
+                    </CardHeader>
                     <CardContent>
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-500">{stores.length} Loaded</span>
-                            <Button variant="outline" size="sm" className="h-7 text-xs relative overflow-hidden">
-                                <UploadCloud className="h-3 w-3 mr-1"/> Upload CSV
-                                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'stores')} />
-                            </Button>
-                        </div>
+                        {stores.length === 0 ? (
+                            <div className="text-center py-4 text-xs text-slate-400 italic">No stores uploaded yet.</div>
+                        ) : (
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                                {stores.map(store => (
+                                    <div key={store.id} className={`flex items-center justify-between p-2 rounded-md bg-white border ${store.active === false ? 'opacity-50 border-slate-100' : 'border-slate-200 shadow-sm'}`}>
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: store.color }}></div>
+                                            <div className="flex flex-col truncate">
+                                                <span className={`text-xs font-bold truncate ${store.active === false ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{store.name}</span>
+                                                <span className="text-[9px] text-slate-400">Cap: {store.weight || 1}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <Button 
+                                                variant="ghost" 
+                                                size="sm" 
+                                                className={`h-6 w-6 p-0 hover:bg-slate-100 ${store.active === false ? 'text-slate-400' : 'text-purple-600'}`}
+                                                onClick={() => toggleStoreActive(store.id)}
+                                                title={store.active === false ? "Enable Store" : "Disable (Simulate Offline)"}
+                                            >
+                                                {store.active === false ? <EyeOff className="h-3 w-3"/> : <Eye className="h-3 w-3"/>}
+                                            </Button>
+                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-red-50 text-slate-300 hover:text-red-500" onClick={() => deleteStore(store.id)}>
+                                                <Trash2 className="h-3 w-3"/>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -465,7 +513,7 @@ export default function DarkStoreAnalyzerPage() {
                     </CardContent>
                 </Card>
 
-                {/* 🟢 STORE LOAD SUMMARY */}
+                {/* STORE LOAD SUMMARY */}
                 {analysisDone && (
                     <Card className="bg-white shadow-md border-t-4 border-t-blue-500">
                         <CardHeader className="py-3 bg-blue-50/50 border-b border-blue-100">
@@ -572,9 +620,16 @@ export default function DarkStoreAnalyzerPage() {
                         {stores.map((s, i) => {
                             if (filterStore !== 'all' && s.id !== filterStore) return null;
                             return (
-                                <Marker key={`store-${i}`} position={[s.lat, s.lng]} icon={createStoreIcon(s.color, s.weight || 1)}>
+                                <Marker 
+                                    key={`store-${i}`} 
+                                    position={[s.lat, s.lng]} 
+                                    // 🟢 PASS ACTIVE STATUS TO ICON CREATOR
+                                    icon={createStoreIcon(s.color, s.weight || 1, s.active !== false)}
+                                >
                                     <Popup pane="popupPane">
-                                        <strong>{s.name}</strong><br/>
+                                        <strong>{s.name}</strong>
+                                        {s.active === false && <span className="ml-2 text-red-500 font-bold text-xs">(OFFLINE)</span>}
+                                        <br/>
                                         <span className="text-xs text-slate-500">Weight: {s.weight || 1}</span>
                                     </Popup>
                                 </Marker>
