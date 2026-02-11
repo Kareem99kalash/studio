@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { logActivity } from '@/lib/logger'; 
-import * as turf from '@turf/turf';
+import * as turf from '@turf/turf'; // 🟢 Added Turf Import
 
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
@@ -219,14 +219,14 @@ export default function DashboardPage() {
         const finalAssignments: Record<string, any> = {};
         const allPolygons: any[] = [];
         
-        // 1. Flatten all polygons
+        // 🟢 1. FLATTEN POLYGONS & FIX MISSING CENTROIDS
         selectedCity.subZones.forEach((zone: any) => {
             if (zone.polygons && zone.polygons.features) {
                 zone.polygons.features.forEach((f: any) => {
                     f.properties.zoneRules = zone.thresholds || { green: 2, yellow: 5 };
                     f.properties.zoneName = zone.name;
                     
-                    // ⚡ FIX: Calculate missing centroid
+                    // ⚡ CRITICAL FIX: Calculate Centroid if missing from Upload
                     if (!f.properties.centroid) {
                         try {
                             const centroid = turf.centroid(f);
@@ -235,6 +235,7 @@ export default function DashboardPage() {
                                 lng: centroid.geometry.coordinates[0]
                             };
                         } catch (err) {
+                            // Fallback if turf fails
                             try {
                                 const coords = f.geometry.coordinates[0];
                                 let sumLat = 0, sumLng = 0;
@@ -262,7 +263,6 @@ export default function DashboardPage() {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             const MAX_SCAN_RADIUS_KM = 30; 
 
-            // Determine if Store has a category override
             let storeRule = null;
             if (store.category && store.category !== 'default') {
                 storeRule = availableRules.find(r => r.name === store.category);
@@ -276,10 +276,7 @@ export default function DashboardPage() {
                 
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
-                    
-                    // 🟢 RULE PRIORITY: Store Category > Zone Default
                     const activeRule = storeRule || f.properties.zoneRules;
-                    
                     zoneMeta.push({ ...kp, rules: activeRule }); 
                     flatPoints.push(...kp.points); 
                 } else { 
@@ -365,7 +362,6 @@ export default function DashboardPage() {
       document.body.removeChild(link);
   };
 
-  // 🟢 HELPER: Show map even before analysis
   const getDisplayPolygons = () => {
       if (analysisData?.displayPolygons) return analysisData.displayPolygons;
       if (selectedCity?.subZones) {
@@ -389,6 +385,7 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden font-sans">
+      
       {/* HEADER */}
       <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
         <div className="flex items-center gap-3">
@@ -417,6 +414,7 @@ export default function DashboardPage() {
 
       {/* MAIN CONTAINER */}
       <div className="flex-1 flex overflow-hidden">
+        
         {/* SIDEBAR CONFIGURATION */}
         <div className="w-[380px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20">
             <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm">
@@ -426,6 +424,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-8 scrollbar-hide">
+                
                 {/* 1. Region Selector */}
                 <div className="space-y-3">
                     <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
@@ -485,7 +484,7 @@ export default function DashboardPage() {
                             <Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes
                         </Label>
                         <Button variant="ghost" size="sm" onClick={addStore} className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide">
-                            <Plus className="h-3 w-3 mr-1.5" /> Add
+                            <Plus className="h-3 w-3 mr-1.5" /> Add Node
                         </Button>
                     </div>
                     
@@ -559,6 +558,10 @@ export default function DashboardPage() {
                                     <TableIcon className="h-3 w-3 mr-2" /> Data Grid
                                 </TabsTrigger>
                             </TabsList>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{selectedCity.name} Dataset</span>
                         </div>
                     </div>
                     

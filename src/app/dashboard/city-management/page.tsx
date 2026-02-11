@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert, Layers, AlertCircle } from 'lucide-react';
+import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert, Layers, ArrowRightLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { HelpGuide } from '@/components/dashboard/help-guide'; 
@@ -46,17 +46,18 @@ export default function CityManagementPage() {
   const [csvData, setCsvData] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // 🟢 NEW: Sub-Zone Management State
+  // 🟢 NEW: Sub-Zone Dual Thresholds
   const [detectedZones, setDetectedZones] = useState<string[]>(['Default']);
-  const [zoneThresholds, setZoneThresholds] = useState<Record<string, {green: number, yellow: number}>>({
-    'Default': { green: 2, yellow: 5 } // Fallback defaults
+  // Structure: { ZoneName: { internal: {green, yellow}, external: {green, yellow} } }
+  const [zoneThresholds, setZoneThresholds] = useState<Record<string, { internal: {green: number, yellow: number}, external: {green: number, yellow: number} }>>({
+    'Default': { internal: { green: 2, yellow: 5 }, external: { green: 2, yellow: 5 } }
   });
   
   // Edit Mode State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editGroupId, setEditGroupId] = useState('');
-  const [editZoneThresholds, setEditZoneThresholds] = useState<Record<string, {green: number, yellow: number}>>({});
+  const [editZoneThresholds, setEditZoneThresholds] = useState<Record<string, any>>({});
 
   useEffect(() => { 
     const stored = localStorage.getItem('geo_user');
@@ -84,7 +85,6 @@ export default function CityManagementPage() {
 
   const canManage = user?.permissions?.manage_cities || user?.role === 'admin';
 
-  // 🟢 UPDATED: CSV Parser with Zone Detection
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -96,22 +96,16 @@ export default function CityManagementPage() {
         const parsedRows = [];
         const foundZones = new Set<string>();
 
-        // Header check to find "Zone_Group" column index if it exists
         const header = lines[0].split(',').map(c => c.trim().replace(/^"|"$/g, '').toLowerCase());
         const zoneColIdx = header.findIndex(h => h.includes('zone_group') || h.includes('sub_zone') || h.includes('region'));
 
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
-            
-            // Simple split (note: production CSVs might need stronger regex for quoted commas)
             const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, ''));
-            
-            // Find WKT
             const wktIndex = cols.findIndex(c => c.toUpperCase().startsWith('POLYGON'));
             if (wktIndex === -1) continue;
 
-            // Extract Zone Group Name (or default)
             let zoneGroup = 'Default';
             if (zoneColIdx !== -1 && cols[zoneColIdx]) {
                 zoneGroup = cols[zoneColIdx];
@@ -122,7 +116,7 @@ export default function CityManagementPage() {
                 id: cols[1] || `ID_${i}`, 
                 name: cols[2] || `Poly_${i}`, 
                 wkt: cols[wktIndex],
-                zoneGroup: zoneGroup // 🟢 Tag row with group
+                zoneGroup: zoneGroup
             });
         }
 
@@ -134,10 +128,12 @@ export default function CityManagementPage() {
             // Initialize thresholds for found zones
             const initialThresholds: any = {};
             zonesArray.forEach(z => {
-                initialThresholds[z] = { green: 2, yellow: 5 }; // Default init
+                initialThresholds[z] = { 
+                    internal: { green: 2, yellow: 5 }, 
+                    external: { green: 1, yellow: 3 } // Tighter by default for cross-zone
+                };
             });
             setZoneThresholds(initialThresholds);
-            
             toast({ title: "CSV Parsed", description: `Found ${parsedRows.length} polygons across ${zonesArray.length} sub-zones.` });
         }
       } catch (err) { toast({ variant: "destructive", title: "Error", description: "Failed to read CSV." }); }
@@ -151,27 +147,27 @@ export default function CityManagementPage() {
     setIsSaving(true);
     
     try {
-      // 🟢 Group Features by Sub-Zone
       const subZonesData: any[] = [];
-
       detectedZones.forEach(zoneName => {
-          // Filter polygons for this zone
           const zonePolys = csvData.filter(p => p.zoneGroup === zoneName);
-          
           const features = zonePolys.map(item => {
             const coordinates = parseWKT(item.wkt);
             if (!coordinates) return null;
+            // Approximate centroid for quick lookup
+            let sumLat = 0, sumLng = 0;
+            coordinates[0].forEach((p:any) => { sumLng += p[0]; sumLat += p[1]; });
+            const centroid = { lat: sumLat / coordinates[0].length, lng: sumLng / coordinates[0].length };
+            
             return {
               type: "Feature",
-              properties: { id: item.id, name: item.name, zoneGroup: zoneName },
+              properties: { id: item.id, name: item.name, zoneGroup: zoneName, centroid },
               geometry: { type: "Polygon", coordinates: coordinates }
             };
           }).filter(f => f !== null);
 
-          // Add to subZones array with SPECIFIC thresholds
           subZonesData.push({
               name: zoneName,
-              thresholds: zoneThresholds[zoneName], // 🟢 Critical: Save specific thresholds
+              thresholds: zoneThresholds[zoneName], // 🟢 Saves Internal AND External
               polygons: JSON.stringify({ type: "FeatureCollection", features })
           });
       });
@@ -179,17 +175,14 @@ export default function CityManagementPage() {
       await addDoc(collection(db, 'cities'), {
         name: cityName.trim(),
         groupId: selectedGroupId || null,
-        isMultiZone: detectedZones.length > 1, // Flag for easier querying
-        subZones: subZonesData, // 🟢 Save Array structure
+        isMultiZone: detectedZones.length > 1,
+        subZones: subZonesData, 
         createdAt: new Date().toISOString()
       });
 
-      toast({ title: "Success", description: `City created with ${subZonesData.length} sub-zones.` });
+      toast({ title: "Success", description: `City created with dual-threshold logic.` });
       setStep(1); setCityName(''); setCsvData([]); fetchData();
-    } catch (e: any) { 
-        console.error(e);
-        toast({ variant: "destructive", title: "Save Failed", description: e.message }); 
-    } 
+    } catch (e: any) { toast({ variant: "destructive", title: "Save Failed", description: e.message }); } 
     finally { setIsSaving(false); }
   };
 
@@ -200,11 +193,9 @@ export default function CityManagementPage() {
     fetchData();
   };
 
-  // 🟢 UPDATED: Save Changes (Handles Sub-Zones)
   const saveCityChanges = async (id: string) => {
       if (!canManage) return;
       try {
-          // We need to update the existing subZones array with new thresholds
           const cityRef = cities.find(c => c.id === id);
           if (!cityRef) return;
 
@@ -218,7 +209,6 @@ export default function CityManagementPage() {
               groupId: editGroupId || null,
               subZones: updatedSubZones
           });
-          
           setEditingId(null);
           fetchData();
           toast({ title: "Updated", description: "City thresholds saved." });
@@ -231,22 +221,21 @@ export default function CityManagementPage() {
       setEditName(city.name);
       setEditGroupId(city.groupId || '');
       
-      // Load current thresholds into edit state
       const currentThresholds: any = {};
       if (city.subZones) {
           city.subZones.forEach((z: any) => {
-              currentThresholds[z.name] = z.thresholds;
+              // Ensure structure exists even for old data
+              currentThresholds[z.name] = z.thresholds.internal ? z.thresholds : {
+                  internal: z.thresholds,
+                  external: z.thresholds 
+              };
           });
-      } else {
-          // Backward compatibility for old single-zone cities
-          currentThresholds['Default'] = city.thresholds || { green: 2, yellow: 5 };
       }
       setEditZoneThresholds(currentThresholds);
   };
 
   const getGroupName = (id: string) => groups.find(g => g.id === id)?.name || "Unassigned";
 
-  // --- RESTRICTED UI ---
   if (!loading && (!user?.permissions?.view_cities && user?.role !== 'admin' && user?.role !== 'manager')) {
     return <div className="p-10 text-center">Access Restricted</div>;
   }
@@ -259,13 +248,10 @@ export default function CityManagementPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* ADD NEW CITY CARD */}
         {canManage && (
           <Card className="md:col-span-1 border-t-4 border-t-purple-600 shadow-md">
             <CardHeader><CardTitle>Add New City</CardTitle><CardDescription>Configure zones and thresholds.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
-              
-              {/* STEP 1: BASIC INFO */}
               <div className={`p-3 rounded-lg border ${step === 1 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>1</Badge> Identity</div>
                   {step === 1 && (
@@ -280,7 +266,6 @@ export default function CityManagementPage() {
                   )}
               </div>
 
-              {/* STEP 2: UPLOAD & DETECT */}
               <div className={`p-3 rounded-lg border ${step === 2 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
                   <div className="flex items-center justify-between font-bold text-sm mb-2">
                       <div className="flex items-center gap-2"><Badge>2</Badge> Upload Polygons</div>
@@ -288,37 +273,51 @@ export default function CityManagementPage() {
                   </div>
                   {step === 2 && (
                     <>
-                        <div className="text-xs text-slate-500 mb-2">
-                            To create sub-zones (e.g. Left/Right Coast), include a column named <strong>Zone_Group</strong> in your CSV.
-                        </div>
+                        <div className="text-xs text-slate-500 mb-2">To create sub-zones, include <strong>Zone_Group</strong> column.</div>
                         <Input type="file" accept=".csv" onChange={handleFileLoad} className="mb-2 bg-white" />
                         <Button size="sm" className="w-full" disabled={csvData.length === 0} onClick={() => setStep(3)}>Next</Button>
                     </>
                   )}
               </div>
 
-              {/* STEP 3: CONFIGURE THRESHOLDS */}
+              {/* STEP 3: DUAL THRESHOLDS */}
               <div className={`p-3 rounded-lg border ${step === 3 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>3</Badge> Thresholds</div>
                   {step === 3 && (
                     <>
-                        <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
+                        <div className="space-y-4 mb-4 max-h-[400px] overflow-y-auto pr-1">
                             {detectedZones.map(zone => (
-                                <div key={zone} className="bg-white p-2 rounded border shadow-sm">
-                                    <div className="text-xs font-bold uppercase text-slate-500 mb-1">{zone} Thresholds (km)</div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[10px] text-green-600 font-bold">Green (Good)</label>
-                                            <Input type="number" className="h-7 text-xs" 
-                                                value={zoneThresholds[zone]?.green} 
-                                                onChange={e => setZoneThresholds(prev => ({...prev, [zone]: {...prev[zone], green: Number(e.target.value)}}))} 
+                                <div key={zone} className="bg-white p-3 rounded border shadow-sm space-y-3">
+                                    <div className="text-xs font-black uppercase text-slate-600 flex items-center gap-2">
+                                        <Layers className="h-3 w-3" /> {zone} Rules
+                                    </div>
+                                    
+                                    {/* INTERNAL */}
+                                    <div className="bg-emerald-50 p-2 rounded">
+                                        <div className="text-[9px] font-bold text-emerald-700 mb-1 uppercase">Inside Zone (Local)</div>
+                                        <div className="flex gap-2">
+                                            <Input type="number" placeholder="Green" className="h-6 text-xs bg-white" 
+                                                value={zoneThresholds[zone]?.internal?.green} 
+                                                onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], internal: {...p[zone].internal, green: Number(e.target.value)}} }))} 
+                                            />
+                                            <Input type="number" placeholder="Yellow" className="h-6 text-xs bg-white" 
+                                                value={zoneThresholds[zone]?.internal?.yellow} 
+                                                onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], internal: {...p[zone].internal, yellow: Number(e.target.value)}} }))} 
                                             />
                                         </div>
-                                        <div>
-                                            <label className="text-[10px] text-yellow-600 font-bold">Yellow (Limit)</label>
-                                            <Input type="number" className="h-7 text-xs" 
-                                                value={zoneThresholds[zone]?.yellow} 
-                                                onChange={e => setZoneThresholds(prev => ({...prev, [zone]: {...prev[zone], yellow: Number(e.target.value)}}))} 
+                                    </div>
+
+                                    {/* EXTERNAL */}
+                                    <div className="bg-amber-50 p-2 rounded">
+                                        <div className="text-[9px] font-bold text-amber-700 mb-1 uppercase flex items-center gap-1"><ArrowRightLeft className="h-3 w-3"/> Cross-Zone (Remote)</div>
+                                        <div className="flex gap-2">
+                                            <Input type="number" placeholder="Green" className="h-6 text-xs bg-white" 
+                                                value={zoneThresholds[zone]?.external?.green} 
+                                                onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], external: {...p[zone].external, green: Number(e.target.value)}} }))} 
+                                            />
+                                            <Input type="number" placeholder="Yellow" className="h-6 text-xs bg-white" 
+                                                value={zoneThresholds[zone]?.external?.yellow} 
+                                                onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], external: {...p[zone].external, yellow: Number(e.target.value)}} }))} 
                                             />
                                         </div>
                                     </div>
@@ -347,9 +346,8 @@ export default function CityManagementPage() {
               <TableHeader>
                   <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Group</TableHead>
                       <TableHead>Sub-Zones</TableHead>
-                      <TableHead>Thresholds</TableHead>
+                      <TableHead>Rules (In / Out)</TableHead>
                       {canManage && <TableHead className="text-right">Action</TableHead>}
                   </TableRow>
               </TableHeader>
@@ -360,51 +358,54 @@ export default function CityManagementPage() {
                             {editingId === c.id ? <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8" /> : c.name}
                         </TableCell>
                         <TableCell>
-                            {editingId === c.id ? (
-                                <select className="w-full p-1 border rounded h-8 text-sm" value={editGroupId} onChange={(e) => setEditGroupId(e.target.value)}>
-                                    <option value="">-- Global --</option>
-                                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                                </select>
-                            ) : (
-                                c.groupId ? <Badge variant="secondary" className="text-[10px]"><Users className="h-3 w-3 mr-1" /> {getGroupName(c.groupId)}</Badge> : <span className="text-xs text-slate-400">Global</span>
-                            )}
-                        </TableCell>
-                        <TableCell>
-                            {/* Sub-Zone Badges */}
                             {c.subZones ? (
                                 <div className="flex flex-wrap gap-1">
                                     {c.subZones.map((z:any) => <Badge key={z.name} variant="outline" className="text-[10px] bg-slate-50">{z.name}</Badge>)}
                                 </div>
-                            ) : (
-                                <Badge variant="outline" className="text-[10px]">Default</Badge>
-                            )}
+                            ) : <Badge variant="outline">Default</Badge>}
                         </TableCell>
                         <TableCell>
                             {editingId === c.id ? (
-                                <div className="space-y-2">
-                                    {(c.subZones || [{name:'Default'}]).map((z: any) => (
-                                        <div key={z.name} className="flex items-center gap-2 text-xs">
-                                            <span className="w-16 truncate font-bold text-slate-500">{z.name}:</span>
-                                            <Input type="number" className="w-12 h-6 text-xs p-1" 
-                                                value={editZoneThresholds[z.name]?.green} 
-                                                onChange={e => setEditZoneThresholds(p => ({...p, [z.name]: {...p[z.name], green: Number(e.target.value)}}))} 
-                                            />
-                                            <Input type="number" className="w-12 h-6 text-xs p-1" 
-                                                value={editZoneThresholds[z.name]?.yellow} 
-                                                onChange={e => setEditZoneThresholds(p => ({...p, [z.name]: {...p[z.name], yellow: Number(e.target.value)}}))} 
-                                            />
+                                <div className="space-y-4 max-h-[300px] overflow-y-auto p-1">
+                                    {(c.subZones || []).map((z: any) => (
+                                        <div key={z.name} className="border p-2 rounded bg-slate-50">
+                                            <div className="text-xs font-bold mb-1">{z.name}</div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <span className="text-[9px] uppercase text-slate-400">Internal</span>
+                                                    <div className="flex gap-1">
+                                                        <Input type="number" className="h-6 text-xs p-1" value={editZoneThresholds[z.name]?.internal?.green} onChange={e => setEditZoneThresholds(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, green: Number(e.target.value)}} }))} />
+                                                        <Input type="number" className="h-6 text-xs p-1" value={editZoneThresholds[z.name]?.internal?.yellow} onChange={e => setEditZoneThresholds(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, yellow: Number(e.target.value)}} }))} />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[9px] uppercase text-slate-400">External</span>
+                                                    <div className="flex gap-1">
+                                                        <Input type="number" className="h-6 text-xs p-1" value={editZoneThresholds[z.name]?.external?.green} onChange={e => setEditZoneThresholds(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, green: Number(e.target.value)}} }))} />
+                                                        <Input type="number" className="h-6 text-xs p-1" value={editZoneThresholds[z.name]?.external?.yellow} onChange={e => setEditZoneThresholds(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, yellow: Number(e.target.value)}} }))} />
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
                                 <div className="space-y-1">
-                                    {(c.subZones || [{name:'Default', thresholds: c.thresholds}]).map((z:any) => (
-                                        <div key={z.name} className="flex gap-2 text-[10px]">
-                                            <span className="text-slate-400 w-16 truncate">{z.name}:</span>
-                                            <span className="text-green-600 font-bold">{z.thresholds?.green}km</span>
-                                            <span className="text-yellow-600 font-bold">{z.thresholds?.yellow}km</span>
-                                        </div>
-                                    ))}
+                                    {(c.subZones || []).map((z:any) => {
+                                        // Handle legacy structure
+                                        const internal = z.thresholds?.internal || z.thresholds;
+                                        const external = z.thresholds?.external || z.thresholds;
+                                        return (
+                                            <div key={z.name} className="flex flex-col text-[10px] border-l-2 border-slate-200 pl-2 mb-1">
+                                                <span className="font-bold text-slate-500">{z.name}</span>
+                                                <div className="flex gap-2">
+                                                    <span>In: <span className="text-green-600">{internal?.green}</span>/<span className="text-yellow-600">{internal?.yellow}</span></span>
+                                                    <span className="text-slate-300">|</span>
+                                                    <span>Out: <span className="text-green-600">{external?.green}</span>/<span className="text-yellow-600">{external?.yellow}</span></span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </TableCell>
