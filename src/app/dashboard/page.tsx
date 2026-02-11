@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Papa from 'papaparse';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,13 +10,13 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search, FileSpreadsheet, X } from 'lucide-react';
+import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Search } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { logActivity } from '@/lib/logger'; 
+import * as turf from '@turf/turf';
 
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
@@ -39,13 +38,6 @@ function getRoughDistKm(lat1: number, lng1: number, lat2: number, lng2: number) 
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-
-const REQUIRED_FIELDS = [
-    { key: 'lat', label: 'Latitude', required: true },
-    { key: 'lng', label: 'Longitude', required: true },
-    { key: 'name', label: 'Store Name', required: false },
-    { key: 'category', label: 'Category (Retail/Wholesale)', required: false },
-];
 
 export default function DashboardPage() {
   const { toast } = useToast();
@@ -70,7 +62,7 @@ export default function DashboardPage() {
           const data = d.data();
           let subZones = data.subZones || [];
           
-          // Legacy Support: Handle old single-polygon cities
+          // Legacy Support: Convert old single-polygon cities to new format
           if (!subZones.length && data.polygons) {
               let polys = data.polygons;
               if (typeof polys === 'string') {
@@ -139,7 +131,6 @@ export default function DashboardPage() {
 
   const getZoneKeyPoints = (store: any, feature: any) => {
       const center = feature.properties.centroid;
-      // Safety check for geometry
       if (!feature.geometry || !feature.geometry.coordinates || !feature.geometry.coordinates[0]) {
           return { id: "error", name: "Invalid Poly", points: [] };
       }
@@ -232,16 +223,37 @@ export default function DashboardPage() {
         selectedCity.subZones.forEach((zone: any) => {
             if (zone.polygons && zone.polygons.features) {
                 zone.polygons.features.forEach((f: any) => {
-                    // Attach zone-specific rules
                     f.properties.zoneRules = zone.thresholds || { green: 2, yellow: 5 };
                     f.properties.zoneName = zone.name;
+                    
+                    // ⚡ FIX: Calculate missing centroid
+                    if (!f.properties.centroid) {
+                        try {
+                            const centroid = turf.centroid(f);
+                            f.properties.centroid = {
+                                lat: centroid.geometry.coordinates[1],
+                                lng: centroid.geometry.coordinates[0]
+                            };
+                        } catch (err) {
+                            try {
+                                const coords = f.geometry.coordinates[0];
+                                let sumLat = 0, sumLng = 0;
+                                coords.forEach((c: any) => { sumLng += c[0]; sumLat += c[1]; });
+                                f.properties.centroid = {
+                                    lat: sumLat / coords.length,
+                                    lng: sumLng / coords.length
+                                };
+                            } catch (e2) {}
+                        }
+                    }
+
                     if (f.properties.centroid) allPolygons.push(f);
                 });
             }
         });
 
         if (allPolygons.length === 0) {
-            toast({ variant: "destructive", title: "Data Error", description: "No valid polygons found in this city." });
+            toast({ variant: "destructive", title: "Data Error", description: "No valid polygons found. Check upload." });
             setAnalyzing(false);
             return;
         }
@@ -265,7 +277,7 @@ export default function DashboardPage() {
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
                     
-                    // 🟢 RULE PRIORITY: Store Category Override > Zone Default
+                    // 🟢 RULE PRIORITY: Store Category > Zone Default
                     const activeRule = storeRule || f.properties.zoneRules;
                     
                     zoneMeta.push({ ...kp, rules: activeRule }); 
@@ -282,7 +294,7 @@ export default function DashboardPage() {
             zoneMeta.forEach((z) => {
                 let v1 = 999, v2 = 999, voteV1 = 999, voteV2 = 999;
                 
-                if (!z.tooFar) {
+                if (!z.tooFar && z.points && z.points.length > 0) {
                     const dClose = flatDistances[pointIdx];
                     const dCenter = flatDistances[pointIdx + 1];
                     pointIdx += 2; 
@@ -356,7 +368,6 @@ export default function DashboardPage() {
   // 🟢 HELPER: Show map even before analysis
   const getDisplayPolygons = () => {
       if (analysisData?.displayPolygons) return analysisData.displayPolygons;
-      
       if (selectedCity?.subZones) {
           const allFeatures: any[] = [];
           selectedCity.subZones.forEach((z: any) => {
@@ -378,7 +389,6 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden font-sans">
-      
       {/* HEADER */}
       <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
         <div className="flex items-center gap-3">
@@ -407,7 +417,6 @@ export default function DashboardPage() {
 
       {/* MAIN CONTAINER */}
       <div className="flex-1 flex overflow-hidden">
-        
         {/* SIDEBAR CONFIGURATION */}
         <div className="w-[380px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20">
             <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm">
@@ -417,7 +426,6 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-8 scrollbar-hide">
-                
                 {/* 1. Region Selector */}
                 <div className="space-y-3">
                     <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
@@ -476,21 +484,12 @@ export default function DashboardPage() {
                         <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
                             <Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes
                         </Label>
-                        <Button 
-                            variant="ghost" size="sm" onClick={addStore} 
-                            className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide"
-                        >
-                            <Plus className="h-3 w-3 mr-1.5" /> Add Node
+                        <Button variant="ghost" size="sm" onClick={addStore} className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide">
+                            <Plus className="h-3 w-3 mr-1.5" /> Add
                         </Button>
                     </div>
                     
                     <div className="space-y-3 min-h-[100px]">
-                        {stores.length === 0 && (
-                            <div className="h-24 border-2 border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center gap-2 text-slate-400 bg-slate-50/50">
-                                <Search className="h-5 w-5 opacity-20" />
-                                <span className="text-[10px] font-black uppercase tracking-widest opacity-50">No Active Nodes</span>
-                            </div>
-                        )}
                         {stores.map((store, idx) => (
                             <div key={store.id} className="relative group bg-white rounded-lg border border-slate-200 p-3 shadow-sm hover:border-indigo-300 transition-all duration-200">
                                 <div className="space-y-2">
@@ -560,10 +559,6 @@ export default function DashboardPage() {
                                     <TableIcon className="h-3 w-3 mr-2" /> Data Grid
                                 </TabsTrigger>
                             </TabsList>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{selectedCity.name} Dataset</span>
                         </div>
                     </div>
                     
