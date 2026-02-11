@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore'; // 🟢 Added doc, onSnapshot
+import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore'; 
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { logActivity } from '@/lib/logger'; 
 import * as turf from '@turf/turf';
 
-// 🟢 NEW IMPORTS FOR MAINTENANCE SYSTEM
+// Maintenance Imports
 import { MaintenanceScreen } from '@/components/system/maintenance-screen';
 import { MaintenanceControl } from '@/components/system/maintenance-control';
 
@@ -85,36 +85,58 @@ export default function DashboardPage() {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [user, setUser] = useState<any>(null); // 🟢 Added User State
+  const [user, setUser] = useState<any>(null); 
   
-  // Rule State (Read-Only from City)
+  // Rule State
   const [availableRules, setAvailableRules] = useState<any[]>([]); 
 
-  // 🟢 MAINTENANCE STATE
+  // MAINTENANCE STATE
   const [isMaintenance, setIsMaintenance] = useState(false);
   const [maintenanceMsg, setMaintenanceMsg] = useState('');
   const [isCheckingStatus, setIsCheckingStatus] = useState(true);
 
-  // 🟢 1. Check User & Maintenance Status
+  // 🟢 1. Check User & Maintenance Status (With Error Handling)
   useEffect(() => {
      // Get User
      const stored = localStorage.getItem('geo_user');
      const parsedUser = stored ? JSON.parse(stored) : null;
      setUser(parsedUser);
 
-     // Listen to System Status
-     const unsub = onSnapshot(doc(db, 'system_metadata', 'maintenance'), (docSnap) => {
-         if (docSnap.exists()) {
-             const data = docSnap.data();
-             setIsMaintenance(data.isActive);
-             setMaintenanceMsg(data.message);
+     // Safety Timeout: If Firebase fails, let user in after 3 seconds
+     const safetyTimer = setTimeout(() => {
+         if (isCheckingStatus) {
+             console.warn("Maintenance check timed out - forcing load.");
+             setIsCheckingStatus(false);
          }
-         setIsCheckingStatus(false);
-     });
+     }, 3000);
 
-     return () => unsub();
+     // Listen to System Status
+     const unsub = onSnapshot(
+        doc(db, 'system_metadata', 'maintenance'), 
+        (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setIsMaintenance(data.isActive);
+                setMaintenanceMsg(data.message);
+            }
+            clearTimeout(safetyTimer);
+            setIsCheckingStatus(false);
+        },
+        (error) => {
+            console.error("Maintenance Check Ignored (Permissions/Network):", error);
+            // 🟢 FAIL OPEN: If check fails, assume system is online
+            clearTimeout(safetyTimer);
+            setIsCheckingStatus(false);
+        }
+     );
+
+     return () => {
+         unsub();
+         clearTimeout(safetyTimer);
+     };
   }, []);
 
+  // 🟢 2. Fetch Cities only after maintenance check is done
   useEffect(() => { 
       if (!isCheckingStatus) fetchCities(); 
   }, [isCheckingStatus]);
@@ -491,7 +513,7 @@ export default function DashboardPage() {
       
       {/* 🟢 Maintenance Banner for Admins */}
       {isMaintenance && isAdmin && (
-          <div className="bg-amber-100 text-amber-900 text-[10px] font-bold text-center py-1 border-b border-amber-300">
+          <div className="bg-amber-100 text-amber-900 text-[10px] font-bold text-center py-1 border-b border-amber-300 shrink-0">
               ⚠️ MAINTENANCE MODE ACTIVE - USER ACCESS RESTRICTED
           </div>
       )}
@@ -679,7 +701,6 @@ export default function DashboardPage() {
                     
                     <div className="flex-1 relative bg-slate-50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
-                             {/* 🟢 FIXED: Map logic to always show */}
                              {getDisplayPolygons().features.length > 0 ? (
                                 <MapView 
                                     key={selectedCity.id} 
