@@ -46,8 +46,6 @@ export default function DashboardPage() {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  
-  // 🟢 NEW: Active Sub-Zones State
   const [activeSubZones, setActiveSubZones] = useState<any[]>([]);
 
   useEffect(() => { fetchCities(); }, []);
@@ -57,11 +55,9 @@ export default function DashboardPage() {
       const snap = await getDocs(collection(db, 'cities'));
       const cityList = snap.docs.map(d => {
           const data = d.data();
-          
-          // 🟢 PARSE SUB-ZONES
           let subZones = data.subZones || [];
           
-          // Legacy Support: Convert old single-polygon cities to new format
+          // Legacy Support
           if (!subZones.length && data.polygons) {
               let polys = data.polygons;
               if (typeof polys === 'string') {
@@ -71,12 +67,11 @@ export default function DashboardPage() {
                   subZones = [{
                       name: 'Default',
                       thresholds: data.thresholds || { green: 2, yellow: 5 },
-                      polygons: polys // Already an object or string
+                      polygons: polys 
                   }];
               }
           }
 
-          // Parse strings back to objects
           subZones = subZones.map((z: any) => ({
               ...z,
               polygons: typeof z.polygons === 'string' ? JSON.parse(z.polygons) : z.polygons
@@ -115,10 +110,7 @@ export default function DashboardPage() {
   };
 
   const updateStoreName = (id: number, name: string) => { setStores(stores.map(s => s.id === id ? { ...s, name } : s)); };
-  
-  const updateStoreCategory = (id: number, category: string) => {
-      setStores(stores.map(s => s.id === id ? { ...s, category } : s));
-  };
+  const updateStoreCategory = (id: number, category: string) => { setStores(stores.map(s => s.id === id ? { ...s, category } : s)); };
 
   const updateStoreCoordinates = (id: number, input: string) => {
     let lat = ''; let lng = ''; const parts = input.split(',');
@@ -214,13 +206,10 @@ export default function DashboardPage() {
     try {
         const finalAssignments: Record<string, any> = {};
         
-        // 🟢 1. Flatten all polygons from all sub-zones into one list
-        // And attach the correct thresholds to each polygon
         const allPolygons: any[] = [];
         selectedCity.subZones.forEach((zone: any) => {
             if (zone.polygons && zone.polygons.features) {
                 zone.polygons.features.forEach((f: any) => {
-                    // Attach zone-specific rules to the feature
                     f.properties.zoneRules = zone.thresholds || { green: 2, yellow: 5 };
                     f.properties.zoneName = zone.name;
                     if (f.properties.centroid) allPolygons.push(f);
@@ -230,7 +219,7 @@ export default function DashboardPage() {
 
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
-            const MAX_SCAN_RADIUS_KM = 30; // Scan wide enough to catch cross-zone coverage
+            const MAX_SCAN_RADIUS_KM = 30; 
 
             const zoneMeta: any[] = [], flatPoints: any[] = [];
             
@@ -240,7 +229,6 @@ export default function DashboardPage() {
                 
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
-                    // Pass rules along
                     zoneMeta.push({ ...kp, rules: f.properties.zoneRules }); 
                     flatPoints.push(...kp.points); 
                 } else { 
@@ -266,7 +254,6 @@ export default function DashboardPage() {
                     }
                 }
                 
-                // 🟢 2. Use the ZONE-SPECIFIC Rules
                 const activeRules = z.rules || { green: 2, yellow: 5 };
 
                 const points = [voteV1, voteV2];
@@ -301,7 +288,6 @@ export default function DashboardPage() {
         });
         await Promise.all(storePromises);
         
-        // Flatten polygons again for visualizer
         const displayPolygons = {
             type: "FeatureCollection",
             features: allPolygons
@@ -323,6 +309,23 @@ export default function DashboardPage() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+  };
+
+  // 🟢 HELPER: Construct display polygons whether analyzed or not
+  const getDisplayPolygons = () => {
+      if (analysisData?.displayPolygons) return analysisData.displayPolygons;
+      
+      // Fallback: Flatten sub-zones so map isn't empty initially
+      if (selectedCity?.subZones) {
+          const allFeatures: any[] = [];
+          selectedCity.subZones.forEach((z: any) => {
+              if (z.polygons?.features) {
+                  allFeatures.push(...z.polygons.features);
+              }
+          });
+          return { type: 'FeatureCollection', features: allFeatures };
+      }
+      return { type: 'FeatureCollection', features: [] };
   };
 
   if (loading) return (
@@ -392,12 +395,17 @@ export default function DashboardPage() {
                                 {cities.map(c => <SelectItem key={c.id} value={c.id} className="font-medium text-xs">{c.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
+                        {selectedCity && (
+                            <div className="absolute top-1/2 -translate-y-1/2 right-9 pointer-events-none">
+                                <Badge variant="secondary" className="text-[9px] bg-slate-100 text-slate-500 font-mono">ID: {selectedCity.id.slice(0,4)}</Badge>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 <Separator className="bg-slate-200" />
 
-                {/* 2. Rules Visualization (UPDATED FOR SUB-ZONES) */}
+                {/* 2. Rules Visualization */}
                 <div className="space-y-4">
                     <Label className="text-xs font-bold text-slate-700 flex items-center gap-2">
                         <Activity className="h-3.5 w-3.5 text-indigo-500" /> Zone Rules (Thresholds)
@@ -439,7 +447,9 @@ export default function DashboardPage() {
                             <Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes
                         </Label>
                         <Button 
-                            variant="ghost" size="sm" onClick={addStore} 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={addStore} 
                             className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide"
                         >
                             <Plus className="h-3 w-3 mr-1.5" /> Add Node
@@ -469,7 +479,8 @@ export default function DashboardPage() {
                                                 />
                                             </div>
                                             <Button 
-                                                variant="ghost" size="icon" 
+                                                variant="ghost" 
+                                                size="icon" 
                                                 className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" 
                                                 onClick={() => removeStore(store.id)}
                                             >
@@ -538,13 +549,13 @@ export default function DashboardPage() {
                     
                     <div className="flex-1 relative bg-slate-50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
-                             {selectedCity.subZones.length > 0 ? (
+                             {/* 🟢 FIXED: Use Helper to show map even before analysis */}
+                             {selectedCity.subZones.length > 0 || selectedCity.polygons ? (
                                 <MapView 
                                     key={selectedCity.id} 
-                                    // 🟢 PASS SUBZONES (Use default view prop, logic handles internal flattening)
                                     selectedCity={{
                                         ...selectedCity,
-                                        polygons: analysisData?.displayPolygons || { type: 'FeatureCollection', features: [] }
+                                        polygons: getDisplayPolygons() 
                                     }}
                                     stores={stores} 
                                     analysisData={analysisData} 
