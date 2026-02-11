@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { logActivity } from '@/lib/logger'; 
-import * as turf from '@turf/turf'; // 🟢 Added Turf Import
+import * as turf from '@turf/turf';
 
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
@@ -38,6 +38,19 @@ function getRoughDistKm(lat1: number, lng1: number, lat2: number, lng2: number) 
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
+
+// 🟢 Helper: Identify which Sub-Zone the store is physically inside
+const getStoreSubZone = (storeLat: number, storeLng: number, allPolygons: any[]) => {
+    try {
+        const pt = turf.point([storeLng, storeLat]);
+        for (const poly of allPolygons) {
+            if (turf.booleanPointInPolygon(pt, poly)) {
+                return poly.properties.zoneGroup || poly.properties.zoneName; 
+            }
+        }
+    } catch (e) { console.error("Zone check error", e); }
+    return null; 
+};
 
 export default function DashboardPage() {
   const { toast } = useToast();
@@ -62,7 +75,7 @@ export default function DashboardPage() {
           const data = d.data();
           let subZones = data.subZones || [];
           
-          // Legacy Support: Convert old single-polygon cities to new format
+          // Legacy Support
           if (!subZones.length && data.polygons) {
               let polys = data.polygons;
               if (typeof polys === 'string') {
@@ -77,7 +90,6 @@ export default function DashboardPage() {
               }
           }
 
-          // Ensure polygons inside subZones are Objects, not Strings
           subZones = subZones.map((z: any) => ({
               ...z,
               polygons: typeof z.polygons === 'string' ? JSON.parse(z.polygons) : z.polygons
@@ -101,7 +113,6 @@ export default function DashboardPage() {
         setSelectedCity(city);
         setStores([]); 
         setAnalysisData(null); 
-        // Load Custom Rules defined in City Thresholds Page
         setAvailableRules(city.subThresholds || []);
     }
   };
@@ -149,7 +160,8 @@ export default function DashboardPage() {
       };
   };
 
-  const fetchMatrixBatch = async (store: any, allZonePoints: any[]) => {
+  // 🟢 UPDATED: Uses Custom Engine from City Config
+  const fetchMatrixBatch = async (store: any, allZonePoints: any[], engineUrl: string) => {
       const uncachedPoints = [];
       const cachedResults = new Array(allZonePoints.length).fill(null);
       const indexMap: number[] = []; 
@@ -169,16 +181,25 @@ export default function DashboardPage() {
 
       const chunkSize = 50; 
       const promises = [];
+      const activeUrl = engineUrl || "https://router.project-osrm.org";
       
       for (let i = 0; i < uncachedPoints.length; i += chunkSize) {
           const chunk = uncachedPoints.slice(i, i + chunkSize);
           const chunkIndices = indexMap.slice(i, i + chunkSize);
           
-          const coords = [`${store.lng},${store.lat}`, ...chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`)].join(';');
-          const url = `https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=distance`;
+          const storeStr = `${store.lng},${store.lat}`;
+          const destStr = chunk.map((p: any) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+          const coords = `${storeStr};${destStr}`;
+          const url = `${activeUrl}/table/v1/driving/${coords}?sources=0&annotations=distance`;
           
+          // Auth header only for private engines
+          const headers: any = {};
+          if (activeUrl.includes('hf.space')) {
+              headers['Authorization'] = `Bearer ${process.env.NEXT_PUBLIC_HF_TOKEN}`;
+          }
+
           promises.push(
-              fetch(url)
+              fetch(url, { headers })
                 .then(res => res.json())
                 .then(data => {
                     const distances = data.distances?.[0]?.slice(1);
@@ -219,14 +240,14 @@ export default function DashboardPage() {
         const finalAssignments: Record<string, any> = {};
         const allPolygons: any[] = [];
         
-        // 🟢 1. FLATTEN POLYGONS & FIX MISSING CENTROIDS
+        // 🟢 1. Flatten all polygons
         selectedCity.subZones.forEach((zone: any) => {
             if (zone.polygons && zone.polygons.features) {
                 zone.polygons.features.forEach((f: any) => {
                     f.properties.zoneRules = zone.thresholds || { green: 2, yellow: 5 };
                     f.properties.zoneName = zone.name;
                     
-                    // ⚡ CRITICAL FIX: Calculate Centroid if missing from Upload
+                    // ⚡ FIX: Calculate missing centroid
                     if (!f.properties.centroid) {
                         try {
                             const centroid = turf.centroid(f);
@@ -235,7 +256,6 @@ export default function DashboardPage() {
                                 lng: centroid.geometry.coordinates[0]
                             };
                         } catch (err) {
-                            // Fallback if turf fails
                             try {
                                 const coords = f.geometry.coordinates[0];
                                 let sumLat = 0, sumLng = 0;
@@ -247,7 +267,6 @@ export default function DashboardPage() {
                             } catch (e2) {}
                         }
                     }
-
                     if (f.properties.centroid) allPolygons.push(f);
                 });
             }
@@ -261,7 +280,10 @@ export default function DashboardPage() {
 
         const storePromises = validStores.map(async (store) => {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
-            const MAX_SCAN_RADIUS_KM = 30; 
+            const MAX_SCAN_RADIUS_KM = 50; 
+
+            // 🟢 2. Check Store Location (Internal vs External)
+            const storeHomeZone = getStoreSubZone(storeObj.lat, storeObj.lng, allPolygons);
 
             let storeRule = null;
             if (store.category && store.category !== 'default') {
@@ -276,7 +298,25 @@ export default function DashboardPage() {
                 
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
-                    const activeRule = storeRule || f.properties.zoneRules;
+                    
+                    // 🟢 3. DUAL THRESHOLD LOGIC
+                    const polyZone = f.properties.zoneGroup || f.properties.zoneName;
+                    const zoneConfig = f.properties.zoneRules; 
+
+                    let activeRule = { green: 2, yellow: 5 }; 
+
+                    if (storeRule) {
+                        activeRule = storeRule; // Category overrides geo-logic
+                    } else if (zoneConfig.internal && zoneConfig.external) {
+                        if (storeHomeZone === polyZone) {
+                            activeRule = zoneConfig.internal;
+                        } else {
+                            activeRule = zoneConfig.external;
+                        }
+                    } else {
+                        activeRule = zoneConfig; // Legacy fallback
+                    }
+                    
                     zoneMeta.push({ ...kp, rules: activeRule }); 
                     flatPoints.push(...kp.points); 
                 } else { 
@@ -284,8 +324,11 @@ export default function DashboardPage() {
                 }
             });
             
+            // 🟢 4. Pass Engine URL
             let flatDistances: number[] = [];
-            if (flatPoints.length > 0) flatDistances = await fetchMatrixBatch(storeObj, flatPoints);
+            if (flatPoints.length > 0) {
+                flatDistances = await fetchMatrixBatch(storeObj, flatPoints, selectedCity.routingEngine);
+            }
             
             let pointIdx = 0;
             zoneMeta.forEach((z) => {
@@ -385,7 +428,6 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden font-sans">
-      
       {/* HEADER */}
       <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
         <div className="flex items-center gap-3">
@@ -414,7 +456,6 @@ export default function DashboardPage() {
 
       {/* MAIN CONTAINER */}
       <div className="flex-1 flex overflow-hidden">
-        
         {/* SIDEBAR CONFIGURATION */}
         <div className="w-[380px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20">
             <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm">
