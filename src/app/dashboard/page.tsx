@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -50,6 +50,27 @@ const getStoreSubZone = (storeLat: number, storeLng: number, allPolygons: any[])
         }
     } catch (e) { console.error("Zone check error", e); }
     return null; 
+};
+
+// 🟢 Helper: Get distance to the NEAREST polygon of a specific zone
+const getMinDistToZone = (storeLat: number, storeLng: number, targetZoneName: string, allPolygons: any[]) => {
+    try {
+        const storePt = turf.point([storeLng, storeLat]);
+        let minDist = Infinity;
+        
+        // Filter polygons belonging to the target zone
+        const targetPolys = allPolygons.filter(p => (p.properties.zoneGroup || p.properties.zoneName) === targetZoneName);
+        
+        targetPolys.forEach(poly => {
+            // For speed, check vertices (accurate enough for this purpose)
+            const vertices = poly.geometry.coordinates[0];
+            vertices.forEach((v: any) => {
+                 const d = turf.distance(storePt, turf.point(v), { units: 'kilometers' });
+                 if (d < minDist) minDist = d;
+            });
+        });
+        return minDist;
+    } catch (e) { return Infinity; }
 };
 
 export default function DashboardPage() {
@@ -192,7 +213,6 @@ export default function DashboardPage() {
           const coords = `${storeStr};${destStr}`;
           const url = `${activeUrl}/table/v1/driving/${coords}?sources=0&annotations=distance`;
           
-          // Auth header only for private engines
           const headers: any = {};
           if (activeUrl.includes('hf.space')) {
               headers['Authorization'] = `Bearer ${process.env.NEXT_PUBLIC_HF_TOKEN}`;
@@ -282,7 +302,7 @@ export default function DashboardPage() {
             const storeObj = { lat: parseFloat(store.lat), lng: parseFloat(store.lng) };
             const MAX_SCAN_RADIUS_KM = 50; 
 
-            // 🟢 2. Check Store Location (Internal vs External)
+            // 🟢 2. Identify Store Location (Internal vs External)
             const storeHomeZone = getStoreSubZone(storeObj.lat, storeObj.lng, allPolygons);
 
             let storeRule = null;
@@ -299,22 +319,37 @@ export default function DashboardPage() {
                 if (roughDist < MAX_SCAN_RADIUS_KM) {
                     const kp = getZoneKeyPoints(storeObj, f); 
                     
-                    // 🟢 3. DUAL THRESHOLD LOGIC
+                    // 🟢 3. TRI-STATE LOGIC (Internal / External / Border)
                     const polyZone = f.properties.zoneGroup || f.properties.zoneName;
                     const zoneConfig = f.properties.zoneRules; 
 
                     let activeRule = { green: 2, yellow: 5 }; 
 
                     if (storeRule) {
-                        activeRule = storeRule; // Category overrides geo-logic
+                        // Category Override
+                        activeRule = storeRule;
                     } else if (zoneConfig.internal && zoneConfig.external) {
+                        // Dual Logic
                         if (storeHomeZone === polyZone) {
+                            // A: Same Zone
                             activeRule = zoneConfig.internal;
                         } else {
-                            activeRule = zoneConfig.external;
+                            // B: Cross Zone
+                            // Check Border Proximity (Distance from Store to Target Zone Border)
+                            const distToBorder = getMinDistToZone(storeObj.lat, storeObj.lng, polyZone, allPolygons);
+                            const proximityLimit = zoneConfig.borderProximity || 1.0;
+
+                            if (distToBorder <= proximityLimit && zoneConfig.border) {
+                                // B1: Near Border (Stricter)
+                                activeRule = zoneConfig.border;
+                            } else {
+                                // B2: Far from Border (Standard External)
+                                activeRule = zoneConfig.external;
+                            }
                         }
                     } else {
-                        activeRule = zoneConfig; // Legacy fallback
+                        // Legacy Single Rule
+                        activeRule = zoneConfig; 
                     }
                     
                     zoneMeta.push({ ...kp, rules: activeRule }); 
@@ -599,10 +634,6 @@ export default function DashboardPage() {
                                     <TableIcon className="h-3 w-3 mr-2" /> Data Grid
                                 </TabsTrigger>
                             </TabsList>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{selectedCity.name} Dataset</span>
                         </div>
                     </div>
                     

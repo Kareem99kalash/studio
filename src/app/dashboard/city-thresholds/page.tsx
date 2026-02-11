@@ -5,38 +5,20 @@ import { useRouter } from 'next/navigation';
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle, 
-  CardDescription 
+  Card, CardContent, CardHeader, CardTitle, CardDescription 
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { 
-  Save, 
-  Loader2, 
-  Settings2, 
-  ChevronDown, 
-  ChevronUp, 
-  Plus, 
-  Trash2, 
-  Store,
-  ShieldAlert,
-  Lock,
-  ArrowRightLeft,
-  Layers
+  Save, Loader2, ChevronDown, ChevronUp, Plus, Trash2, Store, 
+  Lock, ArrowRightLeft, Layers, Split 
 } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
 
 interface Threshold {
     green: number;
@@ -46,6 +28,8 @@ interface Threshold {
 interface DualThreshold {
     internal: Threshold;
     external: Threshold;
+    border?: Threshold; // 🟢 NEW: Border specific rule
+    borderProximity?: number; // 🟢 NEW: Trigger distance (km)
 }
 
 export default function CityThresholdsPage() {
@@ -55,18 +39,14 @@ export default function CityThresholdsPage() {
   // Data State
   const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // User/Permission State
   const [user, setUser] = useState<any>(null);
   const [canManage, setCanManage] = useState(false);
-
-  // UI State
   const [expandedCityId, setExpandedCityId] = useState<string | null>(null);
   
-  // 🟢 Edit State (Now supports Dual Thresholds per Zone)
+  // Edit State
   const [editZoneRules, setEditZoneRules] = useState<Record<string, DualThreshold>>({});
   
-  // New Store Category Rule State
+  // Store Category Rules
   const [newRuleName, setNewRuleName] = useState('');
   const [newRuleInternal, setNewRuleInternal] = useState<Threshold>({ green: 2, yellow: 5 });
   const [newRuleExternal, setNewRuleExternal] = useState<Threshold>({ green: 1, yellow: 3 });
@@ -77,13 +57,10 @@ export default function CityThresholdsPage() {
       if (stored) {
         const parsedUser = JSON.parse(stored);
         setUser(parsedUser);
-        
         const hasAccess = parsedUser.permissions?.manage_thresholds || parsedUser.role === 'admin';
         setCanManage(hasAccess);
-        
         if (!parsedUser.permissions?.view_cities && !hasAccess && parsedUser.role !== 'manager') {
            router.push('/dashboard');
-           return;
         }
       }
       fetchCities();
@@ -96,12 +73,7 @@ export default function CityThresholdsPage() {
     try {
       const snap = await getDocs(collection(db, 'cities'));
       setCities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) { 
-      console.error(e);
-      toast({ variant: "destructive", title: "Error", description: "Failed to load cities." });
-    } finally { 
-      setLoading(false); 
-    }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
   const toggleCity = (city: any) => {
@@ -110,46 +82,40 @@ export default function CityThresholdsPage() {
       setEditZoneRules({});
     } else {
       setExpandedCityId(city.id);
-      // Load existing sub-zone rules into edit state
       const initialRules: Record<string, DualThreshold> = {};
-      
-      // Load from subZones array (The actual geo-zones)
       if (city.subZones) {
           city.subZones.forEach((z: any) => {
-              initialRules[z.name] = z.thresholds?.internal ? z.thresholds : {
-                  internal: z.thresholds || { green: 2, yellow: 5 },
-                  external: z.thresholds || { green: 2, yellow: 5 }
+              const existing = z.thresholds || {};
+              // Ensure full structure exists even for old data
+              initialRules[z.name] = {
+                  internal: existing.internal || { green: 2, yellow: 5 },
+                  external: existing.external || { green: 2, yellow: 5 },
+                  border: existing.border || { green: 1, yellow: 2 }, 
+                  borderProximity: existing.borderProximity || 1.0 
               };
           });
       }
-
       setEditZoneRules(initialRules);
     }
   };
 
-  // 🟢 SAVE HANDLER: Updates the subZones array in Firestore
   const saveZoneThresholds = async (cityId: string) => {
     if (!canManage) return;
     try {
         const city = cities.find(c => c.id === cityId);
         if (!city || !city.subZones) return;
 
-        // Map the edits back into the subZones array structure
         const updatedSubZones = city.subZones.map((z: any) => ({
             ...z,
             thresholds: editZoneRules[z.name] || z.thresholds
         }));
 
         await updateDoc(doc(db, 'cities', cityId), { subZones: updatedSubZones });
-        
         toast({ title: "Updated", description: "Zone thresholds saved." });
         fetchCities();
-    } catch (e) {
-      toast({ variant: "destructive", title: "Error", description: "Could not update." });
-    }
+    } catch (e) { toast({ variant: "destructive", title: "Error" }); }
   };
 
-  // --- STORE CATEGORY RULES (OPTIONAL EXTRA LAYER) ---
   const handleAddCategoryRule = async (city: any) => {
     if (!canManage) return;
     if (!newRuleName) return toast({ variant: "destructive", title: "Missing Name" });
@@ -160,12 +126,12 @@ export default function CityThresholdsPage() {
       external: newRuleExternal
     };
 
-    const existingRules = city.subThresholds || []; // Note: subThresholds = Store Categories
+    const existingRules = city.subThresholds || []; 
     const updatedRules = [...existingRules, newRule];
 
     try {
       await updateDoc(doc(db, 'cities', city.id), { subThresholds: updatedRules });
-      toast({ title: "Category Added", description: `Added logic for ${newRule.name}` });
+      toast({ title: "Category Added" });
       setNewRuleName(''); 
       fetchCities();
     } catch (e) { toast({ variant: "destructive", title: "Error" }); }
@@ -186,7 +152,7 @@ export default function CityThresholdsPage() {
       <div className="flex items-center justify-between">
         <div>
            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Coverage Thresholds</h1>
-           <p className="text-sm text-slate-500 mt-1">Manage Internal (Local) vs External (Cross-Zone) limits.</p>
+           <p className="text-sm text-slate-500 mt-1">Manage Internal, External, and Border-Specific limits.</p>
         </div>
         {!canManage && (
           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 pr-3">
@@ -198,7 +164,7 @@ export default function CityThresholdsPage() {
       <Card className="border-t-4 border-t-purple-600 shadow-sm">
         <CardHeader>
           <CardTitle>City Configuration</CardTitle>
-          <CardDescription>Adjust limits for specific sub-zones (e.g. Left/Right Coast).</CardDescription>
+          <CardDescription>Adjust limits for specific sub-zones.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -212,8 +178,6 @@ export default function CityThresholdsPage() {
             <TableBody>
               {cities.map(city => (
                 <React.Fragment key={city.id}>
-                  
-                  {/* MAIN ROW */}
                   <TableRow className={expandedCityId === city.id ? "bg-slate-50 border-b-0" : ""}>
                     <TableCell className="font-bold pl-6 text-slate-700">{city.name}</TableCell>
                     <TableCell>
@@ -231,96 +195,111 @@ export default function CityThresholdsPage() {
                     </TableCell>
                   </TableRow>
 
-                  {/* EXPANDED PANEL */}
                   {expandedCityId === city.id && (
                     <TableRow className="bg-slate-50 hover:bg-slate-50">
                       <TableCell colSpan={3} className="p-4 pt-0">
                         <div className="ml-6 p-6 bg-white rounded-lg border border-slate-200 shadow-inner space-y-6">
                            
-                           {/* 🟢 SECTION 1: GEO-ZONE RULES */}
-                           <div>
-                               <div className="flex items-center justify-between mb-4">
-                                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                       <Layers className="h-4 w-4 text-purple-500" /> Geographic Zone Limits
-                                   </h3>
-                                   {canManage && (
-                                       <Button size="sm" className="bg-green-600 hover:bg-green-700 h-8" onClick={() => saveZoneThresholds(city.id)}>
-                                           <Save className="h-3 w-3 mr-2" /> Save Changes
-                                       </Button>
-                                   )}
-                               </div>
+                           <div className="flex items-center justify-between mb-4">
+                               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                   <Layers className="h-4 w-4 text-purple-500" /> Geographic Zone Limits
+                               </h3>
+                               {canManage && (
+                                   <Button size="sm" className="bg-green-600 hover:bg-green-700 h-8" onClick={() => saveZoneThresholds(city.id)}>
+                                       <Save className="h-3 w-3 mr-2" /> Save Changes
+                                   </Button>
+                               )}
+                           </div>
 
-                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                   {(city.subZones || []).map((z: any) => {
-                                       const rules = editZoneRules[z.name] || { internal: {green:2, yellow:5}, external: {green:2, yellow:5} };
-                                       
-                                       return (
-                                           <div key={z.name} className="border rounded-lg p-3 bg-slate-50 space-y-3">
-                                               <div className="font-bold text-xs text-slate-700 uppercase border-b pb-1 mb-2">{z.name}</div>
-                                               
-                                               {/* Internal */}
-                                               <div className="space-y-1">
+                           <div className="grid grid-cols-1 gap-6">
+                               {(city.subZones || []).map((z: any) => {
+                                   const rules = editZoneRules[z.name] || { 
+                                       internal: {green:2, yellow:5}, 
+                                       external: {green:2, yellow:5},
+                                       border: {green:1, yellow:2},
+                                       borderProximity: 1.0 
+                                   };
+                                   
+                                   return (
+                                       <div key={z.name} className="border rounded-lg p-4 bg-slate-50 space-y-4">
+                                           <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+                                                <div className="font-black text-sm text-slate-800 uppercase">{z.name}</div>
+                                                <Badge className="text-[10px] bg-slate-200 text-slate-600 hover:bg-slate-200">Zone Configuration</Badge>
+                                           </div>
+                                           
+                                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                               {/* 1. INTERNAL */}
+                                               <div className="space-y-2">
                                                    <div className="flex justify-between text-[10px] text-emerald-700 font-bold uppercase">
-                                                       <span>Inside Zone</span>
-                                                       <span>(Local)</span>
+                                                       <span>Inside {z.name}</span>
+                                                       <Badge variant="outline" className="text-[9px] bg-emerald-50 border-emerald-200 text-emerald-600">Standard</Badge>
                                                    </div>
                                                    <div className="flex gap-2">
                                                        <div className="relative w-full">
                                                            <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
-                                                           <Input 
-                                                               type="number" 
-                                                               className="h-7 text-xs pl-5 bg-white border-emerald-200" 
-                                                               value={rules.internal?.green} 
-                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, green: Number(e.target.value)}} }))}
-                                                               disabled={!canManage}
-                                                           />
+                                                           <Input type="number" className="h-8 text-xs pl-5 bg-white border-emerald-200" value={rules.internal?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, green: Number(e.target.value)}} }))} disabled={!canManage} />
                                                        </div>
                                                        <div className="relative w-full">
                                                            <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
-                                                           <Input 
-                                                               type="number" 
-                                                               className="h-7 text-xs pl-5 bg-white border-emerald-200" 
-                                                               value={rules.internal?.yellow} 
-                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, yellow: Number(e.target.value)}} }))}
-                                                               disabled={!canManage}
-                                                           />
+                                                           <Input type="number" className="h-8 text-xs pl-5 bg-white border-emerald-200" value={rules.internal?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
                                                        </div>
                                                    </div>
                                                </div>
 
-                                               {/* External */}
-                                               <div className="space-y-1">
+                                               {/* 2. EXTERNAL (STANDARD) */}
+                                               <div className="space-y-2">
                                                    <div className="flex justify-between text-[10px] text-amber-700 font-bold uppercase">
-                                                       <span>Cross-Zone</span>
-                                                       <span>(Remote)</span>
+                                                       <span>Cross-Zone (Far)</span>
+                                                       <Badge variant="outline" className="text-[9px] bg-amber-50 border-amber-200 text-amber-600">Restricted</Badge>
                                                    </div>
                                                    <div className="flex gap-2">
                                                        <div className="relative w-full">
                                                            <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
-                                                           <Input 
-                                                               type="number" 
-                                                               className="h-7 text-xs pl-5 bg-white border-amber-200" 
-                                                               value={rules.external?.green} 
-                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, green: Number(e.target.value)}} }))}
-                                                               disabled={!canManage}
-                                                           />
+                                                           <Input type="number" className="h-8 text-xs pl-5 bg-white border-amber-200" value={rules.external?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, green: Number(e.target.value)}} }))} disabled={!canManage} />
                                                        </div>
                                                        <div className="relative w-full">
                                                            <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
-                                                           <Input 
-                                                               type="number" 
-                                                               className="h-7 text-xs pl-5 bg-white border-amber-200" 
-                                                               value={rules.external?.yellow} 
-                                                               onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, yellow: Number(e.target.value)}} }))}
-                                                               disabled={!canManage}
-                                                           />
+                                                           <Input type="number" className="h-8 text-xs pl-5 bg-white border-amber-200" value={rules.external?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                       </div>
+                                                   </div>
+                                               </div>
+
+                                               {/* 3. EXTERNAL (BORDER PROXIMITY) - 🟢 NEW */}
+                                               <div className="space-y-2 bg-rose-50 p-2 rounded border border-rose-100">
+                                                   <div className="flex justify-between text-[10px] text-rose-700 font-bold uppercase items-center">
+                                                       <span className="flex items-center gap-1"><Split className="h-3 w-3"/> Cross-Zone (Near Border)</span>
+                                                   </div>
+                                                   
+                                                   {/* Proximity Slider */}
+                                                   <div className="space-y-1 mb-2">
+                                                        <div className="flex justify-between text-[9px] text-rose-500">
+                                                            <span>Trigger Distance:</span>
+                                                            <span className="font-bold">{rules.borderProximity} km</span>
+                                                        </div>
+                                                        <Slider 
+                                                            defaultValue={[rules.borderProximity || 1]} 
+                                                            max={5} step={0.1} 
+                                                            onValueChange={(val) => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], borderProximity: val[0]}}))}
+                                                            disabled={!canManage}
+                                                            className="py-1"
+                                                        />
+                                                   </div>
+
+                                                   <div className="flex gap-2">
+                                                       <div className="relative w-full">
+                                                           <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
+                                                           <Input type="number" className="h-8 text-xs pl-5 bg-white border-rose-200 text-rose-700 font-bold" value={rules.border?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], border: {...p[z.name].border, green: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                       </div>
+                                                       <div className="relative w-full">
+                                                           <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
+                                                           <Input type="number" className="h-8 text-xs pl-5 bg-white border-rose-200 text-rose-700 font-bold" value={rules.border?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], border: {...p[z.name].border, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
                                                        </div>
                                                    </div>
                                                </div>
                                            </div>
-                                       );
-                                   })}
-                               </div>
+                                       </div>
+                                   );
+                               })}
                            </div>
 
                            <div className="h-px bg-slate-100 my-4"></div>
@@ -352,7 +331,6 @@ export default function CityThresholdsPage() {
                                                 <span className="text-[9px] font-bold uppercase text-slate-400">Category Name</span>
                                                 <Input className="h-7 text-xs bg-white" placeholder="e.g. Retail" value={newRuleName} onChange={e=>setNewRuleName(e.target.value)} />
                                             </div>
-                                            {/* Simplified input for category creation - Expand if needed */}
                                             <div className="w-20">
                                                 <span className="text-[9px] font-bold uppercase text-green-600">In (G)</span>
                                                 <Input type="number" className="h-7 text-xs bg-white" value={newRuleInternal.green} onChange={e=>setNewRuleInternal({...newRuleInternal, green: Number(e.target.value)})} />
