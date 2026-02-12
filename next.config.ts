@@ -1,9 +1,7 @@
-import type {NextConfig} from 'next';
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: false,
 
-const nextConfig: NextConfig = {
-  reactStrictMode: false, // 👈 THIS IS THE FIX
-  
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -32,6 +30,26 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  async headers() {
+    // 🧠 SMART ORIGIN: Allows localhost in dev, locks to prod domain in production
+    const allowedOrigin = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:3000' 
+      : 'https://studio-neon-three-52.vercel.app';
+
+    return [
+      {
+        // 🔒 Apply these headers to all routes under /api/
+        source: "/api/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Credentials", value: "true" },
+          { key: "Access-Control-Allow-Origin", value: allowedOrigin },
+          { key: "Access-Control-Allow-Methods", value: "GET,DELETE,PATCH,POST,PUT,OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" },
+        ]
+      }
+    ];
+  }
 };
 
 export default nextConfig;

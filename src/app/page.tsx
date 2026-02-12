@@ -1,29 +1,34 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { MapPin, Loader2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { logActivity } from '@/lib/logger'; // <--- 1. NEW IMPORT
+import { logActivity, logger } from '@/lib/logger'; // 🟢 UPDATED IMPORT
+import { getSafeRedirect } from '@/lib/security';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
 
   useEffect(() => {
     // Check if already logged in
     const stored = localStorage.getItem('geo_user');
     if (stored) {
-      router.push('/dashboard');
+      const nextParam = searchParams.get('next');
+      const safeTarget = getSafeRedirect(nextParam, '/dashboard');
+      router.push(safeTarget);
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +37,6 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 1. DIRECT DATABASE CHECK (Simple & Fast)
       const cleanUser = username.toLowerCase().trim();
       const userRef = doc(db, 'users', cleanUser);
       const userSnap = await getDoc(userRef);
@@ -43,22 +47,18 @@ export default function LoginPage() {
 
       const userData = userSnap.data();
 
-      // 2. PASSWORD CHECK
       if (userData.password !== password) {
         throw new Error("Incorrect password.");
       }
 
-      // 3. CREATE SESSION
       const sessionData = {
-        uid: cleanUser, // Use username as ID
+        uid: cleanUser,
         username: userData.username,
         role: userData.role,
         permissions: userData.permissions || {},
         roleGroup: userData.groupId || null
       };
 
-      // 4. LOG ACTIVITY (New Step)
-      // We log this BEFORE redirecting so the record is created.
       await logActivity(
         userData.username, 
         'User Login', 
@@ -73,11 +73,13 @@ export default function LoginPage() {
         className: "bg-green-600 text-white border-none"
       });
 
-      // Use window.location for a hard refresh to ensure state is clean
-      window.location.href = '/dashboard';
+      const nextParam = searchParams.get('next');
+      const safeTarget = getSafeRedirect(nextParam, '/dashboard');
+
+      window.location.href = safeTarget;
 
     } catch (err: any) {
-      console.error(err);
+      logger.error("Login", "Authentication Failed", err); // 🟢 LOG REPLACED
       toast({ 
         variant: "destructive", 
         title: "Login Failed", 
@@ -126,9 +128,9 @@ export default function LoginPage() {
               />
             </div>
             <Button 
-                type="submit" 
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2" 
-                disabled={loading}
+              type="submit" 
+              className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2" 
+              disabled={loading}
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <>Authenticate <ArrowRight className="ml-2 h-4 w-4" /></>}
             </Button>

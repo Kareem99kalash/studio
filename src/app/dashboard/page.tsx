@@ -15,7 +15,7 @@ import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { logActivity } from '@/lib/logger'; 
+import { logActivity, logger } from '@/lib/logger'; // 🟢 UPDATED IMPORT
 import * as turf from '@turf/turf';
 
 // Maintenance & System Imports
@@ -51,7 +51,9 @@ const getStoreSubZone = (storeLat: number, storeLng: number, allPolygons: any[])
                 return poly.properties.zoneGroup || poly.properties.zoneName; 
             }
         }
-    } catch (e) { console.error("Zone check error", e); }
+    } catch (e) { 
+        logger.error("GeoEngine", "Zone check error", e); // 🟢 LOG REPLACED
+    }
     return null; 
 };
 
@@ -100,7 +102,7 @@ export default function DashboardPage() {
 
      const safetyTimer = setTimeout(() => {
          if (isCheckingStatus) {
-             console.warn("Maintenance check timed out - forcing load.");
+             logger.warn("SystemAuth", "Maintenance check timed out - forcing load."); // 🟢 LOG REPLACED
              setIsCheckingStatus(false);
          }
      }, 3000);
@@ -117,7 +119,7 @@ export default function DashboardPage() {
             setIsCheckingStatus(false);
         },
         (error) => {
-            console.error("Maintenance Check Ignored:", error);
+            logger.error("SystemAuth", "Maintenance Check Ignored", error); // 🟢 LOG REPLACED
             clearTimeout(safetyTimer);
             setIsCheckingStatus(false);
         }
@@ -146,7 +148,7 @@ export default function DashboardPage() {
       setCities(cityList);
       if (cityList.length > 0) handleCityChange(cityList[0].id, cityList);
     } catch (e) { 
-      console.error("Fetch Error:", e);
+      logger.error("FetchCities", "Failed to load cities", e); // 🟢 LOG REPLACED
       toast({ variant: "destructive", title: "Connection Error", description: "Failed to load cities." });
     } finally { setLoading(false); }
   };
@@ -248,7 +250,7 @@ export default function DashboardPage() {
                       });
                   }
               })
-              .catch(e => console.error("Proxy Chunk Fail", e))
+              .catch(e => logger.error("RoutingProxy", "Chunk failed", e)) // 🟢 LOG REPLACED
           );
       }
       await Promise.all(promises); 
@@ -265,7 +267,9 @@ export default function DashboardPage() {
     try {
         const currentUser = JSON.parse(localStorage.getItem('geo_user') || '{}');
         logActivity(currentUser.username, 'Tool Execution', `Ran analysis for ${selectedCity.name}`);
-    } catch (e) { console.error("Log fail", e); }
+    } catch (e) { 
+        logger.error("Audit", "Log fail", e); // 🟢 LOG REPLACED
+    }
 
     try {
         const finalAssignments: Record<string, any> = {};
@@ -384,7 +388,7 @@ export default function DashboardPage() {
         setAnalysisData({ timestamp: Date.now(), assignments: finalAssignments, displayPolygons });
         toast({ title: "Analysis Complete", description: "Optimization finished." });
     } catch (e) { 
-        console.error(e);
+        logger.error("Analyzer", "Execution failed", e); // 🟢 LOG REPLACED
         toast({ variant: "destructive", title: "Error", description: "Analysis failed." }); 
     } finally { setAnalyzing(false); }
   };
@@ -528,7 +532,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 relative bg-slate-50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
-                             {/* 🟢 GOD VIEW ENABLED: Passes stores to map logic */}
+                             {/* 🟢 MAP VIEW */}
                              {getDisplayPolygons().features.length > 0 ? (
                                 <MapView 
                                     key={selectedCity.id} 

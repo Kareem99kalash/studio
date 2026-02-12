@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Route, BrainCircuit, Clock, Info, CheckCircle2, RefreshCw, Loader2, MapPin, AlertCircle, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { logger } from '@/lib/logger'; // 🟢 IMPORT LOGGER
 
-// --- SVG PATTERN DEFINITIONS ---
+// ... (Pattern Definitions and getDistSq helper remain same) ...
 const PATTERN_TEMPLATES = {
   dots: (color: string) => <circle cx="5" cy="5" r="2" fill={color} opacity="0.8"/>,
   stripes_diag_right: (color: string) => <path d="M-1,1 l2,-2 M0,10 l10,-10 M9,11 l2,-2" stroke={color} strokeWidth="2" opacity="0.8"/>,
@@ -20,7 +21,6 @@ const PATTERN_TEMPLATES = {
 };
 const PATTERN_KEYS = Object.keys(PATTERN_TEMPLATES);
 
-// --- MATH UTILS ---
 function getDistSq(lat1: number, lng1: number, lat2: number, lng2: number) {
     return (lat1 - lat2) ** 2 + (lng1 - lng2) ** 2;
 }
@@ -35,25 +35,26 @@ function MapController({ city, resetTrigger }: { city?: any, resetTrigger: numbe
         if (bounds.isValid()) {
           map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13, animate: true });
         }
-      } catch (e) { console.error("Map control error:", e); }
+      } catch (e) { 
+          logger.error("MapController", "Bounds Error", e); // 🟢 LOG REPLACED
+      }
     }
   }, [city, map, resetTrigger]);
   return null;
 }
 
 export function MapView({ selectedCity, stores = [], analysisData, isLoading }: any) {
+  // ... (Component state remains same) ...
   const [selectedZoneData, setSelectedZoneData] = useState<{id: string, name: string} | null>(null);
   const [routePaths, setRoutePaths] = useState<any[]>([]); 
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [resetTrigger, setResetTrigger] = useState(0);
 
-  // 🧠 SMART SWITCH: Only use patterns if we have multiple branches
   const usePatterns = stores.length > 1;
 
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🎨 PATTERN GENERATOR ---
   const { storePatternMap, patternDefs } = useMemo(() => {
     if (!analysisData?.assignments || !usePatterns) return { storePatternMap: {}, patternDefs: [] };
 
@@ -78,7 +79,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
     return { storePatternMap: map, patternDefs: defs };
   }, [analysisData, usePatterns]);
 
-  // --- MARKET INTELLIGENCE ---
   const aiInsights = useMemo(() => {
     if (!analysisData?.assignments) return null;
     const zones = Object.entries(analysisData.assignments);
@@ -110,7 +110,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Initializing Map...</div>;
 
-  // 🛡️ STRICT ROUTE FETCHER
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     if (!start || !end || isNaN(start[0]) || isNaN(end[0])) return { success: false, color, label, errorMsg: "Invalid Coords" };
 
@@ -133,7 +132,9 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                 };
             }
         }
-    } catch (e) { console.error("Routing Error:", e); }
+    } catch (e) { 
+        logger.error("Routing", "Fetch Error", e); // 🟢 LOG REPLACED
+    }
     return { success: false, color, label, errorMsg: "Network Error" };
   };
 
@@ -151,7 +152,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
       const center = feature.properties?.centroid;
       
-      // Get assigned store
       const assignment = analysisData?.assignments?.[uniqueKey];
       let assignedStore = null;
       if (assignment?.storeId) {
@@ -159,7 +159,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       }
 
       if (!assignedStore) {
-          // Fallback logic if unassigned (single store scenario)
           const validStores = stores.filter((s: any) => !isNaN(parseFloat(s.lat)) && !isNaN(parseFloat(s.lng)));
           if (validStores.length > 0 && center) {
               let minDist = Infinity;
@@ -187,7 +186,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       });
 
       const promises = [
-          // 🟣 UPDATED: Changed Closest route to High-Contrast Purple (#9333ea)
           fetchRoutePath(storePt, closestVertex, '#9333ea', 'Closest (Entrance)'),
           fetchRoutePath(storePt, [center.lat, center.lng], '#3b82f6', 'Middle (Center)'),
           fetchRoutePath(storePt, furthestVertex, '#ef4444', 'Furthest Reach')
@@ -201,7 +199,6 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   return (
     <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
       
-      {/* 🟢 PATTERNS (Only active if >1 branch) */}
       {usePatterns && (
         <svg width="0" height="0" style={{ position: 'absolute' }}>
             <defs>{patternDefs}</defs>
@@ -217,7 +214,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
            {isFetchingRoute && <div className="bg-white/90 p-1 px-2 rounded-md shadow flex items-center gap-2 text-[10px] font-bold text-blue-600"><Loader2 className="h-3 w-3 animate-spin" /> Calculating...</div>}
         </div>
 
-        {/* Legend (Only if Patterns are Active) */}
+        {/* Legend */}
         {usePatterns && Object.keys(storePatternMap).length > 0 && (
             <div className="absolute bottom-4 right-4 z-[1000] bg-white/90 p-2 rounded-lg shadow-md border space-y-1">
                 <div className="flex items-center gap-1 text-[10px] font-bold text-slate-600 mb-1">
@@ -257,13 +254,12 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                     
                     const statusColor = data?.fillColor || '#f1f5f9';
                     let fillColor = statusColor;
-                    let fillOpacity = 0.6; // Default solid opacity
+                    let fillOpacity = 0.6; 
 
-                    // 🎨 APPLY PATTERN ONLY IF MULTIPLE STORES
                     if (usePatterns && data?.storeId && storePatternMap[data.storeId]) {
                         const colorKey = statusColor.replace('#', '');
                         fillColor = `url(#pattern-${data.storeId}-${colorKey})`;
-                        fillOpacity = 1; // Patterns need full opacity to be visible
+                        fillOpacity = 1; 
                     }
 
                     return { 
