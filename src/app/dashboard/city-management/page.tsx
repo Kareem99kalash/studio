@@ -12,6 +12,7 @@ import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert, Layers, ArrowR
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { HelpGuide } from '@/components/dashboard/help-guide'; 
+import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
 
 // --- CONFIGURATION ---
 const ENGINES = [
@@ -41,16 +42,20 @@ const parseWKT = (wkt: string) => {
 export default function CityManagementPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [user, setUser] = useState<any>(null);
+  
+  // 1. Auth & Session Management
+  const { user, loading: sessionLoading } = useSession(true);
+
+  // 2. Local State
   const [cities, setCities] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]); 
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   
   // Creation State
   const [step, setStep] = useState(1);
   const [cityName, setCityName] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState('');
-  const [selectedEngine, setSelectedEngine] = useState(ENGINES[0].value); // 🟢 Default to Public
+  const [selectedEngine, setSelectedEngine] = useState(ENGINES[0].value); 
   const [csvData, setCsvData] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -64,23 +69,10 @@ export default function CityManagementPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editGroupId, setEditGroupId] = useState('');
-  const [editEngine, setEditEngine] = useState(''); // 🟢 Edit Engine
+  const [editEngine, setEditEngine] = useState('');
   const [editZoneThresholds, setEditZoneThresholds] = useState<Record<string, any>>({});
 
-  useEffect(() => { 
-    const stored = localStorage.getItem('geo_user');
-    if (stored) {
-      const parsedUser = JSON.parse(stored);
-      setUser(parsedUser);
-      const hasViewAccess = parsedUser.permissions?.view_cities || parsedUser.role === 'admin' || parsedUser.role === 'manager';
-      if (!hasViewAccess) {
-        setLoading(false);
-        return; 
-      }
-    }
-    fetchData(); 
-  }, []);
-
+  // 3. Fetch Data
   const fetchData = async () => {
     try {
       const snap = await getDocs(collection(db, 'cities'));
@@ -88,10 +80,39 @@ export default function CityManagementPage() {
       const groupSnap = await getDocs(collection(db, 'agent_groups'));
       setGroups(groupSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error(e); } 
-    finally { setLoading(false); }
+    finally { setDataLoading(false); }
   };
 
+  useEffect(() => {
+    if (user) fetchData();
+  }, [user]);
+
+  // Loading State
+  if (sessionLoading || dataLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
+  // Permission Check
   const canManage = user?.permissions?.manage_cities || user?.role === 'admin';
+
+  if (!user?.permissions?.view_cities && user?.role !== 'admin' && user?.role !== 'manager') {
+    return (
+        <div className="h-[80vh] w-full flex flex-col items-center justify-center gap-4">
+            <ShieldAlert className="h-12 w-12 text-red-500" />
+            <div className="text-center">
+                <h2 className="text-xl font-bold">Access Restricted</h2>
+                <p className="text-slate-500">You do not have permission to manage cities.</p>
+            </div>
+            <Button variant="outline" onClick={() => router.push('/dashboard')}>Return</Button>
+        </div>
+    );
+  }
+
+  // --- HANDLERS ---
 
   const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -181,7 +202,7 @@ export default function CityManagementPage() {
       await addDoc(collection(db, 'cities'), {
         name: cityName.trim(),
         groupId: selectedGroupId || null,
-        routingEngine: selectedEngine, // 🟢 Save Engine Selection
+        routingEngine: selectedEngine, 
         isMultiZone: detectedZones.length > 1,
         subZones: subZonesData, 
         createdAt: new Date().toISOString()
@@ -214,7 +235,7 @@ export default function CityManagementPage() {
           await updateDoc(doc(db, 'cities', id), { 
               name: editName,
               groupId: editGroupId || null,
-              routingEngine: editEngine, // 🟢 Update Engine
+              routingEngine: editEngine,
               subZones: updatedSubZones
           });
           setEditingId(null);
@@ -228,7 +249,7 @@ export default function CityManagementPage() {
       setEditingId(city.id);
       setEditName(city.name);
       setEditGroupId(city.groupId || '');
-      setEditEngine(city.routingEngine || ENGINES[0].value); // Load current engine or default
+      setEditEngine(city.routingEngine || ENGINES[0].value); 
       
       const currentThresholds: any = {};
       if (city.subZones) {
@@ -244,10 +265,6 @@ export default function CityManagementPage() {
 
   const getGroupName = (id: string) => groups.find(g => g.id === id)?.name || "Unassigned";
   const getEngineLabel = (url: string) => ENGINES.find(e => e.value === url)?.label || "Unknown";
-
-  if (!loading && (!user?.permissions?.view_cities && user?.role !== 'admin' && user?.role !== 'manager')) {
-    return <div className="p-10 text-center">Access Restricted</div>;
-  }
 
   return (
     <div className="p-6 space-y-8 bg-slate-50 min-h-full">
@@ -288,7 +305,6 @@ export default function CityManagementPage() {
                   )}
               </div>
 
-              {/* Step 2 & 3 remain the same as previous version */}
               <div className={`p-3 rounded-lg border ${step === 2 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
                   <div className="flex items-center justify-between font-bold text-sm mb-2">
                       <div className="flex items-center gap-2"><Badge>2</Badge> Upload Polygons</div>
@@ -384,7 +400,6 @@ export default function CityManagementPage() {
                             ) : <Badge variant="outline">Default</Badge>}
                         </TableCell>
                         <TableCell>
-                            {/* ... (Rules Display Logic Same as Previous) ... */}
                             <span className="text-xs text-slate-400 italic">View Details</span>
                         </TableCell>
                         {canManage && (

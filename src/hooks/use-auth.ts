@@ -1,26 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useSession } from '@/hooks/use-session';
 
-export function useAuth() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+export function useAuth(requireAuth = false) {
+  // 1. Use the core session hook
+  const { user, loading } = useSession(requireAuth);
 
-  useEffect(() => {
-    // 1. Try to get the user from Local Storage (matches your Login logic)
-    const stored = localStorage.getItem('geo_user');
-    
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch (e) {
-        console.error("Auth Error", e);
-      }
-    }
-    setLoading(false);
-  }, []);
-
+  // 2. Return a clean object with default values
   return { 
     user, 
-    role: user?.role || 'GUEST', // Default to GUEST if no role found
-    loading 
+    role: user?.role || 'GUEST', // 🟢 Safely default to 'GUEST' if null
+    loading,
+    isAuthenticated: !!user
   };
 }

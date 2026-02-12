@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { 
@@ -13,12 +12,13 @@ import {
   Loader2, 
   ShieldAlert,
   Bell,
-  ShoppingBasket // Added for Dark Store Analyzer
+  ShoppingBasket 
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EngineStatusCard } from '@/components/dashboard/engine-status'; 
+import { useSession } from '@/hooks/use-session'; // 🟢 Import the new hook
 
 // 🛠️ CONFIGURATION
 const tools = [
@@ -33,7 +33,7 @@ const tools = [
     locked: false
   },
   {
-    title: "Dark Warehouse Analyzer", // 🟢 NEW TOOL ADDED
+    title: "Dark Warehouse Analyzer",
     description: "Network planning, time-based analysis, and dead zone detection for delivery.",
     icon: ShoppingBasket,
     href: "/dashboard/admin-tools/dark-store-analyzer",
@@ -54,7 +54,7 @@ const tools = [
   },
   {
     title: "Map Architect - Under Development",
-    description: "Draw, snap, and auto-trim territories. A pro-version of Google My Maps, Tool is in Beta so It won't work properly",
+    description: "Draw, snap, and auto-trim territories. (Beta Version)",
     icon: MapIcon,
     href: "/dashboard/admin-tools/map-architect",
     color: "text-purple-500",
@@ -86,29 +86,25 @@ const tools = [
 
 export default function AdminUtilitiesPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const stored = localStorage.getItem('geo_user');
-    if (stored) {
-      const parsedUser = JSON.parse(stored);
-      setUser(parsedUser);
-      setLoading(false);
-    } else {
-      router.push('/');
-    }
-  }, [router]);
+  // 1. USE SESSION HOOK (Replaces localStorage logic)
+  const { user, loading } = useSession(true);
 
-  // 1. GLOBAL PAGE GUARD
-  const canAccessPage = (() => {
-      if (!user) return false;
-      if (user.role === 'admin' || user.role === 'super_admin') return true;
-      if (user.permissions?.access_admin_tools) return true;
+  // 2. GLOBAL PAGE GUARD
+  const canAccessPage = user && (
+    user.role === 'admin' || 
+    user.role === 'super_admin' || 
+    user.permissions?.access_admin_tools ||
+    // Granular Check: Do they have AT LEAST ONE tool permission?
+    tools.some(t => user.permissions?.[t.requiredPermission] === true)
+  );
 
-      // Granular Check: Do they have AT LEAST ONE tool permission?
-      return tools.some(t => user.permissions?.[t.requiredPermission] === true);
-  })();
+  // 3. ITEM CHECKER
+  const canSeeTool = (toolPermission: string) => {
+    if (!user) return false;
+    if (user.role === 'admin' || user.role === 'super_admin') return true; 
+    return user.permissions?.[toolPermission] === true;
+  };
 
   if (loading) {
     return (
@@ -118,7 +114,7 @@ export default function AdminUtilitiesPage() {
     );
   }
 
-  // 2. RESTRICTED UI
+  // 4. RESTRICTED UI
   if (!canAccessPage) {
     return (
       <div className="h-[80vh] w-full flex items-center justify-center">
@@ -132,17 +128,10 @@ export default function AdminUtilitiesPage() {
     );
   }
 
-  // 3. ITEM CHECKER
-  const canSeeTool = (toolPermission: string) => {
-    if (user?.role === 'admin' || user?.role === 'super_admin') return true; 
-    return user?.permissions?.[toolPermission] === true;
-  };
-
   return (
     <div className="p-8 max-w-7xl mx-auto min-h-screen bg-slate-50">
       
       {/* --- SERVER STATUS MONITORS --- */}
-      {/* Renders two cards side-by-side for your dual server setup */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
          <EngineStatusCard target="erbil" label="Erbil OSRM Engine" />
          <EngineStatusCard target="beirut" label="Beirut OSRM Engine" />
@@ -175,7 +164,7 @@ export default function AdminUtilitiesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {tools.map((tool, idx) => {
           
-          // 4. FILTER TOOLS
+          // 5. FILTER TOOLS
           if (!canSeeTool(tool.requiredPermission)) return null;
 
           return (

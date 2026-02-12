@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, limit, getDocs, writeBatch, doc, orderBy } from 'firebase/firestore'; 
+import { collection, query, limit, getDocs, writeBatch, doc } from 'firebase/firestore'; 
 import { db } from '@/firebase';
 import { 
   History, 
@@ -11,14 +11,13 @@ import {
   Search, 
   Filter, 
   Trash2,
-  Calendar,
-  CheckSquare
+  Calendar
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox'; // Ensure you have this component
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import {
   Table,
@@ -28,14 +27,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
 
 export default function AuditLogsPage() {
   const router = useRouter();
   const { toast } = useToast();
   
-  const [user, setUser] = useState<any>(null);
+  // 1. Auth & Session Management
+  const { user, loading: sessionLoading } = useSession(true);
+
+  // 2. Local State
   const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(true);
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,31 +48,24 @@ export default function AuditLogsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // 3. Fetch Logs Effect
   useEffect(() => {
-    const initPage = async () => {
-      // 1. AUTH CHECK
-      const stored = localStorage.getItem('geo_user');
-      if (!stored) {
-        router.push('/');
-        return;
-      }
-      
-      const parsedUser = JSON.parse(stored);
-      setUser(parsedUser);
+    const fetchLogs = async () => {
+      // Wait for session to load
+      if (sessionLoading || !user) return;
 
-      // 2. PERMISSION CHECK
-      const canView = parsedUser.role === 'admin' || 
-                      parsedUser.role === 'super_admin' || 
-                      parsedUser.permissions?.view_audit === true;
+      // Permission Check
+      const canView = user.role === 'admin' || 
+                      user.role === 'super_admin' || 
+                      user.permissions?.view_audit === true;
 
       if (!canView) {
-        setLoading(false);
+        setLogsLoading(false);
         return;
       }
 
-      // 3. FETCH LOGS
       try {
-        // We fetch the last 200 logs to allow for client-side filtering
+        // Fetch last 200 logs
         const q = query(
           collection(db, 'audit_logs'), 
           limit(200)
@@ -97,12 +93,12 @@ export default function AuditLogsPage() {
         console.error("Failed to load logs", error);
         toast({ variant: "destructive", title: "Error", description: "Could not load audit logs." });
       } finally {
-        setLoading(false);
+        setLogsLoading(false);
       }
     };
 
-    initPage();
-  }, [router, toast]);
+    fetchLogs();
+  }, [user, sessionLoading, toast]);
 
   // --- FILTERING LOGIC ---
   const filteredLogs = logs.filter(log => {
@@ -168,8 +164,8 @@ export default function AuditLogsPage() {
     }
   };
 
-  // --- LOADING STATE ---
-  if (loading) {
+  // --- LOADING STATE (Session or Data) ---
+  if (sessionLoading || (logsLoading && user)) {
     return (
       <div className="h-[80vh] w-full flex items-center justify-center">
         <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
@@ -197,6 +193,7 @@ export default function AuditLogsPage() {
     );
   }
 
+  // --- MAIN UI ---
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       

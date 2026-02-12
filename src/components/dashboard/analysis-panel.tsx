@@ -1,7 +1,7 @@
 'use client';
 
 import { collection, writeBatch, doc, updateDoc } from "firebase/firestore";
-import { db } from "../../firebase"; 
+import { db } from "@/firebase"; 
 import { useRef, useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
@@ -9,10 +9,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Trash2, UploadCloud, Settings2 } from 'lucide-react';
+import { Plus, Trash2, UploadCloud, Settings2, Loader2 } from 'lucide-react'; // 🟢 Added Loader2
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from "@/components/ui/separator";
 import type { AnalysisFormValues, City } from '@/lib/types';
+import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook correctly
 
 // --- HELPER: ROBUST CSV & WKT PARSER ---
 const parseCSVLine = (row: string) => {
@@ -55,7 +56,9 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
   const [greenLimit, setGreenLimit] = useState<string>("2"); 
   const [yellowLimit, setYellowLimit] = useState<string>("5"); 
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  
+  // 🟢 1. Use the Session Hook correctly here
+  const { user, loading: sessionLoading } = useSession(false); // Pass false so it doesn't redirect if used in a public dashboard, or true if strict
 
   const form = useForm<AnalysisFormValues>({
     defaultValues: {
@@ -71,17 +74,17 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
 
   const selectedCityId = form.watch('cityId');
 
-  // Load user role for RBAC
-  useEffect(() => {
-    const stored = localStorage.getItem('geo_user');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      setUserRole(parsed.role);
-    }
-  }, []);
+  // 🟢 2. Handle Session Loading State (Optional: Show a spinner or just disable admin features)
+  if (sessionLoading) {
+     return <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-slate-400" /></div>;
+  }
 
-  const isAdmin = userRole === 'Admin';
+  // 🟢 3. Determine Admin Status
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
+  // --- REST OF YOUR LOGIC ---
+
+  // Update default city when cities load
   useEffect(() => {
     if (cities.length > 0 && !form.getValues('cityId')) {
       const defaultCityId = cities[0].id;
@@ -90,6 +93,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
     }
   }, [cities, form, onCityChange]);
 
+  // Update thresholds when city changes
   useEffect(() => {
     if (selectedCityId) {
         const city = cities.find(c => c.id === selectedCityId);
@@ -266,12 +270,12 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
                       )} />
                       
                       <FormField control={form.control} name={`stores.${index}.coords`} render={({ field }) => (
-                         <FormItem className="space-y-1">
+                          <FormItem className="space-y-1">
                             <FormLabel className="text-[10px] uppercase text-muted-foreground">Coordinates (Lat, Lng)</FormLabel>
                             <FormControl>
                                 <Input {...field} placeholder="36.1234, 44.5678" className="h-8 font-mono text-xs" />
                             </FormControl>
-                         </FormItem>
+                          </FormItem>
                       )} />
                     </div>
                     {fields.length > 1 && <Button variant="ghost" size="icon" className="h-6 w-6 mt-2 hover:text-red-500" onClick={() => remove(index)}><Trash2 className="h-3 w-3" /></Button>}

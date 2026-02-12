@@ -8,41 +8,49 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, ShieldCheck, UserPlus } from 'lucide-react';
 import { createSystemUser } from '@/app/actions/user-management'; // 🟢 Import Server Action
+import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook properly at the top
 
 export function CreateUserForm() {
   const [formData, setFormData] = useState({ username: '', password: '', role: 'user' });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  
+  // 🟢 Get current admin session
+  const { user: currentUser } = useSession(); 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.username || !formData.password) return;
+    if (!formData.username || !formData.password) {
+      toast({ variant: "destructive", title: "Missing Data", description: "Username and password are required." });
+      return;
+    }
 
     setLoading(true);
 
     try {
-      // 1. Get Current Admin ID (The Requester)
-      const stored = localStorage.getItem('geo_user');
-      if (!stored) throw new Error("Session expired. Please login again.");
-      const currentUser = JSON.parse(stored);
+      // 🟢 1. Call the Server Action
+      // We pass the current admin's ID (currentUser.uid) to log who created this new user
+      const result = await createSystemUser(formData, currentUser?.uid || 'system');
 
-      // 2. Call Server Action
-      // We pass 'currentUser.uid' so the server can verify US before creating the NEW user.
-      const result = await createSystemUser(currentUser.uid, {
-        username: formData.username,
-        password: formData.password,
-        role: formData.role as 'admin' | 'user' | 'driver'
-      });
-
+      // 🟢 2. Handle Response
       if (result.success) {
-        toast({ title: "Success", description: result.message, className: "bg-green-600 text-white" });
-        setFormData({ username: '', password: '', role: 'user' }); // Reset
+        toast({ 
+          title: "Success", 
+          description: result.message, 
+          className: "bg-green-600 text-white border-none" 
+        });
+        setFormData({ username: '', password: '', role: 'user' }); // Reset form
       } else {
-        toast({ variant: "destructive", title: "Error", description: result.message });
+        toast({ 
+          variant: "destructive", 
+          title: "Creation Failed", 
+          description: result.message 
+        });
       }
 
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Action Failed", description: err.message });
+      console.error(err);
+      toast({ variant: "destructive", title: "System Error", description: "Connection failed." });
     } finally {
       setLoading(false);
     }
@@ -64,6 +72,7 @@ export function CreateUserForm() {
                 value={formData.username} 
                 onChange={e => setFormData({...formData, username: e.target.value})} 
                 placeholder="new_admin_name"
+                disabled={loading}
               />
             </div>
             <div className="space-y-2">
@@ -71,6 +80,7 @@ export function CreateUserForm() {
               <Select 
                 value={formData.role} 
                 onValueChange={v => setFormData({...formData, role: v})}
+                disabled={loading}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -91,11 +101,13 @@ export function CreateUserForm() {
               value={formData.password} 
               onChange={e => setFormData({...formData, password: e.target.value})} 
               placeholder="••••••••"
+              disabled={loading}
             />
           </div>
 
           <Button type="submit" disabled={loading} className="w-full bg-indigo-900 hover:bg-indigo-800">
-            {loading ? <Loader2 className="animate-spin h-4 w-4" /> : "Create Account"}
+            {loading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : null}
+            {loading ? "Creating..." : "Create Account"}
           </Button>
         </form>
       </CardContent>

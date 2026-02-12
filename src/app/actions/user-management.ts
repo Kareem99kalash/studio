@@ -1,53 +1,56 @@
 'use server';
 
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
-import { verifyAdminPrivileges } from '@/lib/server-auth'; // 🟢 Import the Guard
-import { logActivity, logger } from '@/lib/logger';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
+import { logger } from '@/lib/logger';
 
 interface CreateUserPayload {
   username: string;
-  password: string; // Ideally hash this, but keeping it simple per your stack
-  role: 'admin' | 'user' | 'driver';
-  permissions?: Record<string, boolean>;
+  password: string;
+  role: string;
 }
 
-export async function createSystemUser(requesterId: string, newUser: CreateUserPayload) {
-  
-  // 🔒 STEP 1: SERVER-SIDE SECURITY CHECK
-  // We pause here. If this fails, the code below NEVER runs.
-  await verifyAdminPrivileges(requesterId);
+export async function createSystemUser(data: CreateUserPayload, adminId: string) {
+  const { username, password, role } = data;
+  const cleanUsername = username.toLowerCase().trim();
 
-  const cleanUsername = newUser.username.toLowerCase().trim();
-  
   try {
-    // 2. Check if user already exists
-    const newUserRef = doc(db, 'users', cleanUsername);
-    const existingCheck = await getDoc(newUserRef);
-    
-    if (existingCheck.exists()) {
-      return { success: false, message: "User already exists." };
+    // 1. Check if user already exists in Firestore
+    const userDoc = await adminDb.collection('users').doc(cleanUsername).get();
+    if (userDoc.exists) {
+      return { success: false, message: 'User already exists.' };
     }
 
-    // 3. Create the new User
-    const userData = {
-      username: cleanUsername,
-      password: newUser.password, 
-      role: newUser.role,
-      permissions: newUser.permissions || {},
+    // 2. Create Firebase Auth User
+    try {
+      await adminAuth.createUser({
+        uid: cleanUsername,
+        displayName: username,
+        password: password,
+      });
+    } catch (authError: any) {
+      // Ignore if UID exists (means auth is done, just missing Firestore profile)
+      if (authError.code !== 'auth/uid-already-exists') {
+        throw authError;
+      }
+    }
+
+    // 3. Create Firestore Profile
+    await adminDb.collection('users').doc(cleanUsername).set({
+      username: username,
+      role: role,
+      password: password, // Stored for legacy/display support
+      permissions: {},
       createdAt: new Date().toISOString(),
-      createdBy: requesterId
-    };
+      createdBy: adminId,
+      validRefreshToken: null
+    });
 
-    await setDoc(newUserRef, userData);
+    logger.info('UserMgmt', `User created: ${cleanUsername} by ${adminId}`);
+    return { success: true, message: `User ${username} created successfully.` };
 
-    // 4. Audit Log
-    await logActivity(requesterId, 'User Management', `Created new ${newUser.role}: ${cleanUsername}`);
-    
-    return { success: true, message: `Successfully created ${newUser.role} user: ${cleanUsername}` };
-
-  } catch (error) {
-    logger.error("UserCreate", "Database Write Failed", error);
-    return { success: false, message: "Internal System Error" };
+  } catch (error: any) {
+    // 🟢 FIXED: Combined error message into string to prevent argument type errors
+    logger.error('UserMgmt', `Creation failed for ${username}: ${error.message}`);
+    return { success: false, message: error.message || 'System error during creation.' };
   }
 }

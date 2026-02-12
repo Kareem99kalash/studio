@@ -38,6 +38,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
 
 // --- CONFIGURATION ---
 const ROLE_PRESETS: Record<string, string[]> = {
@@ -49,14 +50,17 @@ const ROLE_PRESETS: Record<string, string[]> = {
 
 const PERMISSION_GROUPS = [
   {
-  category: "Admin Toolbox",
-  icon: Wrench,
-  actions: [
-    { id: 'tool_batch', label: 'Batch Coverage Processor' },
-    { id: 'tool_darkstore', label: 'Dark Store Analyzer' }, // 🟢 ADD THIS LINE
-    { id: 'tool_topology', label: 'Topology Architect' },
-    // ... others
-  ]
+    category: "Admin Toolbox",
+    icon: Wrench,
+    actions: [
+      { id: 'tool_batch', label: 'Batch Coverage Processor' },
+      { id: 'tool_darkstore', label: 'Dark Store Analyzer' }, 
+      { id: 'tool_topology', label: 'Topology Architect' },
+      { id: 'tool_maps', label: 'Map Architect' },
+      { id: 'tool_users', label: 'Team Access Manager' },
+      { id: 'tool_coords', label: 'Coordinate Flipper' },
+      { id: 'tool_broadcast', label: 'Broadcast Center' },
+    ]
   },
   {
     category: "General Access",
@@ -78,18 +82,6 @@ const PERMISSION_GROUPS = [
     ]
   },
   {
-    category: "Admin Toolbox",
-    icon: Wrench,
-    actions: [
-      { id: 'tool_batch', label: 'Batch Coverage Processor' },
-      { id: 'tool_topology', label: 'Topology Architect' },
-      { id: 'tool_maps', label: 'Map Architect' },
-      { id: 'tool_users', label: 'Team Access Manager' },
-      { id: 'tool_coords', label: 'Coordinate Flipper' },
-      { id: 'tool_broadcast', label: 'Broadcast Center' },
-    ]
-  },
-  {
     category: "System",
     icon: ShieldCheck,
     actions: [
@@ -101,10 +93,14 @@ const PERMISSION_GROUPS = [
 
 export default function UserManagementPage() {
   const { toast } = useToast();
+  
+  // 1. Auth & Session Management
+  const { user: currentUser, loading: sessionLoading } = useSession(true);
+
+  // 2. Local State
   const [users, setUsers] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
   // CREATE FORM STATE
   const [newUsername, setNewUsername] = useState('');
@@ -128,28 +124,43 @@ export default function UserManagementPage() {
   const [editPassword, setEditPassword] = useState(''); 
   const [isSaving, setIsSaving] = useState(false);
 
+  // 3. Fetch Data
+  const fetchData = async () => {
+    try {
+      // Fetch Users
+      const userSnap = await getDocs(collection(db, 'users'));
+      setUsers(userSnap.docs.map(doc => ({ ...doc.data(), username: doc.id })));
+
+      // Fetch Groups
+      const groupSnap = await getDocs(query(collection(db, 'agent_groups'), orderBy('name')));
+      setGroups(groupSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Error", description: "Could not load user data." });
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const session = JSON.parse(localStorage.getItem('geo_user') || '{}');
-        setCurrentUser(session);
+    if (currentUser) {
+        fetchData();
+        // Initialize default permissions for viewer role
+        const preset = ROLE_PRESETS['viewer'] || [];
+        const newPerms: Record<string, boolean> = {};
+        preset.forEach(p => newPerms[p] = true);
+        setCreatePermissions(newPerms);
+    }
+  }, [currentUser, toast]);
 
-        const qUsers = query(collection(db, 'users'), orderBy('username', 'asc'));
-        const userSnap = await getDocs(qUsers);
-        setUsers(userSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-        const qGroups = query(collection(db, 'agent_groups'), orderBy('name', 'asc'));
-        const groupSnap = await getDocs(qGroups);
-        setGroups(groupSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-      } catch (error) {
-        toast({ variant: "destructive", title: "Error", description: "Could not load data." });
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [toast]);
+  // Loading State
+  if (sessionLoading || dataLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
 
   // --- 🔒 HIERARCHY LOGIC (STRICT) ---
 
@@ -376,8 +387,6 @@ export default function UserManagementPage() {
   };
 
   const getGroupName = (id: string) => groups.find(g => g.id === id)?.name || "Unassigned";
-
-  if (loading) return <div className="h-96 flex items-center justify-center"><Loader2 className="animate-spin text-purple-600" /></div>;
 
   return (
     <div className="p-6 space-y-6 relative">

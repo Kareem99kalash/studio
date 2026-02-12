@@ -13,15 +13,20 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Plus, Loader2, FileSpreadsheet, Download, Trash2, ShieldAlert, ChevronLeft } from 'lucide-react';
+import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook Correctly
 
 export default function TicketsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [user, setUser] = useState<any>(null);
+  
+  // 1. Auth & Session Management
+  const { user, loading: sessionLoading } = useSession(true);
+
+  // 2. Local State
   const [tickets, setTickets] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [attachedFile, setAttachedFile] = useState<{name: string, content: string} | null>(null);
 
   // Form State
@@ -29,39 +34,39 @@ export default function TicketsPage() {
   const [newTicketDesc, setNewTicketDesc] = useState('');
   const [newTicketType, setNewTicketType] = useState('General');
 
-  useEffect(() => {
-    const stored = localStorage.getItem('geo_user');
-    if (stored) {
-      const parsedUser = JSON.parse(stored);
-      setUser(parsedUser);
-      
-      // 🛡️ PERMISSION CHECK: Must have 'view_tickets'
-      // We check granular permission OR admin role for backward compatibility
-      const hasViewAccess = parsedUser.permissions?.view_tickets || parsedUser.role === 'admin' || parsedUser.role === 'manager';
-      
-      if (!hasViewAccess) {
-        setLoading(false); // Stop loading to show the restricted UI below
-        return;
-      }
-    }
-    fetchTickets();
-  }, []);
-
+  // 3. Fetch Data
   const fetchTickets = async () => {
     try {
       const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));
       const snap = await getDocs(q);
       setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) { 
+      console.error(e); 
+      toast({ variant: "destructive", title: "Error", description: "Failed to load tickets." });
+    } finally { 
+      setDataLoading(false); 
+    }
   };
 
+  useEffect(() => {
+    if (user) fetchTickets();
+  }, [user]);
+
+  // Loading State
+  if (sessionLoading || dataLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
   // --- 🛡️ PERMISSION HELPERS ---
-  // Using granular checks with role fallback for old users
   const canCreate = user?.permissions?.create_tickets || user?.role === 'admin' || user?.role === 'manager';
   const canManage = user?.permissions?.manage_tickets || user?.role === 'admin';
 
-  // --- 🛡️ RESTRICTED ACCESS UI (For users without 'view_tickets') ---
-  if (user && !loading && !user.permissions?.view_tickets && user.role !== 'admin' && user.role !== 'manager') {
+  // --- 🛡️ RESTRICTED ACCESS UI ---
+  if (user && !user.permissions?.view_tickets && user.role !== 'admin' && user.role !== 'manager') {
     return (
       <div className="h-full w-full flex items-center justify-center bg-slate-50 p-6">
         <Card className="max-w-md w-full text-center shadow-lg border-t-4 border-t-red-500">
@@ -84,7 +89,8 @@ export default function TicketsPage() {
     );
   }
 
-  // --- HANDLERS (Same as before) ---
+  // --- HANDLERS ---
+
   const downloadAttachedCSV = (ticket: any) => {
     if (!ticket.csvContent) return;
     const blob = new Blob([ticket.csvContent], { type: 'text/csv' });
@@ -154,8 +160,6 @@ export default function TicketsPage() {
     t.title?.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (loading) return <div className="h-full w-full flex items-center justify-center"><Loader2 className="animate-spin text-purple-600" /></div>;
-
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-full">
       <div className="flex justify-between items-center">
@@ -169,7 +173,6 @@ export default function TicketsPage() {
             <Input placeholder="Search ID..." className="pl-8 w-48 bg-white" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           
-          {/* ONLY SHOW IF USER HAS 'create_tickets' PERMISSION */}
           {canCreate && (
             <Button onClick={() => setIsCreating(true)} className="bg-purple-600 hover:bg-purple-700">
               <Plus className="mr-2 h-4 w-4" /> New Request
@@ -219,7 +222,6 @@ export default function TicketsPage() {
                         </Button>
                       )}
 
-                      {/* ONLY SHOW STATUS UPDATE IF 'manage_tickets' or 'create_tickets' */}
                       {(canCreate || canManage) && (
                         <Select onValueChange={(val) => updateStatus(t.id, val)} defaultValue={t.status}>
                             <SelectTrigger className="h-7 w-24 text-[10px]"><SelectValue /></SelectTrigger>
@@ -232,7 +234,6 @@ export default function TicketsPage() {
                         </Select>
                       )}
                       
-                      {/* ONLY SHOW DELETE IF 'manage_tickets' */}
                       {canManage && (
                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDeleteTicket(t.id)}>
                             <Trash2 className="size-3" />
