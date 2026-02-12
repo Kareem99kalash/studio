@@ -1,21 +1,21 @@
 'use server';
 
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
 import { cookies } from 'next/headers';
 import { encrypt } from '@/lib/auth';
 import { logger } from '@/lib/logger';
+import { adminDb } from '@/lib/firebase-admin'; // 🟢 Import Admin DB
 
 export async function loginAction(formData: FormData) {
   const username = (formData.get('username') as string).toLowerCase().trim();
   const password = formData.get('password') as string;
 
   try {
-    // 1. Verify Credentials
-    const userRef = doc(db, 'users', username);
-    const userSnap = await getDoc(userRef);
+    // 1. Verify Credentials using ADMIN SDK
+    // Note: Admin SDK syntax is slightly different (.get() instead of getDoc())
+    const userRef = adminDb.collection('users').doc(username);
+    const userSnap = await userRef.get();
 
-    if (!userSnap.exists() || userSnap.data().password !== password) {
+    if (!userSnap.exists || userSnap.data()?.password !== password) {
       return { success: false, message: 'Invalid credentials' };
     }
 
@@ -25,8 +25,8 @@ export async function loginAction(formData: FormData) {
     // 2. Create JWT Payloads
     const sessionPayload = {
       uid: username,
-      role: userData.role,
-      permissions: userData.permissions || {},
+      role: userData?.role,
+      permissions: userData?.permissions || {},
       jti: tokenId
     };
 
@@ -34,8 +34,8 @@ export async function loginAction(formData: FormData) {
     const accessToken = await encrypt({ ...sessionPayload, type: 'access' }, '15m');
     const refreshToken = await encrypt({ ...sessionPayload, type: 'refresh' }, '7d');
 
-    // 4. Store Valid Token ID in DB (For Rotation)
-    await updateDoc(userRef, { 
+    // 4. Store Valid Token ID in DB (Using Admin SDK)
+    await userRef.update({ 
       validRefreshToken: tokenId,
       lastLogin: new Date().toISOString()
     });
@@ -60,9 +60,12 @@ export async function loginAction(formData: FormData) {
     logger.info('Auth', `User logged in: ${username}`);
     return { success: true };
 
-  } catch (error) {
-    logger.error('Auth', 'Login failed', error);
-    return { success: false, message: 'System error during login' };
+  } catch (error: any) {
+    console.error("LOGIN ERROR:", error); // Check Vercel logs for this line
+    return { 
+      success: false, 
+      message: `System Error: ${error.message}` 
+    };
   }
 }
 
