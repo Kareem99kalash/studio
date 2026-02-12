@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileCode, Layers, Zap } from 'lucide-react';
+import { Download, FileCode, Layers, Zap, HelpCircle } from 'lucide-react';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge'; 
 import dynamic from 'next/dynamic';
 
@@ -65,7 +66,12 @@ export default function GeoStudioPro() {
             <Zap className="h-5 w-5 fill-current" />
           </div>
           <div>
-            <h1 className="text-xl font-black uppercase tracking-tighter leading-none">Architect Studio</h1>
+            <h1 className="text-xl font-black uppercase tracking-tighter leading-none flex items-center gap-2">
+               Architect Studio
+               <Link href="/dashboard/documentation#map-architect">
+                  <HelpCircle className="h-4 w-4 text-slate-600 hover:text-white transition-colors cursor-help" />
+               </Link>
+            </h1>
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mt-1">Spatial Intelligence v3.0</p>
           </div>
         </div>

@@ -19,7 +19,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Send, Bell, Loader2, History, AlertTriangle, Info } from 'lucide-react';
+import { Send, Bell, Loader2, History, AlertTriangle, Info, HelpCircle } from 'lucide-react';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
 export default function BroadcastPage() {
@@ -120,7 +121,12 @@ export default function BroadcastPage() {
           <Bell className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Broadcast Center</h1>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            Broadcast Center
+            <Link href="/dashboard/documentation#broadcast">
+              <HelpCircle className="h-4 w-4 text-slate-300 hover:text-indigo-600 transition-colors cursor-help" />
+            </Link>
+          </h1>
           <p className="text-slate-500 text-sm">Push system-wide alerts to user dashboards.</p>
         </div>
       </div>

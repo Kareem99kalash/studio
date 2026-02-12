@@ -11,7 +11,8 @@ import {
   Search, 
   Filter, 
   Trash2,
-  Calendar
+  Calendar,
+  HelpCircle
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
+import Link from 'next/link';
 
 export default function AuditLogsPage() {
   const router = useRouter();
@@ -202,6 +204,9 @@ export default function AuditLogsPage() {
         <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3 tracking-tight">
                 <History className="h-8 w-8 text-primary" /> System Activity
+                <Link href="/dashboard/documentation#compliance">
+                   <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+                </Link>
             </h1>
             <p className="text-slate-500 text-sm">Comprehensive log of all administrative actions.</p>
         </div>

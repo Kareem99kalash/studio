@@ -12,8 +12,9 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save, FileSpreadsheet, AlertCircle, Layers, Scale } from 'lucide-react';
+import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save, FileSpreadsheet, AlertCircle, Layers, Scale, HelpCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 
@@ -629,9 +630,14 @@ export default function BatchCoveragePage() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border space-y-4 md:space-y-0">
         <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                <MapIcon className="h-6 w-6 text-purple-600"/> Coverage Commander
-            </h1>
+            <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <MapIcon className="h-6 w-6 text-purple-600"/> Coverage Commander
+                </h1>
+                <Link href="/dashboard/documentation#batch-processor" className="text-slate-300 hover:text-primary transition-colors" title="View Documentation">
+                    <HelpCircle className="h-5 w-5" />
+                </Link>
+            </div>
             <p className="text-slate-500 text-xs">Multi-Layer Analysis • Weighted Demand • Visual Reassignment</p>
         </div>
         <div className="flex flex-wrap gap-3 items-end">

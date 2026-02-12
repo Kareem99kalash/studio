@@ -19,7 +19,8 @@ import {
   Search,
   Menu,
   X,
-  Loader2
+  Loader2,
+  BookOpen
 } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
   { label: 'Activity Logs', href: '/dashboard/audit-logs', icon: History, permission: 'view_audit' },
   { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket, permission: 'view_tickets' },
   { label: 'Admin Tools', href: '/dashboard/admin-tools', icon: ShieldCheck, permission: 'access_admin_tools' },
+  { label: 'Documentation', href: '/dashboard/documentation', icon: BookOpen, permission: 'view_documentation' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
