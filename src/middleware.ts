@@ -5,25 +5,35 @@ import { decrypt } from '@/lib/auth';
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. Get tokens - explicitly check the cookie name
-  const accessToken = req.cookies.get('session_access')?.value;
+  // Get the REFRESH token (7-day) instead of access token (15-min)
+  const refreshToken = req.cookies.get('session_refresh')?.value;
   
-  // 2. Log for Vercel debugging
-  console.log(`[Middleware] Path: ${pathname} | Token Found: ${!!accessToken}`);
+  console.log(`[Middleware] Path: ${pathname} | Token Found: ${!!refreshToken}`);
 
-  const session = accessToken ? await decrypt(accessToken) : null;
-
-  // 🛡️ PROTECTION LOGIC
-  // If attempting to enter dashboard without a valid session
-  if (pathname.startsWith('/dashboard') && !session) {
-    console.log("[Middleware] Redirecting to Login: Session invalid or missing.");
-    return NextResponse.redirect(new URL('/', req.url));
+  // Try to decrypt - wrap in try/catch to prevent errors from causing loops
+  let session = null;
+  try {
+    session = refreshToken ? await decrypt(refreshToken) : null;
+    console.log(`[Middleware] Session Valid: ${!!session}`);
+  } catch (error) {
+    console.error('[Middleware] Decrypt Error:', error);
+    // If decrypt fails, treat as no session (don't crash)
+    session = null;
   }
 
-  // 🛡️ REVERSE PROTECTION
-  // If already logged in but trying to visit Login/Home
+  // 🛡️ PROTECTION LOGIC
+  if (pathname.startsWith('/dashboard') && !session) {
+    console.log("[Middleware] Redirecting to Login: No valid session.");
+    const response = NextResponse.redirect(new URL('/', req.url));
+    // Clear both invalid cookies to prevent loops
+    response.cookies.delete('session_access');
+    response.cookies.delete('session_refresh');
+    return response;
+  }
+
+  // 🛡️ REVERSE PROTECTION - Only redirect from exact root paths
   if ((pathname === '/' || pathname === '/login') && session) {
-    console.log("[Middleware] Redirecting to Dashboard: Session already active.");
+    console.log("[Middleware] Redirecting to Dashboard: Session active.");
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
@@ -31,6 +41,15 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // 🟢 Match all paths except static files, images, and API routes
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    /*
+     * Match all request paths except:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public files (images, etc)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 };
