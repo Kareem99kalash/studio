@@ -70,10 +70,13 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
     const cache: VertexCacheItem[] = [];
     layersRef.current.eachLayer((layer) => {
       if (layer instanceof L.Polygon) {
-        const geo: any = layer.toGeoJSON();
-        const coords = geo.geometry.coordinates.flat(Infinity);
-        for (let i = 0; i < coords.length; i += 2) {
-          cache.push({ lng: coords[i], lat: coords[i+1], id: String(geo.properties?.id || 'unknown') });
+        // PERF: Use getLatLngs() instead of toGeoJSON() to avoid expensive object creation and conversion
+        const latlngs = layer.getLatLngs();
+        const flatLatLngs = (latlngs as any).flat(Infinity) as L.LatLng[];
+        const id = String((layer as any).feature?.properties?.id || 'unknown');
+
+        for (const ll of flatLatLngs) {
+          cache.push({ lat: ll.lat, lng: ll.lng, id });
         }
       }
     });
@@ -99,50 +102,85 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
     setStatusMsg('Aligning to Road Grid...');
 
     try {
-        // Get coordinates from the drawing
         const latlngs = layer.getLatLngs();
         const rawCoords = (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs) as L.LatLng[];
-        
         const points = rawCoords.map(p => ({ lat: p.lat, lng: p.lng }));
         
-        // FIX: Use the ref here to check the REAL current setting
         if (snapToRoadsRef.current && points.length > 2) {
+            // PERF: Batch OSRM requests to reduce network overhead and latency.
+            // Instead of firing N parallel requests (which can be rate-limited), we batch contiguous snappable segments.
+            const finalPath: L.LatLng[] = [];
             
-            // PREPARE REQUESTS IN PARALLEL
-            const segmentPromises = points.map((start, i) => {
-                const end = points[(i + 1) % points.length]; 
-                const dist = L.latLng(start).distanceTo(L.latLng(end));
-                
-                if (dist < 10 || dist > 2000) {
-                    return Promise.resolve([start]); 
+            // Check if we can batch the entire polygon (common case)
+            const allSnappable = points.every((p, i) => {
+                const next = points[(i + 1) % points.length];
+                const dist = L.latLng(p).distanceTo(L.latLng(next));
+                return dist >= 10 && dist <= 2000;
+            });
+
+            if (allSnappable && points.length < 100) {
+                const coordsString = [...points, points[0]].map(p => `${p.lng},${p.lat}`).join(';');
+                const res = await fetch(`https://router.project-osrm.org/route/v1/walking/${coordsString}?overview=full&geometries=geojson`);
+                const data = await res.json();
+
+                if (data.code === 'Ok' && data.routes?.[0]) {
+                    const route = data.routes[0];
+                    const routeDist = route.distance;
+
+                    // Sanity check: Compare route distance to straight-line perimeter
+                    let straightDist = 0;
+                    points.forEach((p, idx) => {
+                        straightDist += L.latLng(p).distanceTo(L.latLng(points[(idx + 1) % points.length]));
+                    });
+
+                    // If the total route is within 1.5x of the straight line, accept it
+                    if (routeDist <= straightDist * 1.5) {
+                        const routeCoords = route.geometry.coordinates;
+                        finalPath.push(...routeCoords.map((c: any) => L.latLng(c[1], c[0])));
+                    }
                 }
-
-                return fetch(`https://router.project-osrm.org/route/v1/walking/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.code === 'Ok' && data.routes?.[0]) {
-                            const routeDist = data.routes[0].distance;
-                            
-                            // SANITY CHECK
-                            if (routeDist > dist * 1.5) {
-                                return [start]; 
-                            }
-                            
-                            return data.routes[0].geometry.coordinates.map((c: any) => L.latLng(c[1], c[0]));
-                        }
-                        return [start];
-                    })
-                    .catch(() => [start]); 
-            });
-
-            const results = await Promise.all(segmentPromises);
+            }
             
-            const smartPath: L.LatLng[] = [];
-            results.forEach(segmentPoints => {
-                smartPath.push(...segmentPoints);
-            });
+            // If shortcut was not used or failed sanity check, fall back to segment-by-segment
+            if (finalPath.length === 0) {
+                for (let i = 0; i < points.length; i++) {
+                    const start = points[i];
+                    const end = points[(i + 1) % points.length];
+                    const dist = L.latLng(start).distanceTo(L.latLng(end));
 
-            layer.setLatLngs(smartPath);
+                    if (dist >= 10 && dist <= 2000) {
+                        try {
+                            const res = await fetch(`https://router.project-osrm.org/route/v1/walking/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`);
+                            const data = await res.json();
+                            if (data.code === 'Ok' && data.routes?.[0]) {
+                                const route = data.routes[0];
+                                // Sanity check: Ensure route isn't excessively long (e.g. snapping across non-routable areas)
+                                if (route.distance <= dist * 1.5) {
+                                    const routeCoords = route.geometry.coordinates;
+                                    const segmentLatLngs = routeCoords.map((c: any) => L.latLng(c[1], c[0]));
+                                    if (finalPath.length > 0) {
+                                        finalPath.push(...segmentLatLngs.slice(1)); // Avoid duplicating boundary point
+                                    } else {
+                                        finalPath.push(...segmentLatLngs);
+                                    }
+                                    continue;
+                                }
+                            }
+                        } catch (e) { /* fallback to straight line */ }
+                    }
+
+                    if (finalPath.length === 0) finalPath.push(L.latLng(start.lat, start.lng));
+                    finalPath.push(L.latLng(end.lat, end.lng));
+                }
+            }
+
+            if (finalPath.length > 0) {
+                // Remove duplicate adjacent points if any
+                const uniquePath = finalPath.filter((p, i) =>
+                    i === 0 || p.lat !== finalPath[i-1].lat || p.lng !== finalPath[i-1].lng
+                );
+                layer.setLatLngs(uniquePath);
+            }
         }
     } catch (e) {
         console.warn("Auto-refine failed", e);
@@ -163,8 +201,10 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
     }).addTo(mapRef.current!);
 
     rebuildVertexCache();
-    onChange(layersRef.current!.toGeoJSON() as FeatureCollection);
-    checkTopology(layersRef.current!.toGeoJSON() as FeatureCollection);
+    // PERF: Only call toGeoJSON() once and reuse the result
+    const currentGeoJSON = layersRef.current!.toGeoJSON() as FeatureCollection;
+    onChange(currentGeoJSON);
+    checkTopology(currentGeoJSON);
     setIsProcessing(false);
   };
 
@@ -273,7 +313,12 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
         snapGuides.clearLayers();
       });
 
-      map.on('draw:edited', () => { rebuildVertexCache(); onChange(drawnItems.toGeoJSON() as FeatureCollection); checkTopology(drawnItems.toGeoJSON() as FeatureCollection); });
+      map.on('draw:edited', () => {
+        rebuildVertexCache();
+        const currentGeoJSON = drawnItems.toGeoJSON() as FeatureCollection;
+        onChange(currentGeoJSON);
+        checkTopology(currentGeoJSON);
+      });
       map.on('draw:deleted', () => { rebuildVertexCache(); onChange(drawnItems.toGeoJSON() as FeatureCollection); });
 
       mapRef.current = map;
