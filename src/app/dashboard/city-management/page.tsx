@@ -91,7 +91,7 @@ export default function CityManagementPage() {
   if (sessionLoading || dataLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
       </div>
     );
   }
@@ -267,18 +267,18 @@ export default function CityManagementPage() {
   const getEngineLabel = (url: string) => ENGINES.find(e => e.value === url)?.label || "Unknown";
 
   return (
-    <div className="p-6 space-y-8 bg-slate-50 min-h-full">
+    <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">City Management</h1>
-        <Badge variant="outline" className="bg-white">{canManage ? 'Full Access' : 'View Only'}</Badge>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">City Management</h1>
+        <Badge variant="outline" className="bg-white border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">{canManage ? 'Full Access' : 'View Only'}</Badge>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-8 md:grid-cols-3">
         {canManage && (
-          <Card className="md:col-span-1 border-t-4 border-t-purple-600 shadow-md">
-            <CardHeader><CardTitle>Add New City</CardTitle><CardDescription>Configure zones and engine.</CardDescription></CardHeader>
+          <Card className="md:col-span-1 border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
+            <CardHeader><CardTitle className="text-xl">Add New City</CardTitle><CardDescription>Configure zones and engine.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
-              <div className={`p-3 rounded-lg border ${step === 1 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
+              <div className={`p-4 rounded-xl border transition-all ${step === 1 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-white border-slate-100 opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>1</Badge> Identity</div>
                   {step === 1 && (
                     <>
@@ -305,7 +305,7 @@ export default function CityManagementPage() {
                   )}
               </div>
 
-              <div className={`p-3 rounded-lg border ${step === 2 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
+              <div className={`p-4 rounded-xl border transition-all ${step === 2 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-white border-slate-100 opacity-50'}`}>
                   <div className="flex items-center justify-between font-bold text-sm mb-2">
                       <div className="flex items-center gap-2"><Badge>2</Badge> Upload Polygons</div>
                       {step === 2 && <HelpGuide type="city-upload" />}
@@ -319,7 +319,7 @@ export default function CityManagementPage() {
                   )}
               </div>
 
-              <div className={`p-3 rounded-lg border ${step === 3 ? 'bg-purple-50 border-purple-200' : 'bg-white opacity-50'}`}>
+              <div className={`p-4 rounded-xl border transition-all ${step === 3 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-white border-slate-100 opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>3</Badge> Thresholds</div>
                   {step === 3 && (
                     <>
@@ -360,8 +360,8 @@ export default function CityManagementPage() {
         )}
 
         {/* ACTIVE CITIES TABLE */}
-        <Card className={canManage ? "md:col-span-2" : "md:col-span-3"}>
-          <CardHeader><CardTitle>Active Cities</CardTitle></CardHeader>
+        <Card className={`${canManage ? "md:col-span-2" : "md:col-span-3"} shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100`}>
+          <CardHeader className="bg-white border-b border-slate-50"><CardTitle className="text-xl">Active Cities</CardTitle></CardHeader>
           <CardContent>
             <Table>
               <TableHeader>

@@ -79,7 +79,7 @@ export default function CityThresholdsPage() {
   if (sessionLoading || dataLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
       </div>
     );
   }
@@ -156,10 +156,10 @@ export default function CityThresholdsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-full">
+    <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Coverage Thresholds</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Coverage Thresholds</h1>
             <p className="text-sm text-slate-500 mt-1">Manage Internal, External, and Border-Specific limits.</p>
         </div>
         {!canManage && (
@@ -169,9 +169,9 @@ export default function CityThresholdsPage() {
         )}
       </div>
 
-      <Card className="border-t-4 border-t-purple-600 shadow-sm">
-        <CardHeader>
-          <CardTitle>City Configuration</CardTitle>
+      <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100">
+        <CardHeader className="bg-white border-b border-slate-50">
+          <CardTitle className="text-xl">City Configuration</CardTitle>
           <CardDescription>Adjust limits for specific sub-zones.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -196,7 +196,7 @@ export default function CityThresholdsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button variant={expandedCityId === city.id ? "secondary" : "ghost"} size="sm" onClick={() => toggleCity(city)} className={expandedCityId === city.id ? "bg-purple-100 text-purple-700" : "text-slate-500"}>
+                      <Button variant={expandedCityId === city.id ? "secondary" : "ghost"} size="sm" onClick={() => toggleCity(city)} className={`${expandedCityId === city.id ? "bg-primary/10 text-primary" : "text-slate-500"} rounded-xl font-bold uppercase text-[10px] tracking-widest`}>
                           {expandedCityId === city.id ? "Close" : "Manage Rules"}
                           {expandedCityId === city.id ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
                       </Button>
@@ -206,14 +206,14 @@ export default function CityThresholdsPage() {
                   {expandedCityId === city.id && (
                     <TableRow className="bg-slate-50 hover:bg-slate-50">
                       <TableCell colSpan={3} className="p-4 pt-0">
-                        <div className="ml-6 p-6 bg-white rounded-lg border border-slate-200 shadow-inner space-y-6">
+                        <div className="ml-6 p-8 bg-white rounded-2xl border border-slate-100 shadow-inner space-y-8">
                            
-                           <div className="flex items-center justify-between mb-4">
+                           <div className="flex items-center justify-between mb-4 border-b border-slate-50 pb-4">
                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                   <Layers className="h-4 w-4 text-purple-500" /> Geographic Zone Limits
+                                   <Layers className="h-4 w-4 text-primary" /> Geographic Zone Limits
                                </h3>
                                {canManage && (
-                                   <Button size="sm" className="bg-green-600 hover:bg-green-700 h-8" onClick={() => saveZoneThresholds(city.id)}>
+                                   <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-9 rounded-xl px-5 font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-600/20" onClick={() => saveZoneThresholds(city.id)}>
                                         <Save className="h-3 w-3 mr-2" /> Save Changes
                                    </Button>
                                )}
@@ -312,17 +312,17 @@ export default function CityThresholdsPage() {
                            <div className="h-px bg-slate-100 my-4"></div>
 
                            {/* STORE CATEGORY OVERRIDES */}
-                           <div>
-                               <div className="flex items-center gap-2 mb-3">
-                                   <Store className="h-4 w-4 text-indigo-500" />
-                                   <h3 className="text-sm font-bold text-slate-800">Store Category Overrides (Optional)</h3>
+                           <div className="pt-4 border-t border-slate-50">
+                               <div className="flex items-center gap-3 mb-6">
+                                   <Store className="h-5 w-5 text-primary" />
+                                   <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Hub Category Overrides</h3>
                                </div>
                                
-                               <div className="space-y-2">
+                               <div className="space-y-3">
                                    {(city.subThresholds || []).map((cat: any, i: number) => (
-                                        <div key={i} className="flex items-center justify-between p-2 bg-slate-50 border rounded text-xs">
-                                             <div className="flex items-center gap-3">
-                                                  <Badge className="bg-indigo-600">{cat.name}</Badge>
+                                        <div key={i} className="flex items-center justify-between p-3 px-5 bg-slate-50/50 border border-slate-100 rounded-2xl text-xs group hover:bg-white hover:shadow-lg hover:shadow-slate-200/50 transition-all">
+                                             <div className="flex items-center gap-4">
+                                                  <Badge className="bg-primary text-white font-bold uppercase tracking-widest text-[9px] rounded-md px-3">{cat.name}</Badge>
                                                   <div className="flex gap-4 text-slate-500">
                                                        <span>Internal: <b className="text-slate-800">{cat.internal?.green}/{cat.internal?.yellow}</b></span>
                                                        <span>External: <b className="text-slate-800">{cat.external?.green}/{cat.external?.yellow}</b></span>
@@ -344,9 +344,9 @@ export default function CityThresholdsPage() {
                                              </div>
                                              <div className="w-20">
                                                  <span className="text-[9px] font-bold uppercase text-yellow-600">In (Y)</span>
-                                                 <Input type="number" className="h-7 text-xs bg-white" value={newRuleInternal.yellow} onChange={e=>setNewRuleInternal({...newRuleInternal, yellow: Number(e.target.value)})} />
+                                                 <Input type="number" className="h-7 text-xs bg-white rounded-lg border-slate-200" value={newRuleInternal.yellow} onChange={e=>setNewRuleInternal({...newRuleInternal, yellow: Number(e.target.value)})} />
                                              </div>
-                                             <Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700" onClick={() => handleAddCategoryRule(city)}><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                                             <Button size="sm" className="h-8 bg-primary hover:bg-primary/90 rounded-xl px-5 font-bold uppercase text-[9px] tracking-widest shadow-lg shadow-primary/20" onClick={() => handleAddCategoryRule(city)}><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Protocol</Button>
                                         </div>
                                    )}
                                </div>

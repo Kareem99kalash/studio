@@ -108,8 +108,8 @@ export default function AdminUtilitiesPage() {
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      <div className="h-screen w-full flex items-center justify-center bg-slate-50/30">
+        <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
       </div>
     );
   }
@@ -149,13 +149,13 @@ export default function AdminUtilitiesPage() {
         </div>
         
         {/* Helper badge */}
-        <div className="mt-2 inline-flex items-center gap-2">
-           <Badge variant="outline" className="bg-white text-slate-600 border-slate-200">
+        <div className="mt-4 inline-flex items-center gap-2">
+           <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider shadow-sm">
              Role: {user.role || 'Custom'}
            </Badge>
            {user.role === 'custom' && (
-             <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 border-purple-200">
-               Custom Permissions Active
+             <Badge className="bg-primary/5 text-primary border-primary/10 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">
+               Custom Clearances Active
              </Badge>
            )}
         </div>
@@ -169,21 +169,21 @@ export default function AdminUtilitiesPage() {
 
           return (
             <Link href={tool.href} key={idx} className="block group">
-              <Card className="h-full p-6 hover:shadow-xl transition-all duration-300 border-slate-200 hover:border-indigo-200 relative overflow-hidden bg-white">
+              <Card className="h-full p-8 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500 border-slate-100 hover:border-primary/20 relative overflow-hidden bg-white rounded-3xl group-hover:-translate-y-1">
                 
-                <div className={`w-12 h-12 ${tool.bg} rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm`}>
-                  <tool.icon className={`h-6 w-6 ${tool.color}`} />
+                <div className={`w-14 h-14 ${tool.bg} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm`}>
+                  <tool.icon className={`h-7 w-7 ${tool.color}`} />
                 </div>
                 
-                <h3 className="font-bold text-lg text-slate-800 mb-2 group-hover:text-indigo-600 transition-colors">
+                <h3 className="font-bold text-xl text-slate-900 mb-3 tracking-tight group-hover:text-primary transition-colors">
                   {tool.title}
                 </h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-4 font-medium">
+                <p className="text-sm text-slate-500 leading-relaxed mb-6 font-medium">
                   {tool.description}
                 </p>
 
-                <div className="flex items-center text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-indigo-500 transition-colors mt-auto">
-                  Launch Tool <ChevronRight className="h-3 w-3 ml-1" />
+                <div className="flex items-center text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300 group-hover:text-primary transition-colors mt-auto">
+                  Launch Application <ChevronRight className="h-3.5 w-3.5 ml-1.5 group-hover:translate-x-1 transition-transform" />
                 </div>
 
                 {tool.locked && (

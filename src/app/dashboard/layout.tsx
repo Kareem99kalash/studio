@@ -172,25 +172,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-slate-50/30 flex flex-col font-body">
       
       {/* 🟢 TOP NAVIGATION BAR */}
-      <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 lg:px-10 shrink-0 sticky top-0 z-[100] shadow-sm">
+      <header className="h-16 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-6 lg:px-10 shrink-0 sticky top-0 z-[100] shadow-lg">
         
         {/* LEFT: HAMBURGER (Mobile) & LOGO */}
         <div className="flex items-center gap-6">
           
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="lg:hidden p-2 text-primary hover:bg-slate-50 rounded-lg transition-colors"
+            className="lg:hidden p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
           >
             <Menu className="h-5 w-5" />
           </button>
 
           <Link href="/dashboard" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
-              <MapIcon className="h-5 w-5 text-white" />
+            <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center group-hover:shadow-lg group-hover:shadow-white/10 transition-all">
+              <MapIcon className="h-5 w-5 text-slate-950" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-lg text-primary leading-none tracking-tight">GeoCoverage</span>
-              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.1em] mt-1 hidden sm:block">
+              <span className="font-bold text-lg text-white leading-none tracking-tight">GeoCoverage</span>
+              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-[0.1em] mt-1 hidden sm:block">
                  {user.role === 'admin' ? 'Administrator Panel' : 'User Workspace'}
               </span>
             </div>
@@ -207,16 +207,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href={item.href}
                   className={`
                     relative px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-2
-                    ${isActive ? 'text-primary bg-primary/5' : 'text-slate-400 hover:text-primary hover:bg-slate-50'}
+                    ${isActive ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white hover:bg-white/5'}
                   `}
                 >
                   {item.label}
                   {item.label === 'Tickets' && openTicketCount > 0 && (
-                    <span className="flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-white">
+                    <span className="flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-white text-[8px] font-bold text-slate-950">
                       {openTicketCount}
                     </span>
                   )}
-                  {isActive && <span className="absolute bottom-[-14px] left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />}
+                  {isActive && <span className="absolute bottom-[-14px] left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
                 </Link>
               )
             })}
@@ -228,10 +228,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           
           <div className="relative hidden md:block" ref={searchRef}>
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
               <Input 
                 placeholder="Search resources..."
-                className="w-64 h-9 pl-9 bg-slate-50 border-transparent text-primary focus:bg-white focus:border-slate-200 rounded-xl placeholder:text-slate-300 transition-all font-medium text-xs"
+                className="w-64 h-9 pl-9 bg-white/5 border-transparent text-white focus:bg-white/10 focus:border-slate-700 rounded-xl placeholder:text-slate-600 transition-all font-medium text-xs"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => { if(searchQuery) setIsSearchOpen(true) }}
@@ -264,7 +264,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
 
-          <div className="h-6 w-[1px] bg-slate-100 mx-2 hidden md:block" />
+          <div className="h-6 w-[1px] bg-slate-800 mx-2 hidden md:block" />
 
           <NotificationBell user={user} />
 
@@ -272,15 +272,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <HoverCardTrigger asChild>
               <div className="flex items-center gap-3 cursor-pointer group pl-2">
                 <div className="text-right hidden sm:block">
-                  <p className="text-xs font-bold text-slate-700 leading-none group-hover:text-primary transition-colors">
+                  <p className="text-xs font-bold text-white leading-none group-hover:text-slate-300 transition-colors">
                     {user.username}
                   </p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-wider">
+                  <p className="text-[9px] text-slate-500 font-bold uppercase mt-1 tracking-wider">
                     {user.role === 'admin' ? 'Admin' : 'Staff'}
                   </p>
                 </div>
-                <Avatar className="h-9 w-9 border border-slate-100 rounded-xl group-hover:shadow-md transition-all">
-                  <AvatarFallback className="bg-primary/5 text-primary font-bold rounded-xl text-xs">
+                <Avatar className="h-9 w-9 border border-slate-800 rounded-xl group-hover:border-slate-700 transition-all">
+                  <AvatarFallback className="bg-white/10 text-white font-bold rounded-xl text-xs">
                     {user.username?.[0]?.toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
@@ -341,29 +341,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* 🟢 SIDEBAR DRAWER (THE "CURTAIN" for Mobile) */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-primary/20 backdrop-blur-md z-[110] lg:hidden animate-in fade-in duration-300"
+          className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-[110] lg:hidden animate-in fade-in duration-300"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       <div className={`
-        fixed top-0 left-0 h-full w-[280px] bg-white z-[120] shadow-2xl transform transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] lg:hidden border-r border-slate-50
+        fixed top-0 left-0 h-full w-[280px] bg-slate-950 z-[120] shadow-2xl transform transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] lg:hidden border-r border-slate-800
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-50 bg-white">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 bg-slate-950">
            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center">
-                  <MapIcon className="h-5 w-5 text-white" />
+              <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center">
+                  <MapIcon className="h-5 w-5 text-slate-950" />
               </div>
-              <span className="font-bold text-lg text-primary tracking-tight">GeoCoverage</span>
+              <span className="font-bold text-lg text-white tracking-tight">GeoCoverage</span>
            </div>
-           <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-300 hover:text-primary transition-colors">
+           <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-500 hover:text-white transition-colors">
               <X className="h-5 w-5" />
            </button>
         </div>
 
         <div className="p-4 space-y-1 overflow-y-auto">
-           <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-4 px-4">Menu</p>
+           <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mb-4 px-4">Menu</p>
            {NAV_ITEMS.map((item) => {
               if (!hasAccess(item.permission)) return null;
               const isActive = pathname === item.href;
@@ -375,15 +375,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   className={`
                     flex items-center gap-4 px-4 py-3 rounded-xl text-xs font-bold transition-all
                     ${isActive 
-                      ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                      : 'text-slate-500 hover:bg-slate-50 hover:text-primary'
+                      ? 'bg-white text-slate-950 shadow-lg shadow-white/10'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
                     }
                   `}
                 >
-                  <item.icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <item.icon className={`h-4 w-4 ${isActive ? 'text-slate-950' : 'text-slate-500'}`} />
                   {item.label}
                   {item.label === 'Tickets' && openTicketCount > 0 && (
-                    <span className="ml-auto flex h-5 min-w-5 px-1.5 items-center justify-center rounded-full bg-white text-[9px] font-bold text-primary">
+                    <span className="ml-auto flex h-5 min-w-5 px-1.5 items-center justify-center rounded-full bg-white text-[9px] font-bold text-slate-950">
                       {openTicketCount}
                     </span>
                   )}
@@ -393,19 +393,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="absolute bottom-8 left-0 w-full px-6">
-           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-3 group">
+           <div className="bg-white/5 p-4 rounded-2xl border border-slate-800 flex items-center gap-3 group">
                  <Avatar className="h-10 w-10 rounded-xl border border-white shadow-sm group-hover:border-primary/20 transition-all">
-                    <AvatarFallback className="bg-primary/5 text-primary font-bold rounded-xl text-xs">
+                    <AvatarFallback className="bg-white/10 text-white font-bold rounded-xl text-xs">
                         {user.username?.[0]?.toUpperCase()}
                     </AvatarFallback>
                  </Avatar>
                  <div className="flex-1 overflow-hidden">
-                    <div className="font-bold text-xs text-slate-900 truncate tracking-tight">{user.username}</div>
-                    <Badge className="text-[8px] px-1.5 h-4 bg-white border-slate-100 text-slate-400 rounded-md uppercase font-bold tracking-wide mt-1 shadow-none">
+                    <div className="font-bold text-xs text-white truncate tracking-tight">{user.username}</div>
+                    <Badge className="text-[8px] px-1.5 h-4 bg-white/10 border-none text-slate-400 rounded-md uppercase font-bold tracking-wide mt-1 shadow-none">
                       {user.role}
                     </Badge>
                  </div>
-                 <button onClick={handleLogout} className="text-slate-300 hover:text-red-500 transition-colors">
+                 <button onClick={handleLogout} className="text-slate-500 hover:text-red-500 transition-colors">
                     <LogOut className="h-4 w-4" />
                  </button>
             </div>
