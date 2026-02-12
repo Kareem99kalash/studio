@@ -410,13 +410,14 @@ export default function UserManagementPage() {
                 
                 <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
-                      <Input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-9 bg-white" />
+                      <label htmlFor="new-username" className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
+                      <Input id="new-username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-9 bg-white" />
                     </div>
                     <div className="space-y-1 relative">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">Password</label>
+                      <label htmlFor="new-password" className="text-[10px] font-bold text-slate-500 uppercase">Password</label>
                       <div className="relative">
                         <Input 
+                            id="new-password"
                             type={showPassword ? "text" : "password"} 
                             value={newPassword} 
                             onChange={(e) => setNewPassword(e.target.value)} 
@@ -428,6 +429,7 @@ export default function UserManagementPage() {
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
                             className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                            aria-label={showPassword ? "Hide password" : "Show password"}
                         >
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -492,7 +494,16 @@ export default function UserManagementPage() {
                 )}
 
                 <Button className="w-full bg-purple-600 hover:bg-purple-700 font-bold" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="animate-spin" /> : <><UserPlus className="mr-2 h-4" /> Add User</>}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="mr-2 h-4" /> Add User
+                    </>
+                  )}
                 </Button>
               </form>
             </CardContent>
@@ -502,10 +513,16 @@ export default function UserManagementPage() {
           <Card className="border-t-4 border-t-indigo-500 shadow-md">
             <CardHeader className="pb-2"><CardTitle className="text-lg">Groups</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2"><Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-8 text-xs" /><Button size="sm" onClick={handleCreateGroup}><PlusCircle className="h-4 w-4" /></Button></div>
+              <div className="flex gap-2">
+                <Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-8 text-xs" aria-label="New group name" />
+                <Button size="sm" onClick={handleCreateGroup} aria-label="Create group"><PlusCircle className="h-4 w-4" /></Button>
+              </div>
               <div className="space-y-1 max-h-32 overflow-y-auto">
                 {groups.map(g => (
-                    <div key={g.id} className="flex justify-between items-center p-1.5 px-3 bg-slate-50 rounded border text-xs"><span className="font-semibold text-slate-700">{g.name}</span><Button variant="ghost" size="icon" className="h-5 w-5 text-slate-400 hover:text-red-500" onClick={() => handleDeleteGroup(g.id)}><Trash2 className="h-3 w-3" /></Button></div>
+                    <div key={g.id} className="flex justify-between items-center p-1.5 px-3 bg-slate-50 rounded border text-xs">
+                        <span className="font-semibold text-slate-700">{g.name}</span>
+                        <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-400 hover:text-red-500" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
                 ))}
               </div>
             </CardContent>
@@ -553,8 +570,8 @@ export default function UserManagementPage() {
                                 </div>
                             ) : (
                                 <>
-                                <Button variant="ghost" size="sm" onClick={() => openEditModal(user)} className="text-blue-500 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDelete(user)} className="text-red-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => openEditModal(user)} className="text-blue-500 hover:bg-blue-50 hover:text-blue-600" aria-label={`Edit user ${user.username}`}><Pencil className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDelete(user)} className="text-red-500 hover:bg-red-50 hover:text-red-600" aria-label={`Delete user ${user.username}`}><Trash2 className="h-4 w-4" /></Button>
                                 </>
                             )}
                             </div>
@@ -579,7 +596,7 @@ export default function UserManagementPage() {
                         <CardTitle className="text-lg">Access Control</CardTitle>
                         <CardDescription>Advanced settings for <span className="font-bold text-slate-900">{editingUser.username}</span></CardDescription>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400" onClick={() => setEditModalOpen(false)}><X className="h-5 w-5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400" onClick={() => setEditModalOpen(false)} aria-label="Close modal"><X className="h-5 w-5" /></Button>
                  </div>
               </CardHeader>
               
@@ -595,8 +612,9 @@ export default function UserManagementPage() {
                     <div className="p-6 overflow-y-auto flex-1">
                       <TabsContent value="general" className="space-y-4 mt-0">
                           <div className="space-y-1">
-                             <label className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
+                             <label htmlFor="edit-password" className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
                              <Input 
+                               id="edit-password"
                                type="password" 
                                value={editPassword} 
                                onChange={(e) => setEditPassword(e.target.value)} 
@@ -608,15 +626,15 @@ export default function UserManagementPage() {
 
                           <div className="grid grid-cols-2 gap-4">
                              <div className="space-y-1">
-                                <label className="text-xs font-bold text-slate-500 uppercase">Assigned Group</label>
-                                <select className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editGroup} onChange={(e) => setEditGroup(e.target.value)}>
+                                <label htmlFor="edit-group" className="text-xs font-bold text-slate-500 uppercase">Assigned Group</label>
+                                <select id="edit-group" className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editGroup} onChange={(e) => setEditGroup(e.target.value)}>
                                    <option value="">-- Global / None --</option>
                                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                                 </select>
                              </div>
                              <div className="space-y-1">
-                                <label className="text-xs font-bold text-slate-500 uppercase">Role Level</label>
-                                <select className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+                                <label htmlFor="edit-role" className="text-xs font-bold text-slate-500 uppercase">Role Level</label>
+                                <select id="edit-role" className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editRole} onChange={(e) => setEditRole(e.target.value)}>
                                    {getAssignableRoles().map(r => (
                                        <option key={r.val} value={r.val}>{r.label}</option>
                                    ))}
@@ -659,7 +677,16 @@ export default function UserManagementPage() {
               <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0 rounded-b-lg">
                  <Button variant="outline" onClick={() => setEditModalOpen(false)}>Cancel</Button>
                  <Button className="bg-blue-600 hover:bg-blue-700 min-w-[120px]" onClick={handleSaveEdit} disabled={isSaving}>
-                    {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <><Save className="mr-2 h-4 w-4" /> Save Access</>}
+                    {isSaving ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                        </>
+                    ) : (
+                        <>
+                            <Save className="mr-2 h-4 w-4" /> Save Access
+                        </>
+                    )}
                  </Button>
               </div>
            </Card>
