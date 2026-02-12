@@ -68,7 +68,7 @@ export async function loginAction(formData: FormData) {
     console.error("LOGIN ERROR:", error); 
     return { 
       success: false, 
-      message: `System Error: ${error.message}` 
+      message: 'A system error occurred. Please try again later.'
     };
   }
 }

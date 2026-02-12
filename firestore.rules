@@ -103,9 +103,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      // Allow user creation by an admin, or a user creating their own doc.
-      allow create: if isOwner(userId) || isAdmin();
-      allow update: if (isOwner(userId) || isAdmin());
+      // Allow user creation by an admin. Users creating their own doc are forced to 'viewer' role.
+      allow create: if (isOwner(userId) && request.resource.data.role == 'viewer') || isAdmin();
+      // Prevent users from escalating their own role or permissions.
+      allow update: if (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'permissions'])) || isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -120,8 +121,8 @@ service cloud.firestore {
       // Any signed in user can read their OWN admin role status.
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      // A user can make themselves an admin.
-      allow create: if isOwner(userId);
+      // Only existing admins can grant admin privileges to users.
+      allow create: if isAdmin();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
