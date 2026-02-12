@@ -36,15 +36,17 @@ import {
   X,
   Wrench,
   Eye,
-  EyeOff
+  EyeOff,
+  HelpCircle
 } from 'lucide-react';
 import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
+import Link from 'next/link';
 
 // --- CONFIGURATION ---
 const ROLE_PRESETS: Record<string, string[]> = {
   'viewer': ['view_dashboard', 'view_cities', 'view_tickets'],
   'analyst': ['view_dashboard', 'view_cities', 'view_tickets', 'tool_topology', 'tool_maps', 'tool_coords'],
-  'manager': ['view_dashboard', 'view_audit', 'view_cities', 'view_tickets', 'create_tickets', 'manage_tickets', 'manage_cities', 'tool_batch'],
+  'manager': ['view_dashboard', 'view_audit', 'view_cities', 'view_tickets', 'create_tickets', 'manage_tickets', 'manage_cities', 'tool_batch', 'view_documentation'],
   'admin': [] // Admin gets everything automatically
 };
 
@@ -67,6 +69,7 @@ const PERMISSION_GROUPS = [
     icon: LayoutGrid,
     actions: [
       { id: 'view_dashboard', label: 'View Dashboard' },
+      { id: 'view_documentation', label: 'View Documentation' },
       { id: 'view_audit', label: 'View Audit Logs' },
       { id: 'view_cities', label: 'View City Data' },
     ]
@@ -111,6 +114,7 @@ export default function UserManagementPage() {
   const [createPermissions, setCreatePermissions] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
 
   // GROUP FORM STATE
   const [newGroupName, setNewGroupName] = useState('');
@@ -282,8 +286,33 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const nextStep = () => {
+    if (wizardStep === 1) {
+        if (!newUsername || !newPassword) {
+            toast({ variant: "destructive", title: "Missing Information", description: "Please enter a username and password." });
+            return;
+        }
+    }
+    if (wizardStep === 2) {
+        if (createRole === 'custom') {
+            setWizardStep(3);
+            return;
+        }
+        setWizardStep(4);
+        return;
+    }
+    setWizardStep(prev => prev + 1);
+  };
+
+  const prevStep = () => {
+    if (wizardStep === 4 && createRole !== 'custom') {
+        setWizardStep(2);
+        return;
+    }
+    setWizardStep(prev => Math.max(1, prev - 1));
+  };
+
+  const handleCreateUser = async () => {
     if (!newUsername || !newPassword) return;
 
     setIsSubmitting(true);
@@ -310,6 +339,7 @@ export default function UserManagementPage() {
       setNewUsername('');
       setNewPassword('');
       setCreateGroup('');
+      setWizardStep(1);
       handleRoleChange('viewer');
       
       toast({ title: "User Created", description: `${cleanUsername} ready.` });
@@ -391,84 +421,119 @@ export default function UserManagementPage() {
   return (
     <div className="p-8 space-y-8 relative max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-900 tracking-tight">
-          <Shield className="text-primary" /> User & Access Control
-        </h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-900 tracking-tight">
+            <Shield className="text-primary" /> User & Access Control
+          </h1>
+          <Link href="/dashboard/documentation#access-control" className="text-slate-300 hover:text-primary transition-colors" title="View Documentation">
+            <HelpCircle className="h-6 w-6" />
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         
-        {/* LEFT COLUMN: QUICK ADD USER */}
+        {/* LEFT COLUMN: QUICK ADD USER (WIZARD) */}
         <div className="xl:col-span-1 space-y-8">
-          <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
+          <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden min-h-[420px] flex flex-col">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Quick Add User</CardTitle>
-              <CardDescription>Create credentials & assign simplified roles.</CardDescription>
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-lg">User Wizard</CardTitle>
+                <Badge variant="secondary" className="bg-primary/5 text-primary text-[10px] font-bold">Step {wizardStep}/4</Badge>
+              </div>
+              <CardDescription>
+                {wizardStep === 1 && "Secure the identity of the new member."}
+                {wizardStep === 2 && "Assign location & baseline access level."}
+                {wizardStep === 3 && "Configure granular access overrides."}
+                {wizardStep === 4 && "Final review before account creation."}
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateUser} className="space-y-4">
-                
-                <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                    <div className="space-y-1">
-                      <label htmlFor="new-username" className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
-                      <Input id="new-username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-9 bg-white" />
+            <CardContent className="flex-1 flex flex-col justify-between">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  wizardStep < 4 ? nextStep() : handleCreateUser();
+                }}
+                className="flex-1 flex flex-col justify-between"
+              >
+              <div className="space-y-4 flex-1">
+                {/* STEP 1: IDENTITY */}
+                {wizardStep === 1 && (
+                  <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="space-y-1">
+                          <label htmlFor="new-username" className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
+                          <Input id="new-username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-10 bg-white rounded-lg" />
+                        </div>
+                        <div className="space-y-1 relative">
+                          <label htmlFor="new-password" className="text-[10px] font-bold text-slate-500 uppercase">Initial Password</label>
+                          <div className="relative">
+                            <Input
+                                id="new-password"
+                                type={showPassword ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="••••••"
+                                required
+                                className="h-10 bg-white pr-10 rounded-lg"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                                aria-label={showPassword ? "Hide password" : "Show password"}
+                            >
+                                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            </button>
+                          </div>
+                        </div>
                     </div>
-                    <div className="space-y-1 relative">
-                      <label htmlFor="new-password" className="text-[10px] font-bold text-slate-500 uppercase">Password</label>
-                      <div className="relative">
-                        <Input 
-                            id="new-password"
-                            type={showPassword ? "text" : "password"} 
-                            value={newPassword} 
-                            onChange={(e) => setNewPassword(e.target.value)} 
-                            placeholder="••••••" 
-                            required 
-                            className="h-9 bg-white pr-8" 
-                        />
-                        <button 
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
-                            aria-label={showPassword ? "Hide password" : "Show password"}
-                        >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
+                  </div>
+                )}
+
+                {/* STEP 2: ROLE & GROUP */}
+                {wizardStep === 2 && (
+                  <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Region Assignment</label>
+                        <select className="w-full p-2 h-10 border rounded-lg bg-white text-sm focus:ring-2 focus:ring-primary outline-none" value={createGroup} onChange={(e) => setCreateGroup(e.target.value)}>
+                          <option value="">-- Global / None --</option>
+                          {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Primary Role Template</label>
+                          <select
+                            className="w-full p-2 h-10 border rounded-lg bg-white text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary outline-none"
+                            value={createRole}
+                            onChange={(e) => handleRoleChange(e.target.value)}
+                          >
+                            {getAssignableRoles().map(r => (
+                                <option key={r.val} value={r.val}>{r.label}</option>
+                            ))}
+                          </select>
                       </div>
                     </div>
-                </div>
+                  </div>
+                )}
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Geographic Group</label>
-                  <select className="w-full p-2 h-9 border rounded-md bg-white text-sm" value={createGroup} onChange={(e) => setCreateGroup(e.target.value)}>
-                    <option value="">-- Global / None --</option>
-                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Role Template</label>
-                    <select 
-                      className="w-full p-2 h-9 border rounded-md bg-white text-sm font-medium text-slate-700 focus:ring-2 focus:ring-purple-500 outline-none" 
-                      value={createRole} 
-                      onChange={(e) => handleRoleChange(e.target.value)}
-                    >
-                      {getAssignableRoles().map(r => (
-                          <option key={r.val} value={r.val}>{r.label}</option>
-                      ))}
-                    </select>
-                </div>
-
-                {createRole === 'custom' && (
-                    <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="flex items-center justify-between mb-2">
-                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Granular Permissions</span>
-                             <Badge variant="outline" className="text-[9px] bg-white rounded-md">Custom</Badge>
+                {/* STEP 3: GRANULAR PERMISSIONS */}
+                {wizardStep === 3 && (
+                   <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                    <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50">
+                        <div className="flex items-center justify-between mb-4">
+                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Protocol Overrides</span>
+                             <Badge className="text-[9px] bg-primary text-white rounded-md">Advanced</Badge>
                         </div>
-                        <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                        <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                             {PERMISSION_GROUPS.map((group) => (
-                                <div key={group.category}>
-                                    <h5 className="text-[9px] font-bold text-slate-400 uppercase mb-1">{group.category}</h5>
-                                    <div className="grid grid-cols-1 gap-1">
+                                <div key={group.category} className="mb-4 last:mb-0">
+                                    <h5 className="text-[10px] font-bold text-slate-900 uppercase mb-2 flex items-center gap-2">
+                                      <group.icon className="h-3 w-3 text-slate-400" /> {group.category}
+                                    </h5>
+                                    <div className="grid grid-cols-1 gap-1.5 pl-5">
                                         {group.actions.map((action) => (
                                             <div key={action.id} className="flex items-center space-x-2">
                                                 <Checkbox 
@@ -476,11 +541,11 @@ export default function UserManagementPage() {
                                                     checked={createPermissions[action.id] || false} 
                                                     onCheckedChange={() => togglePermission(action.id, createPermissions, setCreatePermissions)} 
                                                     disabled={!canAssignPermission(action.id)} 
-                                                    className="h-3.5 w-3.5 disabled:opacity-30"
+                                                    className="h-4 w-4 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                                                 />
                                                 <label 
                                                     htmlFor={`create-${action.id}`} 
-                                                    className={`text-[10px] font-medium cursor-pointer ${canAssignPermission(action.id) ? 'text-slate-700' : 'text-slate-400 line-through'}`}
+                                                    className={`text-[11px] font-medium cursor-pointer ${canAssignPermission(action.id) ? 'text-slate-600' : 'text-slate-300 line-through'}`}
                                                 >
                                                     {action.label}
                                                 </label>
@@ -491,20 +556,68 @@ export default function UserManagementPage() {
                             ))}
                         </div>
                     </div>
+                  </div>
                 )}
 
-                <Button className="w-full bg-primary hover:bg-primary/90 font-bold rounded-xl h-11 shadow-lg shadow-primary/20 transition-all" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="mr-2 h-4" /> Create Account
-                    </>
-                  )}
-                </Button>
+                {/* STEP 4: CONFIRMATION */}
+                {wizardStep === 4 && (
+                  <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                    <div className="bg-slate-900 rounded-2xl p-5 text-white space-y-4 border border-slate-800 shadow-xl">
+                       <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                             <Shield className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Final Clearance</p>
+                             <p className="font-bold text-lg">{newUsername}</p>
+                          </div>
+                       </div>
+
+                       <div className="space-y-2 pt-2 border-t border-white/5">
+                          <div className="flex justify-between text-xs">
+                             <span className="text-slate-500">Group:</span>
+                             <span className="font-bold">{createGroup ? getGroupName(createGroup) : "Global Access"}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                             <span className="text-slate-500">Role:</span>
+                             <span className="font-bold uppercase text-primary">{createRole}</span>
+                          </div>
+                          <div className="flex justify-between text-xs pt-1">
+                             <span className="text-slate-500">Permissions:</span>
+                             <span className="font-bold">{createRole === 'admin' ? "Full Administrator" : `${Object.values(createPermissions).filter(Boolean).length} Active Protocol(s)`}</span>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-6">
+                {wizardStep > 1 && (
+                  <Button type="button" variant="outline" onClick={prevStep} className="flex-1 h-11 rounded-xl font-bold border-slate-200">
+                    Back
+                  </Button>
+                )}
+
+                {wizardStep < 4 ? (
+                  <Button type="submit" className="flex-[2] bg-primary hover:bg-primary/90 font-bold rounded-xl h-11 shadow-lg shadow-primary/20 transition-all">
+                    Next Section
+                  </Button>
+                ) : (
+                  <Button type="submit" className="flex-[2] bg-green-600 hover:bg-green-700 font-bold rounded-xl h-11 shadow-lg shadow-green-200 transition-all text-white" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Provisioning...
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="mr-2 h-4 w-4" /> Create Account
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
               </form>
             </CardContent>
           </Card>
@@ -600,6 +713,7 @@ export default function UserManagementPage() {
                  </div>
               </CardHeader>
               
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit(); }} className="flex-1 flex flex-col overflow-hidden">
               <CardContent className="p-0 overflow-hidden flex-1 flex flex-col">
                  <Tabs defaultValue="general" className="flex-1 flex flex-col">
                     <div className="px-6 pt-4 shrink-0">
@@ -675,8 +789,8 @@ export default function UserManagementPage() {
               </CardContent>
 
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0 rounded-b-2xl">
-                 <Button variant="outline" className="rounded-xl px-6" onClick={() => setEditModalOpen(false)}>Cancel</Button>
-                 <Button className="bg-primary hover:bg-primary/90 min-w-[140px] rounded-xl shadow-lg shadow-primary/20" onClick={handleSaveEdit} disabled={isSaving}>
+                 <Button type="button" variant="outline" className="rounded-xl px-6" onClick={() => setEditModalOpen(false)}>Cancel</Button>
+                 <Button type="submit" className="bg-primary hover:bg-primary/90 min-w-[140px] rounded-xl shadow-lg shadow-primary/20" disabled={isSaving}>
                     {isSaving ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -689,6 +803,7 @@ export default function UserManagementPage() {
                     )}
                  </Button>
               </div>
+              </form>
            </Card>
         </div>
       )}

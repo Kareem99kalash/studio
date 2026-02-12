@@ -12,8 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Plus, Loader2, FileSpreadsheet, Download, Trash2, ShieldAlert, ChevronLeft } from 'lucide-react';
+import { Search, Plus, Loader2, FileSpreadsheet, Download, Trash2, ShieldAlert, ChevronLeft, HelpCircle } from 'lucide-react';
 import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook Correctly
+import Link from 'next/link';
 
 export default function TicketsPage() {
   const router = useRouter();
@@ -164,7 +165,12 @@ export default function TicketsPage() {
     <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Support Tickets</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+               Support Tickets
+               <Link href="/dashboard/documentation#operational">
+                  <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+               </Link>
+            </h1>
             <p className="text-sm text-slate-500 mt-1">Submit zone additions or system requests.</p>
         </div>
         <div className="flex gap-2">

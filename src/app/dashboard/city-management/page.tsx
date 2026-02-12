@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert, Layers, ArrowRightLeft, Server } from 'lucide-react';
+import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert, Layers, ArrowRightLeft, Server, HelpCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { HelpGuide } from '@/components/dashboard/help-guide'; 
 import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
+import Link from 'next/link';
 
 // --- CONFIGURATION ---
 const ENGINES = [
@@ -269,7 +270,12 @@ export default function CityManagementPage() {
   return (
     <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">City Management</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+           City Management
+           <Link href="/dashboard/documentation#operational">
+              <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+           </Link>
+        </h1>
         <Badge variant="outline" className="bg-white border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">{canManage ? 'Full Access' : 'View Only'}</Badge>
       </div>
 

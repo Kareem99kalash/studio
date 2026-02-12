@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Papa from 'papaparse';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, RefreshCw, Upload, FileSpreadsheet } from 'lucide-react';
+import { Download, RefreshCw, Upload, FileSpreadsheet, HelpCircle } from 'lucide-react';
+import Link from 'next/link';
 
 export default function CoordinateFlipperPage() {
   const [data, setData] = useState<any[]>([]);
@@ -67,6 +68,9 @@ export default function CoordinateFlipperPage() {
       <div className="border-b pb-4">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <RefreshCw className="h-6 w-6 text-orange-600"/> Coordinate Flipper
+            <Link href="/dashboard/documentation#coord-flipper">
+                <HelpCircle className="h-4 w-4 text-slate-300 hover:text-orange-600 transition-colors cursor-help" />
+            </Link>
         </h1>
         <p className="text-slate-500">Converts WKT to flipped raw coordinates (Lat Lng,Lat Lng...)</p>
       </div>

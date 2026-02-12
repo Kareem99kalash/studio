@@ -16,10 +16,11 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Save, Loader2, ChevronDown, ChevronUp, Plus, Trash2, Store, 
-  Lock, Layers, Split 
+  Lock, Layers, Split, HelpCircle
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
+import Link from 'next/link';
 
 interface Threshold {
   green: number;
@@ -159,7 +160,12 @@ export default function CityThresholdsPage() {
     <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Coverage Thresholds</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+               Coverage Thresholds
+               <Link href="/dashboard/documentation#operational">
+                  <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+               </Link>
+            </h1>
             <p className="text-sm text-slate-500 mt-1">Manage Internal, External, and Border-Specific limits.</p>
         </div>
         {!canManage && (
