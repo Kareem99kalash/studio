@@ -1,32 +1,27 @@
+// 🟢 FIXED: Both imports must come from 'next/server'
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server'; 
 import { decrypt } from '@/lib/auth';
 
 export async function middleware(req: NextRequest) {
-  const path = req.nextUrl.pathname;
+  const { pathname } = req.nextUrl;
 
-  // 1. Define your boundaries clearly
-  const isProtectedRoute = path.startsWith('/dashboard');
-  const isPublicRoute = path === '/' || path === '/login';
+  const accessToken = req.cookies.get('session_access')?.value;
+  const session = accessToken ? await decrypt(accessToken) : null;
 
-  // 2. Get the Access Token
-  const token = req.cookies.get('session_access')?.value;
-  const session = await decrypt(token || '');
-
-  // 🛡️ REDIRECT 1: If trying to access Dashboard WITHOUT a session -> Go to Login
-  if (isProtectedRoute && !session) {
-    return NextResponse.redirect(new URL('/', req.nextUrl));
+  // 🛡️ If on dashboard without session -> Login
+  if (pathname.startsWith('/dashboard') && !session) {
+    return NextResponse.redirect(new URL('/', req.url));
   }
 
-  // 🛡️ REDIRECT 2: If trying to access Login WITH a valid session -> Go to Dashboard
-  if (isPublicRoute && session) {
-    return NextResponse.redirect(new URL('/dashboard', req.nextUrl));
+  // 🛡️ If on login with valid session -> Dashboard
+  if ((pathname === '/' || pathname === '/login') && session) {
+    return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
   return NextResponse.next();
 }
 
-// 🟢 CRUCIAL: Ensure the matcher excludes static assets and API routes
 export const config = {
   matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };
