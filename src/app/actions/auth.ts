@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { encrypt } from '@/lib/auth';
 import { logger } from '@/lib/logger';
-import { adminDb } from '@/lib/firebase-admin'; // 🟢 Import Admin DB
+import { adminDb } from '@/lib/firebase-admin';
 
 export async function loginAction(formData: FormData) {
   const username = (formData.get('username') as string).toLowerCase().trim();
@@ -11,7 +11,6 @@ export async function loginAction(formData: FormData) {
 
   try {
     // 1. Verify Credentials using ADMIN SDK
-    // Note: Admin SDK syntax is slightly different (.get() instead of getDoc())
     const userRef = adminDb.collection('users').doc(username);
     const userSnap = await userRef.get();
 
@@ -42,26 +41,31 @@ export async function loginAction(formData: FormData) {
 
     // 5. Set Secure Cookies
     const cookieStore = await cookies();
+    const isProd = process.env.NODE_ENV === 'production';
     
+    // 🟢 Access Token Configuration
     cookieStore.set('session_access', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProd, // Must be true on Vercel
       sameSite: 'lax',
-      expires: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
+      path: '/', // 🛡️ CRUCIAL: Makes cookie visible to /dashboard
+      expires: new Date(Date.now() + 15 * 60 * 1000), 
     });
 
+    // 🟢 Refresh Token Configuration
     cookieStore.set('session_refresh', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProd,
       sameSite: 'lax',
-      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      path: '/', // 🛡️ CRUCIAL: Makes cookie visible to middleware
+      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
     logger.info('Auth', `User logged in: ${username}`);
     return { success: true };
 
   } catch (error: any) {
-    console.error("LOGIN ERROR:", error); // Check Vercel logs for this line
+    console.error("LOGIN ERROR:", error); 
     return { 
       success: false, 
       message: `System Error: ${error.message}` 
@@ -71,6 +75,7 @@ export async function loginAction(formData: FormData) {
 
 export async function logoutAction() {
   const cookieStore = await cookies();
-  cookieStore.delete('session_access');
-  cookieStore.delete('session_refresh');
+  // 🟢 Ensure we delete cookies from the root path
+  cookieStore.set('session_access', '', { path: '/', maxAge: 0 });
+  cookieStore.set('session_refresh', '', { path: '/', maxAge: 0 });
 }
