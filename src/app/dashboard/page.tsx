@@ -400,9 +400,9 @@ export default function DashboardPage() {
 
   if (isCheckingStatus || loading) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-6">
-          <Loader2 className="animate-spin h-12 w-12 text-primary" />
-          <p className="text-primary font-black uppercase tracking-[0.5em] text-[10px] animate-pulse">Initializing System</p>
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
+          <Loader2 className="animate-spin h-10 w-10 text-primary/30" />
+          <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">Loading Workspace</p>
       </div>
     );
   }
@@ -411,63 +411,63 @@ export default function DashboardPage() {
   if (isMaintenance && !isAdmin) return <MaintenanceScreen message={maintenanceMsg} />;
 
   return (
-    <div className="h-screen flex flex-col bg-white overflow-hidden font-body relative">
-      {isMaintenance && isAdmin && <div className="bg-primary text-white text-[10px] font-black text-center py-2 border-b border-primary/20 uppercase tracking-widest">Maintenance Mode: Active Override</div>}
+    <div className="h-screen flex flex-col bg-slate-50/30 overflow-hidden font-body relative">
+      {isMaintenance && isAdmin && <div className="bg-primary text-white text-[10px] font-bold text-center py-1.5 border-b border-primary/20 uppercase tracking-wider">Maintenance Mode Active</div>}
 
-      <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0 z-40 relative">
-        <div className="flex items-center gap-4">
-            <div className="bg-primary p-3 rounded-none shadow-xl"><Radar className="text-white h-6 w-6" /></div>
+      <header className="h-16 bg-white border-b border-slate-100 px-6 flex items-center justify-between shrink-0 z-40 relative">
+        <div className="flex items-center gap-3">
+            <div className="bg-primary p-2 rounded-xl shadow-lg shadow-primary/20"><Radar className="text-white h-5 w-5" /></div>
             <div>
-                <h1 className="font-black text-2xl tracking-tighter text-primary leading-none uppercase italic">Command Center</h1>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1.5 border-l-2 border-primary pl-2">Strategic Intelligence Unit</p>
+                <h1 className="font-bold text-lg tracking-tight text-primary leading-none">Operations Hub</h1>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Coverage Analysis System</p>
             </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
            {isAdmin && <MaintenanceControl />}
-           {analyzing && <div className="flex items-center gap-3 text-primary bg-slate-50 px-4 py-2 rounded-none border border-slate-200 shadow-sm"><Loader2 className="h-4 w-4 animate-spin" /><span className="text-[10px] font-black uppercase tracking-widest">Processing Matrix</span></div>}
-           {analysisData && !analyzing && <Badge variant="outline" className="border-primary/20 bg-slate-50 text-primary gap-2 py-2 px-4 shadow-sm rounded-none"><span className="h-2 w-2 rounded-none bg-primary animate-pulse"></span> <span className="text-[10px] font-black uppercase tracking-widest">Operations Online</span></Badge>}
+           {analyzing && <div className="flex items-center gap-2 text-primary bg-primary/5 px-3 py-1.5 rounded-full border border-primary/10"><Loader2 className="h-3 w-3 animate-spin" /><span className="text-[9px] font-bold uppercase tracking-wider">Analyzing Grid</span></div>}
+           {analysisData && !analyzing && <Badge variant="outline" className="border-emerald-100 bg-emerald-50 text-emerald-600 gap-1.5 py-1.5 px-3 shadow-none rounded-full"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> <span className="text-[9px] font-bold uppercase tracking-wider">Ready</span></Badge>}
         </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-[400px] bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20 shadow-2xl">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50"><span className="text-[11px] font-black text-primary uppercase tracking-[0.2em] flex items-center gap-3"><Settings2 className="h-4 w-4" /> Parameters</span></div>
-            <div className="flex-1 overflow-y-auto p-8 space-y-10 scrollbar-hide">
-                <div className="space-y-4">
-                    <Label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-3"><MapIcon className="h-4 w-4 text-primary" /> Tactical Region</Label>
+        <div className="w-[360px] bg-white border-r border-slate-100 flex flex-col shrink-0 overflow-hidden z-20 shadow-sm">
+            <div className="p-5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Settings2 className="h-3.5 w-3.5" /> Configuration</span></div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
+                <div className="space-y-3">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapIcon className="h-3.5 w-3.5 text-primary/50" /> Regional Territory</Label>
                     <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id}>
-                        <SelectTrigger className="h-14 border-slate-200 bg-slate-50 hover:border-primary transition-all text-sm font-black rounded-none shadow-sm uppercase tracking-wider"><SelectValue placeholder="Select Territory" /></SelectTrigger>
-                        <SelectContent className="rounded-none border-slate-200 shadow-2xl">{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-bold text-xs uppercase py-3">{c.name}</SelectItem>)}</SelectContent>
+                        <SelectTrigger className="h-11 border-slate-100 bg-slate-50/50 hover:border-primary/20 transition-all text-xs font-bold rounded-xl shadow-none"><SelectValue placeholder="Select Territory" /></SelectTrigger>
+                        <SelectContent className="rounded-xl border-slate-100 shadow-2xl">{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-semibold text-xs py-2.5">{c.name}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
-                <div className="space-y-6">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                        <Label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-3"><Store className="h-4 w-4 text-primary" /> Operational Hubs</Label>
-                        <Button variant="ghost" size="sm" onClick={addStore} className="h-9 px-4 text-[10px] font-black text-primary bg-slate-100 hover:bg-primary hover:text-white rounded-none uppercase tracking-widest transition-all"><Plus className="h-4 w-4 mr-2" /> Add Node</Button>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-50 pb-3">
+                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Store className="h-3.5 w-3.5 text-primary/50" /> Distribution Hubs</Label>
+                        <Button variant="ghost" size="sm" onClick={addStore} className="h-8 text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary hover:text-white rounded-lg uppercase tracking-wide transition-all"><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Node</Button>
                     </div>
-                    <div className="space-y-4 min-h-[100px]">
+                    <div className="space-y-3 min-h-[100px]">
                         {stores.map((store, idx) => (
-                            <div key={store.id} className="relative group bg-slate-50 rounded-none border p-5 shadow-sm border-slate-200 hover:border-primary transition-all hover:shadow-xl hover:bg-white">
-                                <div className="space-y-4">
+                            <div key={store.id} className="relative group bg-slate-50/50 rounded-2xl border p-4 shadow-none border-slate-100 hover:border-primary/20 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
+                                <div className="space-y-3">
                                     <div className="flex justify-between items-start">
-                                            <div className="flex items-center gap-3 w-full">
-                                                <div className="h-6 w-6 rounded-none bg-primary flex items-center justify-center text-white text-[10px] font-black shrink-0 shadow-lg">{idx + 1}</div>
-                                                <Input className="h-8 p-0 border-none shadow-none text-sm font-black text-primary focus-visible:ring-0 placeholder:text-slate-300 w-full uppercase tracking-tight" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
+                                            <div className="flex items-center gap-2 w-full">
+                                                <div className="h-5 w-5 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">{idx + 1}</div>
+                                                <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full tracking-tight" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-none -mr-1" onClick={() => removeStore(store.id)}><Trash2 className="h-4 w-4" /></Button>
+                                            <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg -mr-1" onClick={() => removeStore(store.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                     </div>
-                                    <div className="bg-white rounded-none px-3 py-2 flex items-center gap-3 border border-slate-100 shadow-inner">
-                                        <code className="text-[9px] text-slate-300 font-black uppercase tracking-widest shrink-0">POS:</code>
-                                        <Input className="h-5 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-primary font-black focus-visible:ring-0 w-full" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} placeholder="0.0000, 0.0000" />
+                                    <div className="bg-white rounded-xl px-3 py-1.5 flex items-center gap-2 border border-slate-50 shadow-sm">
+                                        <code className="text-[8px] text-slate-300 font-bold uppercase tracking-widest shrink-0">LOC:</code>
+                                        <Input className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-slate-600 focus-visible:ring-0 w-full" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} placeholder="Lat, Lng" />
                                     </div>
-                                    <div className="pt-4 border-t border-slate-200/50">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Protocol:</span>
+                                    <div className="pt-3 border-t border-slate-100/50">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest whitespace-nowrap">Protocol:</span>
                                             <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
-                                                <SelectTrigger className="h-8 w-full text-[10px] font-black border-slate-200 bg-white rounded-none uppercase tracking-widest"><SelectValue /></SelectTrigger>
-                                                <SelectContent className="rounded-none">
-                                                    <SelectItem value="default" className="text-[10px] font-black uppercase">Standard Zone</SelectItem>
-                                                    {availableRules.map((c, i) => (<SelectItem key={i} value={c.name} className="text-[10px] font-black uppercase">{c.name} [{c.green}KM]</SelectItem>))}
+                                                <SelectTrigger className="h-7 w-full text-[9px] font-bold border-slate-100 bg-white rounded-lg shadow-none"><SelectValue /></SelectTrigger>
+                                                <SelectContent className="rounded-xl">
+                                                    <SelectItem value="default" className="text-[10px] font-semibold">Standard Settings</SelectItem>
+                                                    {availableRules.map((c, i) => (<SelectItem key={i} value={c.name} className="text-[10px] font-semibold">{c.name} ({c.green}km)</SelectItem>))}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -478,42 +478,40 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
-            <div className="p-8 border-t border-slate-100 bg-white shadow-[0_-10px_30px_rgba(0,0,0,0.02)]">
-                <Button className="w-full h-16 rounded-none bg-primary text-white font-black uppercase tracking-[0.25em] text-xs hover:bg-slate-900 shadow-2xl active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
-                    <div className="flex items-center gap-4 relative z-10">
-                        {analyzing ? <Loader2 className="animate-spin h-5 w-5 text-white" /> : <Zap className="h-5 w-5 text-white group-hover:scale-125 transition-transform duration-500" />}
-                        <span>{analyzing ? "Synthesizing Data..." : "Run Strategic Analysis"}</span>
+            <div className="p-6 border-t border-slate-50 bg-white">
+                <Button className="w-full h-12 rounded-2xl bg-primary text-white font-bold uppercase tracking-widest text-[10px] hover:bg-primary/90 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
+                    <div className="flex items-center gap-3 relative z-10">
+                        {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-white" /> : <Zap className="h-4 w-4 text-white group-hover:scale-110 transition-transform" />}
+                        <span>{analyzing ? "Processing Matrix..." : "Start Coverage Analysis"}</span>
                     </div>
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
                 </Button>
             </div>
         </div>
 
-        <div className="flex-1 bg-slate-50 overflow-hidden flex flex-col relative z-10">
+        <div className="flex-1 bg-white overflow-hidden flex flex-col relative z-10">
             {!selectedCity ? (
-                <div className="h-full w-full flex flex-col items-center justify-center bg-white gap-8">
-                    <div className="h-32 w-32 bg-slate-50 border border-slate-100 rounded-none flex items-center justify-center shadow-inner relative">
-                      <div className="absolute inset-4 border border-slate-200 border-dashed animate-pulse"></div>
-                      <MapIcon className="h-12 w-12 text-slate-200" />
+                <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50/30 gap-6">
+                    <div className="h-24 w-24 bg-white rounded-3xl flex items-center justify-center shadow-sm relative border border-slate-100">
+                      <MapIcon className="h-8 w-8 text-slate-200" />
                     </div>
-                    <p className="font-black uppercase tracking-[0.4em] text-[11px] text-slate-300 animate-pulse">Awaiting Regional Deployment</p>
+                    <p className="font-bold uppercase tracking-widest text-[10px] text-slate-300">Select a region to begin</p>
                 </div>
             ) : (
                 <Tabs defaultValue="map" className="h-full flex flex-col">
-                    <div className="h-16 border-b border-slate-200 flex items-center justify-between px-8 bg-white shrink-0">
-                        <div className="flex items-center gap-6">
-                            <span className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em]">Operational Interface:</span>
-                            <TabsList className="bg-slate-100 p-1 h-10 rounded-none w-[320px]">
-                                <TabsTrigger value="map" className="flex-1 rounded-none text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-lg h-8 transition-all"><MapIcon className="h-3.5 w-3.5 mr-2" /> Spatial Map</TabsTrigger>
-                                <TabsTrigger value="table" className="flex-1 rounded-none text-[10px] font-black uppercase tracking-widest data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-lg h-8 transition-all"><TableIcon className="h-3.5 w-3.5 mr-2" /> Intelligence Grid</TabsTrigger>
+                    <div className="h-14 border-b border-slate-100 flex items-center justify-between px-6 bg-white shrink-0">
+                        <div className="flex items-center gap-4">
+                            <span className="text-[9px] font-bold uppercase text-slate-300 tracking-widest">View Mode:</span>
+                            <TabsList className="bg-slate-100 p-1 h-9 rounded-xl w-[280px]">
+                                <TabsTrigger value="map" className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><MapIcon className="h-3.5 w-3.5 mr-2" /> Geo-Map</TabsTrigger>
+                                <TabsTrigger value="table" className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><TableIcon className="h-3.5 w-3.5 mr-2" /> Data-Grid</TabsTrigger>
                             </TabsList>
                         </div>
-                        <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 border border-slate-100">
-                            <span className="h-2 w-2 rounded-none bg-primary animate-pulse shadow-[0_0_8px_rgba(0,0,0,0.5)]"></span>
-                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{selectedCity.name} Sector</span>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{selectedCity.name}</span>
                         </div>
                     </div>
-                    <div className="flex-1 relative bg-white">
+                    <div className="flex-1 relative bg-slate-50/50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full border-none">
                              {getDisplayPolygons().features.length > 0 ? (
                                 <MapView 
@@ -527,49 +525,47 @@ export default function DashboardPage() {
                                     isLoading={analyzing} 
                                 />
                             ) : (
-                                <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-slate-50">
-                                    <AlertTriangle className="h-16 w-16 mb-6 text-primary/20" />
-                                    <p className="font-black text-primary uppercase tracking-[0.3em] text-sm">Geodata Synchronization Failure</p>
-                                    <p className="text-[10px] font-bold text-slate-400 mt-3 uppercase tracking-widest border-t border-slate-200 pt-3">Please initialize Polygon datasets in administration.</p>
+                                <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
+                                    <AlertTriangle className="h-12 w-12 mb-4 text-slate-100" />
+                                    <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Spatial Data Unavailable</p>
+                                    <p className="text-[10px] text-slate-300 mt-2 text-center max-w-[240px]">Please upload region geometry in the administration tools.</p>
                                 </div>
                             )}
                         </TabsContent>
-                        <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto bg-slate-50/50">
-                            <div className="p-12 max-w-6xl mx-auto">
-                                <Card className="border border-slate-200 shadow-2xl rounded-none overflow-hidden bg-white">
-                                    <div className="p-8 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-10">
+                        <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto scrollbar-hide">
+                            <div className="p-8 max-w-5xl mx-auto">
+                                <Card className="border border-slate-100 shadow-xl shadow-slate-200/50 rounded-3xl overflow-hidden bg-white">
+                                    <div className="p-6 border-b border-slate-50 bg-white flex justify-between items-center sticky top-0 z-10">
                                         <div>
-                                            <h3 className="font-black text-2xl text-primary uppercase tracking-tighter italic">Intelligence Matrix</h3>
-                                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-2 border-l-2 border-primary pl-3">Sector Optimization Reports</p>
+                                            <h3 className="font-bold text-lg text-slate-900 tracking-tight">Assignment Matrix</h3>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Optimization Results</p>
                                         </div>
                                         {analysisData?.assignments && (
-                                            <Button size="lg" className="bg-primary hover:bg-slate-900 text-white font-black rounded-none shadow-xl h-12 px-8 uppercase tracking-widest text-[10px] transition-all" onClick={downloadCSV}>
-                                                <Download className="h-4 w-4 mr-3" /> Export Intelligence
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90 text-white font-bold rounded-xl h-9 px-5 uppercase tracking-wider text-[10px] shadow-lg shadow-primary/20 transition-all" onClick={downloadCSV}>
+                                                <Download className="h-4 w-4 mr-2" /> Export Dataset
                                             </Button>
                                         )}
                                     </div>
-                                    <div className="bg-white min-h-[500px]">
+                                    <div className="bg-white min-h-[400px]">
                                         {analysisData?.assignments ? (
                                             <Table>
                                                 <TableHeader>
-                                                    <TableRow className="bg-slate-50 hover:bg-slate-50 border-b border-slate-200">
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] h-14 pl-8">Sector Identifier</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] h-14">Assigned Node</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] h-14">Active Protocol</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] h-14">Operational Range</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] h-14 text-right pr-8">Status</TableHead>
+                                                    <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 border-b border-slate-50">
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 pl-6">Zone Area</TableHead>
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Assigned Hub</TableHead>
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Protocol</TableHead>
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 text-right pr-6">Status</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {Object.values(analysisData.assignments).map((row: any, i) => (
-                                                        <TableRow key={i} className="hover:bg-slate-50/50 transition-colors border-slate-50">
-                                                            <TableCell className="font-black text-xs text-primary uppercase tracking-tight h-16 pl-8">{row.name}</TableCell>
-                                                            <TableCell><Badge className="bg-slate-900 text-white text-[9px] font-black border-none uppercase tracking-widest px-3 py-1 rounded-none shadow-md">{row.storeName}</Badge></TableCell>
-                                                            <TableCell className="text-[10px] font-mono font-black text-slate-400 uppercase">{row.category || 'Standard'}</TableCell>
-                                                            <TableCell className="text-xs font-mono font-black text-primary">{row.distance} KM</TableCell>
-                                                            <TableCell className="text-right pr-8">
-                                                              <Badge className={`${row.status === 'in' ? 'bg-primary text-white' : row.status === 'warning' ? 'bg-slate-400 text-white' : 'bg-red-600 text-white'} text-[9px] font-black border-none shadow-sm uppercase tracking-widest px-3 py-1 rounded-none`}>
-                                                                    {row.status === 'in' ? 'SECURE' : row.status === 'warning' ? 'AT LIMIT' : 'BREACHED'}
+                                                        <TableRow key={i} className="hover:bg-slate-50/30 transition-colors border-slate-50">
+                                                            <TableCell className="font-bold text-xs text-slate-700 h-14 pl-6">{row.name}</TableCell>
+                                                            <TableCell><Badge className="bg-slate-100 text-slate-500 text-[9px] font-bold border-none uppercase tracking-wide px-2.5 py-0.5 rounded-md shadow-none">{row.storeName}</Badge></TableCell>
+                                                            <TableCell className="text-[10px] font-mono text-slate-400 uppercase">{row.category || 'Default'}</TableCell>
+                                                            <TableCell className="text-right pr-6">
+                                                              <Badge className={`${row.status === 'in' ? 'bg-emerald-50 text-emerald-600' : row.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'} text-[9px] font-bold border-none shadow-none uppercase tracking-wider px-2 rounded-md`}>
+                                                                    {row.status === 'in' ? 'Secure' : row.status === 'warning' ? 'At Risk' : 'Outside'}
                                                               </Badge>
                                                             </TableCell>
                                                         </TableRow>
@@ -577,9 +573,9 @@ export default function DashboardPage() {
                                                 </TableBody>
                                             </Table>
                                         ) : (
-                                            <div className="flex flex-col items-center justify-center h-[500px] gap-6">
-                                                <Activity className="h-12 w-12 text-slate-100 animate-pulse" />
-                                                <p className="text-slate-300 font-black uppercase tracking-[0.3em] text-[10px]">Matrix Awaiting Strategic Input</p>
+                                            <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                                                <Activity className="h-10 w-10 text-slate-50 animate-pulse" />
+                                                <p className="text-slate-300 font-bold uppercase tracking-widest text-[10px]">Interface awaiting data synchronization</p>
                                             </div>
                                         )}
                                     </div>

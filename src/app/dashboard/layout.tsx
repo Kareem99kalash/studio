@@ -161,42 +161,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // 🛡️ 5. GUARD: SHOW LOADER DURING VERIFICATION
   if (loading || !user) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-6">
-        <Loader2 className="animate-spin h-12 w-12 text-primary" />
-        <p className="text-[10px] font-black text-primary uppercase tracking-[0.5em] animate-pulse">Synchronizing Session</p>
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
+        <Loader2 className="animate-spin h-10 w-10 text-primary/30" />
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] animate-pulse">Initializing Workspace</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-body">
+    <div className="min-h-screen bg-slate-50/30 flex flex-col font-body">
       
       {/* 🟢 TOP NAVIGATION BAR */}
-      <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 lg:px-12 shrink-0 sticky top-0 z-[100] shadow-sm">
+      <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 lg:px-10 shrink-0 sticky top-0 z-[100] shadow-sm">
         
         {/* LEFT: HAMBURGER (Mobile) & LOGO */}
         <div className="flex items-center gap-6">
           
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="lg:hidden p-2 text-primary hover:bg-slate-50 rounded-none transition-colors"
+            className="lg:hidden p-2 text-primary hover:bg-slate-50 rounded-lg transition-colors"
           >
-            <Menu className="h-6 w-6" />
+            <Menu className="h-5 w-5" />
           </button>
 
           <Link href="/dashboard" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-primary rounded-none flex items-center justify-center group-hover:scale-105 transition-transform shadow-lg">
-              <MapIcon className="h-6 w-6 text-white" />
+            <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
+              <MapIcon className="h-5 w-5 text-white" />
             </div>
             <div className="flex flex-col">
-              <span className="font-black text-xl text-primary leading-none tracking-tighter uppercase italic">GeoCoverage</span>
-              <span className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1 hidden sm:block">
-                 {user.role === 'admin' ? 'Strategic Intelligence' : 'Field Operator'}
+              <span className="font-bold text-lg text-primary leading-none tracking-tight">GeoCoverage</span>
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.1em] mt-1 hidden sm:block">
+                 {user.role === 'admin' ? 'Administrator Panel' : 'User Workspace'}
               </span>
             </div>
           </Link>
 
-          <nav className="hidden lg:flex items-center gap-2 ml-10">
+          <nav className="hidden lg:flex items-center gap-1 ml-8">
             {NAV_ITEMS.map((item) => {
               if (!hasAccess(item.permission)) return null;
               
@@ -206,17 +206,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   key={item.href} 
                   href={item.href}
                   className={`
-                    relative px-4 py-2 rounded-none text-[11px] font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2
-                    ${isActive ? 'text-primary' : 'text-slate-400 hover:text-primary hover:bg-slate-50'}
+                    relative px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-2
+                    ${isActive ? 'text-primary bg-primary/5' : 'text-slate-400 hover:text-primary hover:bg-slate-50'}
                   `}
                 >
                   {item.label}
                   {item.label === 'Tickets' && openTicketCount > 0 && (
-                    <span className="flex h-4 min-w-4 px-1 items-center justify-center rounded-none bg-primary text-[8px] font-black text-white">
+                    <span className="flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-white">
                       {openTicketCount}
                     </span>
                   )}
-                  {isActive && <span className="absolute bottom-[-24px] left-0 w-full h-[3px] bg-primary" />}
+                  {isActive && <span className="absolute bottom-[-14px] left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />}
                 </Link>
               )
             })}
@@ -224,14 +224,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* RIGHT: SEARCH & PROFILE */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
           
           <div className="relative hidden md:block" ref={searchRef}>
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input 
-                placeholder="GLOBAL SEARCH"
-                className="w-72 h-10 pl-10 bg-slate-50 border-slate-200 text-primary focus:bg-white focus:border-primary rounded-none placeholder:text-slate-300 transition-all font-black text-[10px] tracking-widest"
+                placeholder="Search resources..."
+                className="w-64 h-9 pl-9 bg-slate-50 border-transparent text-primary focus:bg-white focus:border-slate-200 rounded-xl placeholder:text-slate-300 transition-all font-medium text-xs"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => { if(searchQuery) setIsSearchOpen(true) }}
@@ -239,24 +239,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {isSearchOpen && (
-              <div className="absolute top-full right-0 mt-4 w-80 bg-white rounded-none shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right">
-                <div className="p-3">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-3 py-2 border-b border-slate-50 mb-2">Navigation Matrix</p>
+              <div className="absolute top-full right-0 mt-3 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                <div className="p-2">
+                  <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest px-3 py-2">Quick Navigation</p>
                   {searchResults.length > 0 ? (
                     searchResults.map((res) => (
                       <Link 
                         key={res.href} 
                         href={res.href} 
-                        className="flex items-center gap-4 px-4 py-3 text-[11px] font-bold text-primary hover:bg-slate-50 rounded-none transition-colors uppercase tracking-wider"
+                        className="flex items-center gap-3 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-primary rounded-xl transition-colors"
                         onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}
                       >
-                        <res.icon className="h-4 w-4 text-slate-400" />
+                        <res.icon className="h-4 w-4 opacity-40" />
                         {res.label}
                       </Link>
                     ))
                   ) : (
-                    <div className="px-4 py-6 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">
-                      Zero matching coordinates.
+                    <div className="px-4 py-6 text-center text-[10px] font-medium text-slate-300 italic">
+                      No matching results found.
                     </div>
                   )}
                 </div>
@@ -264,72 +264,72 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
 
-          <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden md:block" />
+          <div className="h-6 w-[1px] bg-slate-100 mx-2 hidden md:block" />
 
           <NotificationBell user={user} />
 
-          <HoverCard openDelay={200} closeDelay={200}>
+          <HoverCard openDelay={100} closeDelay={100}>
             <HoverCardTrigger asChild>
-              <div className="flex items-center gap-4 cursor-pointer group pl-2">
+              <div className="flex items-center gap-3 cursor-pointer group pl-2">
                 <div className="text-right hidden sm:block">
-                  <p className="text-xs font-black text-primary uppercase tracking-tighter leading-none group-hover:italic transition-all">
+                  <p className="text-xs font-bold text-slate-700 leading-none group-hover:text-primary transition-colors">
                     {user.username}
                   </p>
-                  <p className="text-[9px] text-slate-400 font-black uppercase mt-1 tracking-widest group-hover:text-primary transition-colors">
-                    {user.role === 'admin' ? 'Command' : 'Field'}
+                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-wider">
+                    {user.role === 'admin' ? 'Admin' : 'Staff'}
                   </p>
                 </div>
-                <Avatar className="h-10 w-10 border-2 border-slate-200 rounded-none group-hover:border-primary transition-all shadow-md">
-                  <AvatarFallback className="bg-primary text-white font-black rounded-none uppercase">
+                <Avatar className="h-9 w-9 border border-slate-100 rounded-xl group-hover:shadow-md transition-all">
+                  <AvatarFallback className="bg-primary/5 text-primary font-bold rounded-xl text-xs">
                     {user.username?.[0]?.toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
               </div>
             </HoverCardTrigger>
             
-            <HoverCardContent align="end" className="w-80 p-0 overflow-hidden border-slate-200 shadow-2xl rounded-none mt-4">
-              <div className="bg-slate-50 p-6 border-b border-slate-100 flex items-center gap-4">
-                <Avatar className="h-14 w-14 border-2 border-white shadow-lg rounded-none">
-                  <AvatarFallback className="bg-primary text-white font-black text-xl rounded-none">
+            <HoverCardContent align="end" className="w-72 p-0 overflow-hidden border-slate-100 shadow-2xl rounded-2xl mt-3">
+              <div className="bg-slate-50/50 p-5 border-b border-slate-100 flex items-center gap-4">
+                <Avatar className="h-12 w-12 border border-white shadow-sm rounded-xl">
+                  <AvatarFallback className="bg-primary text-white font-bold text-lg rounded-xl">
                     {user.username?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h4 className="font-black text-primary text-base uppercase tracking-tighter">{user.username}</h4>
-                  <Badge className="mt-2 bg-primary text-white text-[9px] font-black uppercase tracking-widest rounded-none px-2 py-0.5">
-                    {user.role === 'admin' ? 'Strategic Command' : 'Active Personnel'}
+                  <h4 className="font-bold text-slate-900 text-sm">{user.username}</h4>
+                  <Badge className="mt-1 bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-wider rounded-md px-2 py-0 border-none shadow-none">
+                    {user.role === 'admin' ? 'Full Administrator' : 'Access Level 1'}
                   </Badge>
                 </div>
               </div>
               
-              <div className="p-6">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Privilege Clearance</p>
-                <div className="flex flex-wrap gap-2">
+              <div className="p-5">
+                <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-3">Permissions</p>
+                <div className="flex flex-wrap gap-1.5">
                   {user.role === 'admin' ? (
-                    <Badge className="bg-slate-900 text-white rounded-none font-black text-[9px] uppercase tracking-widest px-2 py-1">
-                      <ShieldCheck className="h-3 w-3 mr-2" /> Level 10 Clearance
+                    <Badge className="bg-slate-100 text-slate-600 rounded-md font-bold text-[9px] uppercase border-none shadow-none px-2">
+                      <ShieldCheck className="h-3 w-3 mr-1.5 opacity-50" /> System Superuser
                     </Badge>
                   ) : user.permissions && Object.keys(user.permissions).length > 0 ? (
                     Object.entries(user.permissions)
                       .filter(([, v]) => v)
                       .map(([k]) => (
-                        <span key={k} className="inline-flex items-center px-2 py-1 rounded-none bg-slate-50 text-primary text-[9px] font-black uppercase tracking-widest border border-slate-200">
+                        <span key={k} className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-50 text-slate-500 text-[9px] font-bold uppercase tracking-wide border border-slate-100">
                           {k.replace(/_/g, ' ')}
                         </span>
                       ))
                   ) : (
-                    <span className="text-[10px] font-bold text-slate-400 italic uppercase tracking-widest">Base Access Only</span>
+                    <span className="text-[10px] font-medium text-slate-300 italic">Limited read access</span>
                   )}
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-50 border-t border-slate-100">
+              <div className="p-2 bg-slate-50/50 border-t border-slate-100">
                 <Button 
                   variant="ghost" 
-                  className="w-full justify-start text-red-600 hover:text-white hover:bg-red-600 h-10 text-[10px] font-black uppercase tracking-[0.2em] rounded-none transition-all"
+                  className="w-full justify-start text-slate-500 hover:text-red-600 hover:bg-red-50 h-9 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all"
                   onClick={handleLogout}
                 >
-                  <LogOut className="h-4 w-4 mr-3" /> Terminate Session
+                  <LogOut className="h-3.5 w-3.5 mr-2.5 opacity-50" /> Sign Out
                 </Button>
               </div>
             </HoverCardContent>
@@ -347,23 +347,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       )}
 
       <div className={`
-        fixed top-0 left-0 h-full w-[300px] bg-white z-[120] shadow-2xl transform transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] lg:hidden border-r border-slate-100
+        fixed top-0 left-0 h-full w-[280px] bg-white z-[120] shadow-2xl transform transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] lg:hidden border-r border-slate-50
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="h-20 flex items-center justify-between px-8 border-b border-slate-50 bg-white">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-slate-50 bg-white">
            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary rounded-none flex items-center justify-center shadow-lg">
-                  <MapIcon className="h-6 w-6 text-white" />
+              <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center">
+                  <MapIcon className="h-5 w-5 text-white" />
               </div>
-              <span className="font-black text-xl text-primary tracking-tighter uppercase italic">GeoCoverage</span>
+              <span className="font-bold text-lg text-primary tracking-tight">GeoCoverage</span>
            </div>
            <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-300 hover:text-primary transition-colors">
-              <X className="h-6 w-6" />
+              <X className="h-5 w-5" />
            </button>
         </div>
 
-        <div className="p-6 space-y-1 overflow-y-auto">
-           <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] mb-6 px-4">Command Menu</p>
+        <div className="p-4 space-y-1 overflow-y-auto">
+           <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-4 px-4">Menu</p>
            {NAV_ITEMS.map((item) => {
               if (!hasAccess(item.permission)) return null;
               const isActive = pathname === item.href;
@@ -373,9 +373,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href={item.href}
                   onClick={() => setIsSidebarOpen(false)}
                   className={`
-                    flex items-center gap-5 px-6 py-4 rounded-none text-[11px] font-black uppercase tracking-widest transition-all
+                    flex items-center gap-4 px-4 py-3 rounded-xl text-xs font-bold transition-all
                     ${isActive 
-                      ? 'bg-primary text-white shadow-xl shadow-primary/20'
+                      ? 'bg-primary text-white shadow-lg shadow-primary/20'
                       : 'text-slate-500 hover:bg-slate-50 hover:text-primary'
                     }
                   `}
@@ -383,7 +383,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <item.icon className={`h-4 w-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                   {item.label}
                   {item.label === 'Tickets' && openTicketCount > 0 && (
-                    <span className="ml-auto flex h-5 min-w-5 px-1.5 items-center justify-center rounded-none bg-white text-[9px] font-black text-primary">
+                    <span className="ml-auto flex h-5 min-w-5 px-1.5 items-center justify-center rounded-full bg-white text-[9px] font-bold text-primary">
                       {openTicketCount}
                     </span>
                   )}
@@ -392,21 +392,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            })}
         </div>
 
-        <div className="absolute bottom-10 left-0 w-full px-8">
-           <div className="bg-slate-50 p-6 rounded-none border border-slate-100 flex items-center gap-4 group">
-                 <Avatar className="h-12 w-12 rounded-none border-2 border-white shadow-md group-hover:border-primary transition-all">
-                    <AvatarFallback className="bg-primary text-white font-black">
+        <div className="absolute bottom-8 left-0 w-full px-6">
+           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-3 group">
+                 <Avatar className="h-10 w-10 rounded-xl border border-white shadow-sm group-hover:border-primary/20 transition-all">
+                    <AvatarFallback className="bg-primary/5 text-primary font-bold rounded-xl text-xs">
                         {user.username?.[0]?.toUpperCase()}
                     </AvatarFallback>
                  </Avatar>
                  <div className="flex-1 overflow-hidden">
-                    <div className="font-black text-xs text-primary truncate uppercase tracking-tighter">{user.username}</div>
-                    <Badge className="text-[8px] px-1.5 h-4 bg-white border-slate-200 text-slate-400 rounded-none uppercase font-black tracking-widest mt-1">
+                    <div className="font-bold text-xs text-slate-900 truncate tracking-tight">{user.username}</div>
+                    <Badge className="text-[8px] px-1.5 h-4 bg-white border-slate-100 text-slate-400 rounded-md uppercase font-bold tracking-wide mt-1 shadow-none">
                       {user.role}
                     </Badge>
                  </div>
                  <button onClick={handleLogout} className="text-slate-300 hover:text-red-500 transition-colors">
-                    <LogOut className="h-5 w-5" />
+                    <LogOut className="h-4 w-4" />
                  </button>
             </div>
         </div>
