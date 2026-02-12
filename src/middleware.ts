@@ -1,6 +1,6 @@
 // 🟢 FIXED: Both imports must come from 'next/server'
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server'; 
+import type { NextRequest } from 'next/server';
 import { decrypt } from '@/lib/auth';
 
 export async function middleware(req: NextRequest) {
