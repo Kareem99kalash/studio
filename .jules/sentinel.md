@@ -1,0 +1,4 @@
+## 2026-02-12 - [Privilege Escalation and Info Leakage Hardening]
+**Vulnerability:** Critical privilege escalation in Firestore rules allowed any authenticated user to grant themselves admin status by creating a document in `/roles_admin/{userId}`. Additionally, users could modify their own `role` and `permissions` fields in the `users` collection. API responses leaked internal `error.message` details.
+**Learning:** Security rules that use `isOwner(userId)` for creation in collections that grant system-wide privileges (like roles) are extremely dangerous. Field-level protection using `diff()` and `affectedKeys()` is necessary when users are allowed to update their own profiles.
+**Prevention:** Always restrict role-granting collections to existing admins only. Explicitly block sensitive fields from being updated by owners. Standardize generic error responses to prevent information leakage.

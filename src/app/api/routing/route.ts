@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("Routing Proxy Error:", error.message);
     return NextResponse.json(
-        { error: 'Failed to calculate routes', details: error.message }, 
+        { error: 'Failed to calculate routes' },
         { status: 500 }
     );
   }
