@@ -713,8 +713,8 @@ export default function UserManagementPage() {
                  </div>
               </CardHeader>
               
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit(); }} className="flex-1 flex flex-col overflow-hidden">
               <CardContent className="p-0 overflow-hidden flex-1 flex flex-col">
-                 <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit(); }} className="flex-1 flex flex-col">
                  <Tabs defaultValue="general" className="flex-1 flex flex-col">
                     <div className="px-6 pt-4 shrink-0">
                       <TabsList className="w-full grid grid-cols-2">
