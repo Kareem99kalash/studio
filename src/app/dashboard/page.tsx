@@ -25,9 +25,9 @@ import { MaintenanceControl } from '@/components/system/maintenance-control';
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), { 
   ssr: false,
   loading: () => (
-    <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loading Visualization Core...</span>
+    <div className="h-full w-full bg-white flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em] animate-pulse">Rendering Spatial Data</span>
     </div>
   )
 });
@@ -401,8 +401,8 @@ export default function DashboardPage() {
   if (isCheckingStatus || loading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
-          <Loader2 className="animate-spin h-10 w-10 text-indigo-600" />
-          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-xs animate-pulse">Initializing...</p>
+          <Loader2 className="animate-spin h-10 w-10 text-primary/30" />
+          <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">Loading Workspace</p>
       </div>
     );
   }
@@ -411,64 +411,63 @@ export default function DashboardPage() {
   if (isMaintenance && !isAdmin) return <MaintenanceScreen message={maintenanceMsg} />;
 
   return (
-    <div className="h-screen flex flex-col bg-white overflow-hidden font-sans relative">
-      {isMaintenance && isAdmin && <div className="bg-amber-100 text-amber-900 text-[10px] font-bold text-center py-1 border-b border-amber-300">⚠️ MAINTENANCE MODE ACTIVE</div>}
+    <div className="h-screen flex flex-col bg-slate-50/30 overflow-hidden font-body relative">
+      {isMaintenance && isAdmin && <div className="bg-primary text-white text-[10px] font-bold text-center py-1.5 border-b border-primary/20 uppercase tracking-wider">Maintenance Mode Active</div>}
 
-      <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
+      <header className="h-16 bg-white border-b border-slate-100 px-6 flex items-center justify-between shrink-0 z-40 relative">
         <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-2 rounded-lg shadow-md"><Radar className="text-white h-5 w-5" /></div>
+            <div className="bg-primary p-2 rounded-xl shadow-lg shadow-primary/20"><Radar className="text-white h-5 w-5" /></div>
             <div>
-                <h1 className="font-black text-lg tracking-tight text-slate-800 leading-none">COMMAND CENTER</h1>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Spatial Intelligence Unit</p>
+                <h1 className="font-bold text-lg tracking-tight text-primary leading-none">Operations Hub</h1>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Coverage Analysis System</p>
             </div>
         </div>
         <div className="flex items-center gap-4">
            {isAdmin && <MaintenanceControl />}
-           {analyzing && <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100"><Loader2 className="h-3 w-3 animate-spin" /><span className="text-[10px] font-black uppercase tracking-wider">Processing Grid</span></div>}
-           {analysisData && !analyzing && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 gap-1.5 py-1.5 pl-1.5 pr-3 shadow-sm"><span className="text-[10px] font-black uppercase tracking-wider">System Online</span></Badge>}
+           {analyzing && <div className="flex items-center gap-2 text-primary bg-primary/5 px-3 py-1.5 rounded-full border border-primary/10"><Loader2 className="h-3 w-3 animate-spin" /><span className="text-[9px] font-bold uppercase tracking-wider">Analyzing Grid</span></div>}
+           {analysisData && !analyzing && <Badge variant="outline" className="border-emerald-100 bg-emerald-50 text-emerald-600 gap-1.5 py-1.5 px-3 shadow-none rounded-full"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> <span className="text-[9px] font-bold uppercase tracking-wider">Ready</span></Badge>}
         </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-[380px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0 overflow-hidden z-20">
-            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-white/50 backdrop-blur-sm"><span className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Settings2 className="h-3 w-3" /> Configuration</span></div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-8 scrollbar-hide">
+        <div className="w-[360px] bg-white border-r border-slate-100 flex flex-col shrink-0 overflow-hidden z-20 shadow-sm">
+            <div className="p-5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Settings2 className="h-3.5 w-3.5" /> Configuration</span></div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
                 <div className="space-y-3">
-                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-2"><MapIcon className="h-3.5 w-3.5 text-indigo-500" /> Target Region</Label>
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapIcon className="h-3.5 w-3.5 text-primary/50" /> Regional Territory</Label>
                     <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id}>
-                        <SelectTrigger className="h-11 border-slate-200 bg-white hover:border-indigo-300 transition-all text-sm font-bold shadow-sm"><SelectValue placeholder="Select Territory" /></SelectTrigger>
-                        <SelectContent>{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-medium text-xs">{c.name}</SelectItem>)}</SelectContent>
+                        <SelectTrigger className="h-11 border-slate-100 bg-slate-50/50 hover:border-primary/20 transition-all text-xs font-bold rounded-xl shadow-none"><SelectValue placeholder="Select Territory" /></SelectTrigger>
+                        <SelectContent className="rounded-xl border-slate-100 shadow-2xl">{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-semibold text-xs py-2.5">{c.name}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
-                <Separator className="bg-slate-200" />
                 <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-xs font-bold text-slate-700 flex items-center gap-2"><Store className="h-3.5 w-3.5 text-indigo-500" /> Logistics Nodes</Label>
-                        <Button variant="ghost" size="sm" onClick={addStore} className="h-7 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-md uppercase tracking-wide"><Plus className="h-3 w-3 mr-1.5" /> Add Node</Button>
+                    <div className="flex items-center justify-between border-b border-slate-50 pb-3">
+                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Store className="h-3.5 w-3.5 text-primary/50" /> Distribution Hubs</Label>
+                        <Button variant="ghost" size="sm" onClick={addStore} className="h-8 text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary hover:text-white rounded-lg uppercase tracking-wide transition-all"><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Node</Button>
                     </div>
                     <div className="space-y-3 min-h-[100px]">
                         {stores.map((store, idx) => (
-                            <div key={store.id} className="relative group bg-white rounded-lg border p-3 shadow-sm border-slate-200 hover:border-indigo-300 transition-all">
-                                <div className="space-y-2">
+                            <div key={store.id} className="relative group bg-slate-50/50 rounded-2xl border p-4 shadow-none border-slate-100 hover:border-primary/20 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
+                                <div className="space-y-3">
                                     <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-2 w-full">
-                                                <div className="h-5 w-5 rounded bg-slate-100 flex items-center justify-center text-slate-500 text-[10px] font-black shrink-0">{idx + 1}</div>
-                                                <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
+                                                <div className="h-5 w-5 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">{idx + 1}</div>
+                                                <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full tracking-tight" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded -mr-1" onClick={() => removeStore(store.id)}><Trash2 className="h-3 w-3" /></Button>
+                                            <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg -mr-1" onClick={() => removeStore(store.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                     </div>
-                                    <div className="bg-slate-50 rounded px-2 py-1 flex items-center gap-2 border border-slate-100">
-                                        <code className="text-[9px] text-slate-400 font-bold uppercase tracking-wider shrink-0">LOC:</code>
-                                        <Input className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-slate-600 focus-visible:ring-0 w-full" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} placeholder="LAT, LNG" />
+                                    <div className="bg-white rounded-xl px-3 py-1.5 flex items-center gap-2 border border-slate-50 shadow-sm">
+                                        <code className="text-[8px] text-slate-300 font-bold uppercase tracking-widest shrink-0">LOC:</code>
+                                        <Input className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-slate-600 focus-visible:ring-0 w-full" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} placeholder="Lat, Lng" />
                                     </div>
-                                    <div className="pt-2 border-t border-slate-50 mt-1">
+                                    <div className="pt-3 border-t border-slate-100/50">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase whitespace-nowrap">Rule:</span>
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest whitespace-nowrap">Protocol:</span>
                                             <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
-                                                <SelectTrigger className="h-6 w-full text-[10px] border-slate-200 bg-slate-50"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="default" className="text-xs">Zone Default</SelectItem>
-                                                    {availableRules.map((c, i) => (<SelectItem key={i} value={c.name} className="text-xs">{c.name} ({c.green}km)</SelectItem>))}
+                                                <SelectTrigger className="h-7 w-full text-[9px] font-bold border-slate-100 bg-white rounded-lg shadow-none"><SelectValue /></SelectTrigger>
+                                                <SelectContent className="rounded-xl">
+                                                    <SelectItem value="default" className="text-[10px] font-semibold">Standard Settings</SelectItem>
+                                                    {availableRules.map((c, i) => (<SelectItem key={i} value={c.name} className="text-[10px] font-semibold">{c.name} ({c.green}km)</SelectItem>))}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -479,39 +478,41 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
-            <div className="p-5 border-t border-slate-200 bg-white">
-                <Button className="w-full h-12 rounded-lg bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-800 shadow-md active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
-                    <div className="flex items-center gap-3">
-                        {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-indigo-400" /> : <Zap className="h-4 w-4 text-yellow-400 group-hover:scale-110 transition-transform" />}
-                        <span>{analyzing ? "Processing Grid..." : "Initiate Analysis"}</span>
+            <div className="p-6 border-t border-slate-50 bg-white">
+                <Button className="w-full h-12 rounded-2xl bg-primary text-white font-bold uppercase tracking-widest text-[10px] hover:bg-primary/90 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
+                    <div className="flex items-center gap-3 relative z-10">
+                        {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-white" /> : <Zap className="h-4 w-4 text-white group-hover:scale-110 transition-transform" />}
+                        <span>{analyzing ? "Processing Matrix..." : "Start Coverage Analysis"}</span>
                     </div>
                 </Button>
             </div>
         </div>
 
-        <div className="flex-1 bg-slate-100 overflow-hidden flex flex-col relative z-10">
+        <div className="flex-1 bg-white overflow-hidden flex flex-col relative z-10">
             {!selectedCity ? (
-                <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50/50 gap-4">
-                    <div className="h-24 w-24 bg-slate-200 rounded-full flex items-center justify-center"><MapIcon className="h-10 w-10 text-slate-400" /></div>
-                    <p className="font-black uppercase tracking-[0.2em] text-xs text-slate-400">Awaiting Regional Selection</p>
+                <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50/30 gap-6">
+                    <div className="h-24 w-24 bg-white rounded-3xl flex items-center justify-center shadow-sm relative border border-slate-100">
+                      <MapIcon className="h-8 w-8 text-slate-200" />
+                    </div>
+                    <p className="font-bold uppercase tracking-widest text-[10px] text-slate-300">Select a region to begin</p>
                 </div>
             ) : (
                 <Tabs defaultValue="map" className="h-full flex flex-col">
-                    <div className="h-12 border-b border-slate-200 flex items-center justify-between px-6 bg-white shrink-0">
+                    <div className="h-14 border-b border-slate-100 flex items-center justify-between px-6 bg-white shrink-0">
                         <div className="flex items-center gap-4">
-                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Active View:</span>
-                            <TabsList className="bg-slate-100 p-1 h-8 rounded-lg">
-                                <TabsTrigger value="map" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all"><MapIcon className="h-3 w-3 mr-2" /> Geo-Map</TabsTrigger>
-                                <TabsTrigger value="table" className="rounded-md text-[10px] font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-600 data-[state=active]:shadow-sm px-4 h-6 transition-all"><TableIcon className="h-3 w-3 mr-2" /> Data Grid</TabsTrigger>
+                            <span className="text-[9px] font-bold uppercase text-slate-300 tracking-widest">View Mode:</span>
+                            <TabsList className="bg-slate-100 p-1 h-9 rounded-xl w-[280px]">
+                                <TabsTrigger value="map" className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><MapIcon className="h-3.5 w-3.5 mr-2" /> Geo-Map</TabsTrigger>
+                                <TabsTrigger value="table" className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><TableIcon className="h-3.5 w-3.5 mr-2" /> Data-Grid</TabsTrigger>
                             </TabsList>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                            <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{selectedCity.name} Dataset</span>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{selectedCity.name}</span>
                         </div>
                     </div>
-                    <div className="flex-1 relative bg-slate-50">
-                        <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full">
+                    <div className="flex-1 relative bg-slate-50/50">
+                        <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full border-none">
                              {getDisplayPolygons().features.length > 0 ? (
                                 <MapView 
                                     key={selectedCity.id} 
@@ -524,24 +525,24 @@ export default function DashboardPage() {
                                     isLoading={analyzing} 
                                 />
                             ) : (
-                                <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 p-10">
-                                    <AlertTriangle className="h-12 w-12 mb-4 text-amber-500/50" />
-                                    <p className="font-black text-slate-600 uppercase tracking-widest">Geodata Unavailable</p>
-                                    <p className="text-xs text-slate-400 mt-2">Please upload Polygon data in admin settings.</p>
+                                <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
+                                    <AlertTriangle className="h-12 w-12 mb-4 text-slate-100" />
+                                    <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Spatial Data Unavailable</p>
+                                    <p className="text-[10px] text-slate-300 mt-2 text-center max-w-[240px]">Please upload region geometry in the administration tools.</p>
                                 </div>
                             )}
                         </TabsContent>
-                        <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto">
+                        <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto scrollbar-hide">
                             <div className="p-8 max-w-5xl mx-auto">
-                                <Card className="border-none shadow-sm rounded-xl overflow-hidden">
-                                    <div className="p-6 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-10">
+                                <Card className="border border-slate-100 shadow-xl shadow-slate-200/50 rounded-3xl overflow-hidden bg-white">
+                                    <div className="p-6 border-b border-slate-50 bg-white flex justify-between items-center sticky top-0 z-10">
                                         <div>
-                                            <h3 className="font-black text-lg text-slate-800 uppercase tracking-tight">Assignment Matrix</h3>
-                                            <p className="text-[11px] text-slate-400 font-bold uppercase mt-1">Optimization Results</p>
+                                            <h3 className="font-bold text-lg text-slate-900 tracking-tight">Assignment Matrix</h3>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Optimization Results</p>
                                         </div>
                                         {analysisData?.assignments && (
-                                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 rounded-lg shadow-md shadow-indigo-100" onClick={downloadCSV}>
-                                                <Download className="h-4 w-4 mr-2" /> Export CSV
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90 text-white font-bold rounded-xl h-9 px-5 uppercase tracking-wider text-[10px] shadow-lg shadow-primary/20 transition-all" onClick={downloadCSV}>
+                                                <Download className="h-4 w-4 mr-2" /> Export Dataset
                                             </Button>
                                         )}
                                     </div>
@@ -549,24 +550,22 @@ export default function DashboardPage() {
                                         {analysisData?.assignments ? (
                                             <Table>
                                                 <TableHeader>
-                                                    <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Zone Identifier</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Assigned Node</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Applied Rule</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10">Distance (Avg)</TableHead>
-                                                        <TableHead className="text-[10px] font-black uppercase text-slate-400 tracking-wider h-10 text-right">Coverage Status</TableHead>
+                                                    <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 border-b border-slate-50">
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 pl-6">Zone Area</TableHead>
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Assigned Hub</TableHead>
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Protocol</TableHead>
+                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 text-right pr-6">Status</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {Object.values(analysisData.assignments).map((row: any, i) => (
-                                                        <TableRow key={i} className="hover:bg-indigo-50/10 transition-colors border-slate-50">
-                                                            <TableCell className="font-bold text-xs text-slate-700">{row.name}</TableCell>
-                                                            <TableCell><Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] font-bold border-none uppercase tracking-wide">{row.storeName}</Badge></TableCell>
-                                                            <TableCell className="text-[10px] font-mono text-slate-400">{row.category || 'Standard'}</TableCell>
-                                                            <TableCell className="text-xs font-mono font-bold text-slate-500">{row.distance} km</TableCell>
-                                                            <TableCell className="text-right">
-                                                              <Badge className={`${row.status === 'in' ? 'bg-emerald-100 text-emerald-700' : row.status === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'} text-[9px] font-black border-none shadow-none uppercase tracking-wider px-2`}>
-                                                                    {row.status}
+                                                        <TableRow key={i} className="hover:bg-slate-50/30 transition-colors border-slate-50">
+                                                            <TableCell className="font-bold text-xs text-slate-700 h-14 pl-6">{row.name}</TableCell>
+                                                            <TableCell><Badge className="bg-slate-100 text-slate-500 text-[9px] font-bold border-none uppercase tracking-wide px-2.5 py-0.5 rounded-md shadow-none">{row.storeName}</Badge></TableCell>
+                                                            <TableCell className="text-[10px] font-mono text-slate-400 uppercase">{row.category || 'Default'}</TableCell>
+                                                            <TableCell className="text-right pr-6">
+                                                              <Badge className={`${row.status === 'in' ? 'bg-emerald-50 text-emerald-600' : row.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'} text-[9px] font-bold border-none shadow-none uppercase tracking-wider px-2 rounded-md`}>
+                                                                    {row.status === 'in' ? 'Secure' : row.status === 'warning' ? 'At Risk' : 'Outside'}
                                                               </Badge>
                                                             </TableCell>
                                                         </TableRow>
@@ -575,8 +574,8 @@ export default function DashboardPage() {
                                             </Table>
                                         ) : (
                                             <div className="flex flex-col items-center justify-center h-[400px] gap-4">
-                                                <Activity className="h-8 w-8 text-slate-300" />
-                                                <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No Analysis Data Available</p>
+                                                <Activity className="h-10 w-10 text-slate-50 animate-pulse" />
+                                                <p className="text-slate-300 font-bold uppercase tracking-widest text-[10px]">Interface awaiting data synchronization</p>
                                             </div>
                                         )}
                                     </div>

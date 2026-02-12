@@ -168,7 +168,7 @@ export default function AuditLogsPage() {
   if (sessionLoading || (logsLoading && user)) {
     return (
       <div className="h-[80vh] w-full flex items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+        <Loader2 className="h-10 w-10 animate-spin text-primary/30" />
       </div>
     );
   }
@@ -195,13 +195,13 @@ export default function AuditLogsPage() {
 
   // --- MAIN UI ---
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+    <div className="p-8 space-y-8 bg-slate-50/30 min-h-screen max-w-7xl mx-auto">
       
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                <History className="h-6 w-6 text-indigo-600" /> System Activity
+            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3 tracking-tight">
+                <History className="h-8 w-8 text-primary" /> System Activity
             </h1>
             <p className="text-slate-500 text-sm">Comprehensive log of all administrative actions.</p>
         </div>
@@ -286,7 +286,7 @@ export default function AuditLogsPage() {
                         filteredLogs.map((log) => (
                             <TableRow 
                                 key={log.id} 
-                                className={`group hover:bg-slate-50 transition-colors ${selectedIds.has(log.id) ? 'bg-indigo-50/40' : ''}`}
+                                className={`group hover:bg-slate-50 transition-colors ${selectedIds.has(log.id) ? 'bg-primary/5' : ''}`}
                             >
                                 {/* Checkbox Cell */}
                                 {isAdmin && (
@@ -307,11 +307,11 @@ export default function AuditLogsPage() {
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-6 w-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 uppercase">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-7 w-7 rounded-lg bg-primary/5 flex items-center justify-center text-[10px] font-bold text-primary uppercase border border-primary/10">
                                             {log.user?.[0] || '?'}
                                         </div>
-                                        <span className="text-sm font-medium text-slate-700">{log.user || 'System'}</span>
+                                        <span className="text-sm font-semibold text-slate-700">{log.user || 'System'}</span>
                                     </div>
                                 </TableCell>
                                 <TableCell>

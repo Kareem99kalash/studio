@@ -157,7 +157,7 @@ export default function UserManagementPage() {
   if (sessionLoading || dataLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
       </div>
     );
   }
@@ -389,18 +389,18 @@ export default function UserManagementPage() {
   const getGroupName = (id: string) => groups.find(g => g.id === id)?.name || "Unassigned";
 
   return (
-    <div className="p-6 space-y-6 relative">
+    <div className="p-8 space-y-8 relative max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-800">
-          <Shield className="text-purple-600" /> User & Access Control
+        <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-900 tracking-tight">
+          <Shield className="text-primary" /> User & Access Control
         </h1>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         
         {/* LEFT COLUMN: QUICK ADD USER */}
-        <div className="xl:col-span-1 space-y-6">
-          <Card className="border-t-4 border-t-purple-600 shadow-md">
+        <div className="xl:col-span-1 space-y-8">
+          <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Quick Add User</CardTitle>
               <CardDescription>Create credentials & assign simplified roles.</CardDescription>
@@ -459,10 +459,10 @@ export default function UserManagementPage() {
                 </div>
 
                 {createRole === 'custom' && (
-                    <div className="border rounded-lg p-2 bg-slate-50 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 animate-in fade-in zoom-in-95 duration-200">
                         <div className="flex items-center justify-between mb-2">
-                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Granular Permissions</span>
-                             <Badge variant="outline" className="text-[9px] bg-white">Custom</Badge>
+                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Granular Permissions</span>
+                             <Badge variant="outline" className="text-[9px] bg-white rounded-md">Custom</Badge>
                         </div>
                         <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                             {PERMISSION_GROUPS.map((group) => (
@@ -493,15 +493,15 @@ export default function UserManagementPage() {
                     </div>
                 )}
 
-                <Button className="w-full bg-purple-600 hover:bg-purple-700 font-bold" disabled={isSubmitting}>
+                <Button className="w-full bg-primary hover:bg-primary/90 font-bold rounded-xl h-11 shadow-lg shadow-primary/20 transition-all" disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
+                      Creating...
                     </>
                   ) : (
                     <>
-                      <UserPlus className="mr-2 h-4" /> Add User
+                      <UserPlus className="mr-2 h-4" /> Create Account
                     </>
                   )}
                 </Button>
@@ -510,18 +510,18 @@ export default function UserManagementPage() {
           </Card>
 
           {/* GROUPS LIST */}
-          <Card className="border-t-4 border-t-indigo-500 shadow-md">
-            <CardHeader className="pb-2"><CardTitle className="text-lg">Groups</CardTitle></CardHeader>
+          <Card className="border-t-4 border-t-slate-400 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
+            <CardHeader className="pb-2"><CardTitle className="text-lg">Geographic Groups</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-2">
-                <Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-8 text-xs" aria-label="New group name" />
-                <Button size="sm" onClick={handleCreateGroup} aria-label="Create group"><PlusCircle className="h-4 w-4" /></Button>
+                <Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-9 text-xs rounded-xl" aria-label="New group name" />
+                <Button size="sm" onClick={handleCreateGroup} className="h-9 w-9 p-0 rounded-xl" aria-label="Create group"><PlusCircle className="h-4 w-4" /></Button>
               </div>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                 {groups.map(g => (
-                    <div key={g.id} className="flex justify-between items-center p-1.5 px-3 bg-slate-50 rounded border text-xs">
-                        <span className="font-semibold text-slate-700">{g.name}</span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-400 hover:text-red-500" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3 w-3" /></Button>
+                    <div key={g.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
+                        <span className="font-bold text-slate-600">{g.name}</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                 ))}
               </div>
@@ -530,48 +530,48 @@ export default function UserManagementPage() {
         </div>
 
         {/* RIGHT COLUMN: USER LIST */}
-        <Card className="xl:col-span-2 shadow-md h-fit">
-          <CardHeader><CardTitle className="text-lg">System Users</CardTitle></CardHeader>
-          <CardContent>
-            <div className="border rounded-lg overflow-hidden">
+        <Card className="xl:col-span-2 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100 h-fit">
+          <CardHeader className="bg-white border-b border-slate-50"><CardTitle className="text-lg">System Users</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-hidden">
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 text-slate-500 font-bold text-[11px] uppercase tracking-wider">
-                  <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Role / Group</th><th className="px-4 py-3">Access</th><th className="px-4 py-3 text-right">Action</th></tr>
+                <thead className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-[0.1em]">
+                  <tr><th className="px-6 py-4">Identity</th><th className="px-6 py-4">Role / Group</th><th className="px-6 py-4">Clearance</th><th className="px-6 py-4 text-right">Actions</th></tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-slate-50">
                   {users.map((user) => {
                     const canEdit = isAllowedToManage(user);
                     const isTargetAdmin = user.role === 'admin' || user.role === 'super_admin';
                     
                     return (
-                        <tr key={user.username} className={`transition-colors ${canEdit ? 'hover:bg-slate-50' : 'bg-slate-50/50 opacity-90'}`}>
-                        <td className="px-4 py-4 font-semibold text-slate-700">
+                        <tr key={user.username} className={`transition-colors ${canEdit ? 'hover:bg-slate-50/50' : 'bg-slate-50/20 opacity-80'}`}>
+                        <td className="px-6 py-5 font-bold text-slate-700">
                             <div className="flex items-center gap-2">
                                 {user.username} 
-                                {user.username === currentUser?.username && <Badge variant="secondary" className="text-[9px]">YOU</Badge>}
+                                {user.username === currentUser?.username && <Badge variant="secondary" className="text-[8px] bg-primary/5 text-primary border-none">YOU</Badge>}
                             </div>
                         </td>
-                        <td className="px-4 py-4">
-                            <div className="flex flex-col gap-1">
-                                <Badge variant="outline" className="w-fit bg-indigo-50 text-indigo-700 border-indigo-200">{getGroupName(user.groupId)}</Badge>
-                                <span className="text-[10px] text-slate-400 font-bold uppercase">{user.role === 'custom' ? 'Custom Role' : user.role}</span>
+                        <td className="px-6 py-5">
+                            <div className="flex flex-col gap-1.5">
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-600 border-slate-200 rounded-md font-bold text-[9px] uppercase tracking-wide">{getGroupName(user.groupId)}</Badge>
+                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{user.role === 'custom' ? 'Custom Protocol' : user.role}</span>
                             </div>
                         </td>
-                        <td className="px-4 py-4">
-                            {user.role === 'admin' ? <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100"><ShieldCheck className="h-3 w-3 mr-1" /> Full Access</Badge> : (
-                            <div className="flex flex-wrap gap-1 max-w-md">{user.permissions && Object.entries(user.permissions).filter(([, v]) => v).length > 0 ? Object.entries(user.permissions).filter(([, v]) => v).slice(0, 4).map(([k]) => (<span key={k} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold border border-slate-200">{k.replace(/_/g, ' ')}</span>)) : <span className="text-xs text-slate-400 italic">No access</span>}{user.permissions && Object.values(user.permissions).filter(v => v).length > 4 && <span className="text-[9px] text-slate-400 self-center">...</span>}</div>
+                        <td className="px-6 py-5">
+                            {user.role === 'admin' ? <Badge className="bg-primary/5 text-primary border-none hover:bg-primary/10 rounded-full px-3 py-0.5 font-bold text-[9px] uppercase tracking-wider"><ShieldCheck className="h-3 w-3 mr-1.5" /> Full Access</Badge> : (
+                            <div className="flex flex-wrap gap-1.5 max-w-md">{user.permissions && Object.entries(user.permissions).filter(([, v]) => v).length > 0 ? Object.entries(user.permissions).filter(([, v]) => v).slice(0, 4).map(([k]) => (<span key={k} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md text-[9px] font-bold uppercase border border-slate-200/50">{k.replace(/_/g, ' ')}</span>)) : <span className="text-xs text-slate-300 italic">No access clearance</span>}{user.permissions && Object.values(user.permissions).filter(v => v).length > 4 && <span className="text-[9px] text-slate-300 self-center">...</span>}</div>
                             )}
                         </td>
-                        <td className="px-4 py-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                        <td className="px-6 py-5 text-right">
+                            <div className="flex items-center justify-end gap-1">
                             {!canEdit ? (
-                                <div title={isTargetAdmin ? "Managed via Database Only" : "Access Restricted"}>
-                                    <Lock className="h-4 w-4 text-slate-300 cursor-not-allowed" />
+                                <div title={isTargetAdmin ? "Managed via System Configuration" : "Clearance Restricted"}>
+                                    <Lock className="h-4 w-4 text-slate-200 cursor-not-allowed" />
                                 </div>
                             ) : (
                                 <>
-                                <Button variant="ghost" size="sm" onClick={() => openEditModal(user)} className="text-blue-500 hover:bg-blue-50 hover:text-blue-600" aria-label={`Edit user ${user.username}`}><Pencil className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDelete(user)} className="text-red-500 hover:bg-red-50 hover:text-red-600" aria-label={`Delete user ${user.username}`}><Trash2 className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => openEditModal(user)} className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg" aria-label={`Edit user ${user.username}`}><Pencil className="h-3.5 w-3.5" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleDelete(user)} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg" aria-label={`Delete user ${user.username}`}><Trash2 className="h-3.5 w-3.5" /></Button>
                                 </>
                             )}
                             </div>
@@ -674,17 +674,17 @@ export default function UserManagementPage() {
                  </Tabs>
               </CardContent>
 
-              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0 rounded-b-lg">
-                 <Button variant="outline" onClick={() => setEditModalOpen(false)}>Cancel</Button>
-                 <Button className="bg-blue-600 hover:bg-blue-700 min-w-[120px]" onClick={handleSaveEdit} disabled={isSaving}>
+              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0 rounded-b-2xl">
+                 <Button variant="outline" className="rounded-xl px-6" onClick={() => setEditModalOpen(false)}>Cancel</Button>
+                 <Button className="bg-primary hover:bg-primary/90 min-w-[140px] rounded-xl shadow-lg shadow-primary/20" onClick={handleSaveEdit} disabled={isSaving}>
                     {isSaving ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Saving...
+                            Updating...
                         </>
                     ) : (
                         <>
-                            <Save className="mr-2 h-4 w-4" /> Save Access
+                            <Save className="mr-2 h-4 w-4" /> Update Clearance
                         </>
                     )}
                  </Button>

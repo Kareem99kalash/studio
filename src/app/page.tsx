@@ -55,48 +55,47 @@ function LoginContent() {
   };
 
   return (
-    <div className="w-full max-w-[440px] bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden">
-      <div className="h-1.5 w-full bg-blue-600" />
-      <div className="p-10">
-        <div className="flex flex-col items-center text-center mb-8 space-y-3">
-          <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-2">
-            <MapPin className="h-6 w-6 fill-current" />
+    <div className="w-full max-w-[440px] bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden">
+      <div className="p-12">
+        <div className="flex flex-col items-center mb-10 space-y-4 text-center">
+          <div className="h-16 w-16 bg-primary/5 text-primary rounded-2xl flex items-center justify-center">
+            <MapPin className="h-8 w-8 fill-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">GeoCoverage</h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Simple Access Control</p>
+            <h1 className="text-3xl font-bold text-primary tracking-tight">GeoCoverage</h1>
+            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-[0.1em] mt-1">Access Management Portal</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">Username</label>
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Account Identity</label>
             <Input 
-              name="username" // 🟢 Crucial for Server Action
+              name="username"
               type="text" 
-              placeholder="username" 
-              className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" 
+              placeholder="Username"
+              className="h-12 bg-slate-50 border-slate-100 focus:bg-white focus:ring-primary/20 rounded-xl transition-all px-4"
               disabled={loading} 
               required
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">Password</label>
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Secure Passcode</label>
             <Input 
-              name="password" // 🟢 Crucial for Server Action
+              name="password"
               type="password" 
               placeholder="••••••••" 
-              className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" 
+              className="h-12 bg-slate-50 border-slate-100 focus:bg-white focus:ring-primary/20 rounded-xl transition-all px-4"
               disabled={loading} 
               required
             />
           </div>
           <Button 
             type="submit" 
-            className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2" 
+            className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-[0.98] mt-4 group"
             disabled={loading}
           >
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <>Authenticate <ArrowRight className="ml-2 h-4 w-4" /></>}
+            {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <>Enter Dashboard <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" /></>}
           </Button>
         </form>
       </div>
@@ -107,12 +106,12 @@ function LoginContent() {
 // 🟢 2. SUSPENSE WRAPPER (Fixes Build Error)
 export default function LoginPage() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#F8F9FB] p-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-slate-50/50 p-4">
       {/* Suspense handles the useSearchParams hook during build */}
       <Suspense fallback={
-        <div className="flex flex-col items-center gap-4">
-           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-           <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Loading Secure Gateway...</p>
+        <div className="flex flex-col items-center gap-6">
+           <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
+           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] animate-pulse">Verifying Security Protocols</p>
         </div>
       }>
         <LoginContent />

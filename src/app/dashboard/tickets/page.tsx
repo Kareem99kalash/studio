@@ -56,7 +56,7 @@ export default function TicketsPage() {
   if (sessionLoading || dataLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
       </div>
     );
   }
@@ -161,11 +161,11 @@ export default function TicketsPage() {
   );
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-full">
+    <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
-            <h1 className="text-2xl font-bold tracking-tight">Request Tickets</h1>
-            <p className="text-xs text-muted-foreground mt-1">Submit zone additions or system requests.</p>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Support Tickets</h1>
+            <p className="text-sm text-slate-500 mt-1">Submit zone additions or system requests.</p>
         </div>
         <div className="flex gap-2">
           <div className="relative">
@@ -174,17 +174,17 @@ export default function TicketsPage() {
           </div>
           
           {canCreate && (
-            <Button onClick={() => setIsCreating(true)} className="bg-purple-600 hover:bg-purple-700">
-              <Plus className="mr-2 h-4 w-4" /> New Request
+            <Button onClick={() => setIsCreating(true)} className="bg-primary hover:bg-primary/90 font-bold rounded-xl h-11 px-6 shadow-lg shadow-primary/20 transition-all">
+              <Plus className="mr-2 h-5 w-5" /> New Ticket
             </Button>
           )}
         </div>
       </div>
 
-      <Card className="shadow-sm">
+      <Card className="shadow-xl shadow-slate-200/50 border-slate-100 rounded-2xl overflow-hidden">
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="bg-slate-50/50">
               <TableRow>
                 <TableHead>Ticket ID</TableHead>
                 <TableHead>Title</TableHead>
@@ -203,10 +203,10 @@ export default function TicketsPage() {
                   </TableCell>
                   <TableCell>
                     {t.attachedFileName ? (
-                        <div className="flex items-center gap-1 text-[10px] text-purple-600 font-bold">
+                        <div className="flex items-center gap-2 text-[10px] text-primary font-bold uppercase tracking-wider bg-primary/5 px-2 py-1 rounded-md border border-primary/10 w-fit">
                             <FileSpreadsheet className="size-3" /> {t.attachedFileName}
                         </div>
-                    ) : <span className="text-[10px] text-slate-400">None</span>}
+                    ) : <span className="text-[10px] text-slate-300">None</span>}
                   </TableCell>
                   <TableCell>
                     <Badge className={t.status === 'New' ? 'bg-blue-500' : t.status === 'Pending' ? 'bg-amber-500' : 'bg-green-500'}>
@@ -251,14 +251,14 @@ export default function TicketsPage() {
 
       {/* CREATE MODAL */}
       {isCreating && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-md shadow-2xl border-t-4 border-t-purple-600 animate-in fade-in zoom-in duration-200">
-            <CardHeader><CardTitle>New Request</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateTicket} className="space-y-4">
-                <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Subject</label>
-                    <Input value={newTicketTitle} onChange={(e) => setNewTicketTitle(e.target.value)} required />
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <Card className="w-full max-w-lg shadow-2xl border-t-4 border-t-primary rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100"><CardTitle className="text-xl">Create New Ticket</CardTitle></CardHeader>
+            <CardContent className="p-8">
+              <form onSubmit={handleCreateTicket} className="space-y-6">
+                <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Ticket Subject</label>
+                    <Input className="h-12 rounded-xl bg-slate-50/50" placeholder="e.g. Add 15 new zones to Erbil" value={newTicketTitle} onChange={(e) => setNewTicketTitle(e.target.value)} required />
                 </div>
                 <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Category</label>
@@ -278,9 +278,9 @@ export default function TicketsPage() {
                     <label className="text-xs font-bold text-slate-500 uppercase">Attachment</label>
                     <Input type="file" accept=".csv" onChange={handleFileChange} className="text-xs" />
                 </div>
-                <div className="flex gap-2 pt-4">
-                  <Button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700">Submit</Button>
-                  <Button type="button" variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
+                <div className="flex gap-3 pt-6 border-t border-slate-50">
+                  <Button type="submit" className="flex-1 h-12 bg-primary hover:bg-primary/90 rounded-xl font-bold shadow-lg shadow-primary/20">Submit Ticket</Button>
+                  <Button type="button" variant="outline" className="h-12 rounded-xl px-8" onClick={() => setIsCreating(false)}>Cancel</Button>
                 </div>
               </form>
             </CardContent>
