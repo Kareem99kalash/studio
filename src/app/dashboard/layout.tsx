@@ -5,6 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from "next/link";
 import { doc, onSnapshot, collection, query, where } from 'firebase/firestore'; 
 import { db } from '@/firebase'; 
+import { logoutAction } from '@/app/actions/auth'; // 🟢 Added Server Action
 import { 
   LayoutDashboard, 
   Users, 
@@ -16,7 +17,6 @@ import {
   LogOut, 
   Building2, 
   Search,
-  Bell,
   Menu,
   X
 } from "lucide-react";
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/hover-card";
 import { Badge } from '@/components/ui/badge';
 import { NotificationBell } from '@/components/dashboard/notification-bell';
+import { logger } from '@/lib/logger';
 
 // --- NAVIGATION CONFIG ---
 const NAV_ITEMS = [
@@ -47,7 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
-  const [isAuth, setIsAuth] = useState(false);
+  const [loading, setLoading] = useState(true); // 🟢 Start in loading state
   const [openTicketCount, setOpenTicketCount] = useState(0);
   
   // Sidebar State (The "Curtain")
@@ -59,37 +60,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // --- 1. AUTHENTICATION ---
+  // --- 1. AUTHENTICATION & IDENTITY SYNC ---
   useEffect(() => {
-    const stored = localStorage.getItem('geo_user');
-    if (!stored) {
-      window.location.href = '/'; 
-      return;
-    }
-
-    try {
-      const parsedUser = JSON.parse(stored);
-      setUser(parsedUser);
-      setIsAuth(true);
-
-      const userRef = doc(db, 'users', parsedUser.uid || parsedUser.username);
-      const unsub = onSnapshot(userRef, (docSnap) => {
-        if (!docSnap.exists()) {
-          localStorage.removeItem('geo_user');
-          window.location.href = '/'; 
-        } else {
-             const data = docSnap.data();
-             if (JSON.stringify(data.permissions) !== JSON.stringify(parsedUser.permissions) || data.role !== parsedUser.role) {
-                 const updated = { ...parsedUser, ...data };
-                 localStorage.setItem('geo_user', JSON.stringify(updated));
-                 setUser(updated);
-             }
+    const syncSession = async () => {
+      try {
+        // Fetch identity from secure HTTP-only cookies
+        const res = await fetch('/api/auth/me');
+        
+        if (!res.ok) {
+          throw new Error("Unauthorized");
         }
-      });
-      return () => unsub(); 
-    } catch (e) {
-      window.location.href = '/';
-    }
+
+        const sessionData = await res.json();
+        setUser(sessionData.user);
+
+        // 🟢 Setup real-time Firestore sync based on the ID from the cookie
+        const userRef = doc(db, 'users', sessionData.user.uid);
+        const unsub = onSnapshot(userRef, (docSnap) => {
+          if (!docSnap.exists()) {
+            handleLogout(); // Kill session if user is deleted from DB
+          } else {
+            const freshData = docSnap.data();
+            setUser((prev: any) => ({ ...prev, ...freshData }));
+          }
+        });
+
+        setLoading(false);
+        return () => unsub();
+      } catch (e) {
+        logger.error("Auth", "Identity verification failed", e);
+        window.location.href = '/'; 
+      }
+    };
+
+    syncSession();
   }, []);
 
   // Close sidebar on route change
@@ -108,7 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // --- 3. TICKET COUNTER ---
   useEffect(() => {
-    if (!isAuth) return;
+    if (loading || !user) return;
     if (!hasAccess('view_tickets')) return;
 
     const q = query(
@@ -117,7 +121,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
     const unsub = onSnapshot(q, (snap) => setOpenTicketCount(snap.size));
     return () => unsub();
-  }, [isAuth, user]);
+  }, [loading, user]);
 
   // --- 4. SEARCH LOGIC ---
   useEffect(() => {
@@ -147,14 +151,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('geo_user');
+  const handleLogout = async () => {
+    await logoutAction(); // 🟢 Clears Server-side Cookies
+    localStorage.removeItem('geo_user'); // Clean up any old residue
     window.location.href = '/'; 
   };
 
-  if (!isAuth || !user) {
+  // 🛡️ 5. GUARD: SHOW LOADER DURING VERIFICATION
+  if (loading || !user) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-950 gap-3">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#0f172a] gap-3">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
         <p className="text-xs font-medium text-slate-400 uppercase tracking-widest">Verifying Access...</p>
       </div>
@@ -165,13 +171,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-slate-50 flex flex-col">
       
       {/* 🟢 TOP NAVIGATION BAR */}
-      {/* FIX: Increased z-index from z-50 to z-[100] to ensure it stays above all page content */}
       <header className="h-16 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-[100] shadow-md">
         
         {/* LEFT: HAMBURGER (Mobile) & LOGO */}
         <div className="flex items-center gap-4">
           
-          {/* Mobile Toggle Button (Only visible on small screens) */}
           <button 
             onClick={() => setIsSidebarOpen(true)}
             className="lg:hidden p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
@@ -191,7 +195,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </Link>
 
-          {/* DESKTOP NAV LINKS (Hidden on small screens) */}
           <nav className="hidden lg:flex items-center gap-1 ml-6">
             {NAV_ITEMS.map((item) => {
               if (!hasAccess(item.permission)) return null;
@@ -222,7 +225,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* RIGHT: SEARCH & PROFILE */}
         <div className="flex items-center gap-4">
           
-          {/* SEARCH BAR (Hidden on mobile) */}
           <div className="relative hidden md:block" ref={searchRef}>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
@@ -235,7 +237,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               />
             </div>
 
-            {/* SEARCH RESULTS DROPDOWN */}
             {isSearchOpen && (
               <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                 <div className="p-2">
@@ -264,10 +265,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <div className="h-6 w-[1px] bg-slate-800 mx-2 hidden md:block" />
 
-          {/* NOTIFICATIONS */}
           <NotificationBell user={user} />
 
-          {/* USER PROFILE HOVER CARD */}
           <HoverCard openDelay={200} closeDelay={200}>
             <HoverCardTrigger asChild>
               <div className="flex items-center gap-3 cursor-pointer group pl-2">
@@ -287,7 +286,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </HoverCardTrigger>
             
-            {/* HOVER CONTENT */}
             <HoverCardContent align="end" className="w-80 p-0 overflow-hidden border-slate-200 shadow-xl">
               <div className="bg-slate-50 p-4 border-b border-slate-100 flex items-center gap-3">
                 <Avatar className="h-12 w-12 border border-white shadow-sm">
@@ -340,7 +338,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </header>
 
       {/* 🟢 SIDEBAR DRAWER (THE "CURTAIN" for Mobile) */}
-      {/* 1. Dark Backdrop */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] lg:hidden animate-in fade-in duration-200"
@@ -348,12 +345,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
-      {/* 2. Sliding Panel */}
       <div className={`
         fixed top-0 left-0 h-full w-[280px] bg-white z-[120] shadow-2xl transform transition-transform duration-300 ease-in-out lg:hidden
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        {/* Mobile Header */}
         <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100 bg-slate-50">
            <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -366,7 +361,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            </button>
         </div>
 
-        {/* Mobile Nav Links */}
         <div className="p-4 space-y-2 overflow-y-auto">
            {NAV_ITEMS.map((item) => {
               if (!hasAccess(item.permission)) return null;
@@ -375,7 +369,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link 
                   key={item.href} 
                   href={item.href}
-                  onClick={() => setIsSidebarOpen(false)} // Close on click
+                  onClick={() => setIsSidebarOpen(false)}
                   className={`
                     flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-bold transition-all
                     ${isActive 
@@ -396,7 +390,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            })}
         </div>
 
-        {/* Mobile User Info Footer */}
         <div className="absolute bottom-6 left-0 w-full px-6">
            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center gap-3">
                  <Avatar className="h-10 w-10">
