@@ -1,91 +1,55 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react'; // 🟢 Added Suspense
-import { useRouter, useSearchParams } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { MapPin, Loader2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { logActivity } from '@/lib/logger'; 
+import { loginAction } from '@/app/actions/auth'; // 🟢 Import Server Action
 import { getSafeRedirect } from '@/lib/security';
 
-// 🟢 1. RENAME your main logic component to "LoginContent" (Internal)
+// 🟢 1. INTERNAL CONTENT COMPONENT
 function LoginContent() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  
-  const router = useRouter();
-  const searchParams = useSearchParams(); 
+  const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  useEffect(() => {
-    // Check if already logged in
-    const stored = localStorage.getItem('geo_user');
-    if (stored) {
-      const nextParam = searchParams.get('next');
-      const safeTarget = getSafeRedirect(nextParam, '/dashboard');
-      router.push(safeTarget);
-    }
-  }, [router, searchParams]);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username || !password) return;
-
+  // 🟢 Handles the form submission using the Server Action
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setLoading(true);
 
+    const formData = new FormData(event.currentTarget);
+
     try {
-      const cleanUser = username.toLowerCase().trim();
-      const userRef = doc(db, 'users', cleanUser);
-      const userSnap = await getDoc(userRef);
+      // Call the Server Action
+      const result = await loginAction(formData);
 
-      if (!userSnap.exists()) {
-        throw new Error("User not found.");
+      if (result.success) {
+        toast({ 
+          title: "Access Granted", 
+          description: "Secure session established.",
+          className: "bg-green-600 text-white border-none"
+        });
+
+        // Calculate safe redirect URL
+        const nextParam = searchParams.get('next');
+        const safeTarget = getSafeRedirect(nextParam, '/dashboard');
+
+        // Force hard refresh to ensure cookies are picked up by the browser
+        window.location.href = safeTarget;
+      } else {
+        toast({ 
+          variant: "destructive", 
+          title: "Login Failed", 
+          description: result.message || "Invalid credentials." 
+        });
+        setLoading(false);
       }
-
-      const userData = userSnap.data();
-
-      if (userData.password !== password) {
-        throw new Error("Incorrect password.");
-      }
-
-      const sessionData = {
-        uid: cleanUser,
-        username: userData.username,
-        role: userData.role,
-        permissions: userData.permissions || {},
-        roleGroup: userData.groupId || null
-      };
-
-      await logActivity(
-        userData.username, 
-        'User Login', 
-        'Successful login session started.'
-      );
-
-      localStorage.setItem('geo_user', JSON.stringify(sessionData));
-      
-      toast({ 
-        title: "Access Granted", 
-        description: `Welcome, ${userData.username}`,
-        className: "bg-green-600 text-white border-none"
-      });
-
-      const nextParam = searchParams.get('next');
-      const safeTarget = getSafeRedirect(nextParam, '/dashboard');
-
-      window.location.href = safeTarget;
-
-    } catch (err: any) {
-      console.error(err);
-      toast({ 
-        variant: "destructive", 
-        title: "Login Failed", 
-        description: "Invalid credentials or account issue." 
-      });
+    } catch (err) {
+      console.error("Login Error:", err);
+      toast({ variant: "destructive", title: "System Error", description: "Connection failed." });
       setLoading(false);
     }
   };
@@ -104,27 +68,27 @@ function LoginContent() {
           </div>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">Username</label>
             <Input 
+              name="username" // 🟢 Crucial for Server Action
               type="text" 
               placeholder="username" 
               className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" 
-              value={username} 
-              onChange={(e) => setUsername(e.target.value)} 
               disabled={loading} 
+              required
             />
           </div>
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider pl-1">Password</label>
             <Input 
+              name="password" // 🟢 Crucial for Server Action
               type="password" 
               placeholder="••••••••" 
               className="h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all pl-4 rounded-lg" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
               disabled={loading} 
+              required
             />
           </div>
           <Button 
@@ -140,11 +104,11 @@ function LoginContent() {
   );
 }
 
-// 🟢 2. EXPORT THE WRAPPER (This fixes the build error)
+// 🟢 2. SUSPENSE WRAPPER (Fixes Build Error)
 export default function LoginPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#F8F9FB] p-4">
-      {/* Suspense boundary handles the useSearchParams hook during build */}
+      {/* Suspense handles the useSearchParams hook during build */}
       <Suspense fallback={
         <div className="flex flex-col items-center gap-4">
            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
