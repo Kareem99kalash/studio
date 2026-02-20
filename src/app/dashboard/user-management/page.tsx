@@ -90,6 +90,7 @@ const PERMISSION_GROUPS = [
     actions: [
       { id: 'access_admin_tools', label: 'Access Admin Page' }, 
       { id: 'manage_users', label: 'Manage Users (Global)' },
+      { id: 'restrict_raw_view', label: 'Restrict to Obfuscated View (Hexbins)' },
     ]
   }
 ];
