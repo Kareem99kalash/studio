@@ -9,6 +9,9 @@ import { Route, BrainCircuit, Clock, Info, CheckCircle2, RefreshCw, Loader2, Map
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { logger } from '@/lib/logger'; // 🟢 IMPORT LOGGER
+import { useAuth } from '@/hooks/use-auth'; // 🟢 IMPORT AUTH
+import { obfuscatePolygons } from '@/lib/geo-utils'; // 🟢 IMPORT GEO UTILS
+import { generateWatermarkPattern } from '@/lib/watermark-utils'; // 🟢 IMPORT WATERMARK UTILS
 
 // ... (Pattern Definitions and getDistSq helper remain same) ...
 const PATTERN_TEMPLATES = {
@@ -44,7 +47,33 @@ function MapController({ city, resetTrigger }: { city?: any, resetTrigger: numbe
 }
 
 export function MapView({ selectedCity, stores = [], analysisData, isLoading }: any) {
-  // ... (Component state remains same) ...
+  const { user } = useAuth(); // 🟢 GET USER
+
+  // DETERMINE VISIBILITY
+  // 1. Obfuscation (Hexbins)
+  const isRestricted = user?.role !== 'admin' && user?.permissions?.restrict_raw_view === true;
+  const canViewRaw = !isRestricted;
+
+  // 2. Watermarking
+  const shouldWatermark = user?.role !== 'admin' && user?.permissions?.force_watermark === true;
+
+  // COMPUTE DISPLAY POLYGONS (Raw or Obfuscated)
+  const displayPolygons = useMemo(() => {
+    if (!selectedCity?.polygons) return null;
+    if (canViewRaw) {
+        return selectedCity.polygons;
+    } else {
+        return obfuscatePolygons(selectedCity.polygons, 0.5); // 0.5km hexbins
+    }
+  }, [selectedCity?.polygons, canViewRaw]);
+
+  // Construct a modified city object to pass to MapController so it focuses correctly
+  const displayCity = useMemo(() => ({
+      ...selectedCity,
+      polygons: displayPolygons
+  }), [selectedCity, displayPolygons]);
+
+
   const [selectedZoneData, setSelectedZoneData] = useState<{id: string, name: string} | null>(null);
   const [routePaths, setRoutePaths] = useState<any[]>([]); 
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
@@ -55,29 +84,40 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
 
   useEffect(() => { setIsClient(true); }, []);
 
-  const { storePatternMap, patternDefs } = useMemo(() => {
-    if (!analysisData?.assignments || !usePatterns) return { storePatternMap: {}, patternDefs: [] };
-
-    const storeIds = Array.from(new Set(Object.values(analysisData.assignments).map((a: any) => a.storeId))).filter(id => id);
-    const map: Record<string, string> = {};
+  // GENERATE PATTERNS (Store + Watermark)
+  const { storePatternMap, patternDefs, watermarkId } = useMemo(() => {
     const defs: JSX.Element[] = [];
+    const map: Record<string, string> = {};
 
-    storeIds.forEach((storeId, index) => {
-      const patternKey = PATTERN_KEYS[index % PATTERN_KEYS.length];
-      map[storeId as string] = patternKey;
+    // 1. Generate Watermark if needed
+    let wId = null;
+    if (shouldWatermark && user?.username) {
+        const { patternId, PatternDef } = generateWatermarkPattern(user.username, user.username);
+        defs.push(PatternDef);
+        wId = patternId;
+    }
 
-      ['#22c55e', '#eab308', '#ef4444', '#94a3b8'].forEach(color => {
-        const patternId = `pattern-${storeId}-${color.replace('#', '')}`;
-        defs.push(
-          <pattern key={patternId} id={patternId} patternUnits="userSpaceOnUse" width="10" height="10">
-            {PATTERN_TEMPLATES[patternKey as keyof typeof PATTERN_TEMPLATES](color)}
-          </pattern>
-        );
-      });
-    });
+    // 2. Generate Store Patterns (if needed)
+    if (analysisData?.assignments && usePatterns) {
+        const storeIds = Array.from(new Set(Object.values(analysisData.assignments).map((a: any) => a.storeId))).filter(id => id);
 
-    return { storePatternMap: map, patternDefs: defs };
-  }, [analysisData, usePatterns]);
+        storeIds.forEach((storeId, index) => {
+          const patternKey = PATTERN_KEYS[index % PATTERN_KEYS.length];
+          map[storeId as string] = patternKey;
+
+          ['#22c55e', '#eab308', '#ef4444', '#94a3b8'].forEach(color => {
+            const patternId = `pattern-${storeId}-${color.replace('#', '')}`;
+            defs.push(
+              <pattern key={patternId} id={patternId} patternUnits="userSpaceOnUse" width="10" height="10">
+                {PATTERN_TEMPLATES[patternKey as keyof typeof PATTERN_TEMPLATES](color)}
+              </pattern>
+            );
+          });
+        });
+    }
+
+    return { storePatternMap: map, patternDefs: defs, watermarkId: wId };
+  }, [analysisData, usePatterns, shouldWatermark, user?.username]);
 
   const aiInsights = useMemo(() => {
     if (!analysisData?.assignments) return null;
@@ -139,7 +179,8 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   };
 
   const handleZoneClick = async (feature: any) => {
-      const id = feature?.properties?.id;
+      // Use original properties if obfuscated
+      const id = feature?.properties?.original_id || feature?.properties?.id;
       const name = feature?.properties?.name;
       const uniqueKey = id || name;
       
@@ -240,15 +281,37 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             zoom={12} 
             style={{ height: '100%', width: '100%' }}
         >
-          <MapController city={selectedCity} resetTrigger={resetTrigger} />
+          {/* Pass the potentially obfuscated city to the controller */}
+          <MapController city={displayCity} resetTrigger={resetTrigger} />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           
-          {selectedCity?.polygons && (
-            <GeoJSON 
-                key={`${selectedCity.id}-geojson-${analysisData?.timestamp || 'init'}`} 
-                data={selectedCity.polygons} 
+          {/* UNDERLAY LAYER (Background Color) IF WATERMARKED */}
+          {shouldWatermark && displayPolygons && (
+             <GeoJSON
+                key={`${selectedCity.id}-underlay-${canViewRaw ? 'raw' : 'hex'}`}
+                data={displayPolygons}
+                interactive={false}
                 style={(f: any) => {
-                    const key = f.properties.id || f.properties.name;
+                    const key = f.properties.original_id || f.properties.id || f.properties.name;
+                    const data = analysisData?.assignments?.[key];
+                    return {
+                        stroke: false,
+                        fillColor: data?.fillColor || '#f1f5f9',
+                        fillOpacity: 0.6
+                    };
+                }}
+             />
+          )}
+
+          {/* MAIN LAYER (Watermark/Pattern + Interactions) */}
+          {displayPolygons && (
+            <GeoJSON 
+                key={`${selectedCity.id}-geojson-${analysisData?.timestamp || 'init'}-${canViewRaw ? 'raw' : 'hex'}`}
+                data={displayPolygons}
+                style={(f: any) => {
+                    // Use original_id if available (from obfuscation), otherwise normal id
+                    const key = f.properties.original_id || f.properties.id || f.properties.name;
+
                     const data = analysisData?.assignments?.[key];
                     const isSelected = (f.properties.id === selectedZoneData?.id && f.properties.name === selectedZoneData?.name);
                     
@@ -256,7 +319,12 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                     let fillColor = statusColor;
                     let fillOpacity = 0.6; 
 
-                    if (usePatterns && data?.storeId && storePatternMap[data.storeId]) {
+                    // Prioritize Watermark if forced, then Store Patterns, then Solid Color
+                    if (shouldWatermark && watermarkId) {
+                         // Apply watermark overlay (overrides store pattern)
+                         fillColor = `url(#${watermarkId})`;
+                         fillOpacity = 1;
+                    } else if (usePatterns && data?.storeId && storePatternMap[data.storeId]) {
                         const colorKey = statusColor.replace('#', '');
                         fillColor = `url(#pattern-${data.storeId}-${colorKey})`;
                         fillOpacity = 1; 
