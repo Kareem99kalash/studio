@@ -9,6 +9,8 @@ import { Route, BrainCircuit, Clock, Info, CheckCircle2, RefreshCw, Loader2, Map
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { logger } from '@/lib/logger'; // 🟢 IMPORT LOGGER
+import { useAuth } from '@/hooks/use-auth'; // 🟢 IMPORT AUTH
+import { obfuscatePolygons } from '@/lib/geo-utils'; // 🟢 IMPORT GEO UTILS
 
 // ... (Pattern Definitions and getDistSq helper remain same) ...
 const PATTERN_TEMPLATES = {
@@ -44,7 +46,31 @@ function MapController({ city, resetTrigger }: { city?: any, resetTrigger: numbe
 }
 
 export function MapView({ selectedCity, stores = [], analysisData, isLoading }: any) {
-  // ... (Component state remains same) ...
+  const { user } = useAuth(); // 🟢 GET USER
+
+  // DETERMINE VISIBILITY
+  // Admins always see raw data.
+  // Others see raw data UNLESS they have the 'restrict_raw_view' flag set to true.
+  const isRestricted = user?.role !== 'admin' && user?.permissions?.restrict_raw_view === true;
+  const canViewRaw = !isRestricted;
+
+  // COMPUTE DISPLAY POLYGONS (Raw or Obfuscated)
+  const displayPolygons = useMemo(() => {
+    if (!selectedCity?.polygons) return null;
+    if (canViewRaw) {
+        return selectedCity.polygons;
+    } else {
+        return obfuscatePolygons(selectedCity.polygons, 0.5); // 0.5km hexbins
+    }
+  }, [selectedCity?.polygons, canViewRaw]);
+
+  // Construct a modified city object to pass to MapController so it focuses correctly
+  const displayCity = useMemo(() => ({
+      ...selectedCity,
+      polygons: displayPolygons
+  }), [selectedCity, displayPolygons]);
+
+
   const [selectedZoneData, setSelectedZoneData] = useState<{id: string, name: string} | null>(null);
   const [routePaths, setRoutePaths] = useState<any[]>([]); 
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
@@ -139,7 +165,8 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   };
 
   const handleZoneClick = async (feature: any) => {
-      const id = feature?.properties?.id;
+      // Use original properties if obfuscated
+      const id = feature?.properties?.original_id || feature?.properties?.id;
       const name = feature?.properties?.name;
       const uniqueKey = id || name;
       
@@ -240,15 +267,18 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             zoom={12} 
             style={{ height: '100%', width: '100%' }}
         >
-          <MapController city={selectedCity} resetTrigger={resetTrigger} />
+          {/* Pass the potentially obfuscated city to the controller */}
+          <MapController city={displayCity} resetTrigger={resetTrigger} />
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           
-          {selectedCity?.polygons && (
+          {displayPolygons && (
             <GeoJSON 
-                key={`${selectedCity.id}-geojson-${analysisData?.timestamp || 'init'}`} 
-                data={selectedCity.polygons} 
+                key={`${selectedCity.id}-geojson-${analysisData?.timestamp || 'init'}-${canViewRaw ? 'raw' : 'hex'}`}
+                data={displayPolygons}
                 style={(f: any) => {
-                    const key = f.properties.id || f.properties.name;
+                    // Use original_id if available (from obfuscation), otherwise normal id
+                    const key = f.properties.original_id || f.properties.id || f.properties.name;
+
                     const data = analysisData?.assignments?.[key];
                     const isSelected = (f.properties.id === selectedZoneData?.id && f.properties.name === selectedZoneData?.name);
                     
