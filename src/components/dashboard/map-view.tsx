@@ -81,6 +81,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   const [resetTrigger, setResetTrigger] = useState(0);
 
   const usePatterns = stores.length > 1;
+  const shouldRenderPatterns = usePatterns || shouldWatermark;
 
   useEffect(() => { setIsClient(true); }, []);
 
@@ -240,7 +241,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   return (
     <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
       
-      {usePatterns && (
+      {shouldRenderPatterns && (
         <svg width="0" height="0" style={{ position: 'absolute' }}>
             <defs>{patternDefs}</defs>
         </svg>
