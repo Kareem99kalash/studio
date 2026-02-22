@@ -1,6 +1,7 @@
 'use server';
 
 import * as turf from '@turf/turf';
+import { parse } from 'terraformer-wkt-parser';
 
 // --- TYPES ---
 export interface ScrapedBusiness {
@@ -102,37 +103,65 @@ async function fetchWithFailover(query: string): Promise<any> {
 }
 
 // --- ACTION 1: Generate Grid (Optimistic Strategy) ---
-export async function generateScrapeGrid(lat: number, lng: number, radiusMeters: number) {
+export async function generateScrapeGrid(
+    lat: number,
+    lng: number,
+    radiusMeters: number,
+    polygonWkt?: string
+) {
     try {
-        const centerPoint = turf.point([lng, lat]);
-        const circle = turf.circle(centerPoint, radiusMeters, { steps: 64, units: 'meters' });
-        const bbox = turf.bbox(circle);
+        let geometry: any;
+        let bbox: any;
+        let areaSqMeters = 0;
+
+        // MODE 1: POLYGON WKT
+        if (polygonWkt) {
+            try {
+                const parsed = parse(polygonWkt);
+                // Convert Terraformer GeoJSON to Turf GeoJSON (they are compatible mostly)
+                geometry = parsed;
+                // Ensure it's a polygon or multipolygon
+                if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') {
+                    throw new Error("WKT must be a Polygon or MultiPolygon");
+                }
+                bbox = turf.bbox(geometry);
+                areaSqMeters = turf.area(geometry);
+            } catch (e) {
+                console.error("WKT Parse Error", e);
+                return { success: false, error: "Invalid WKT format" };
+            }
+        }
+        // MODE 2: RADIUS
+        else {
+            const centerPoint = turf.point([lng, lat]);
+            const circle = turf.circle(centerPoint, radiusMeters, { steps: 64, units: 'meters' });
+            geometry = circle;
+            bbox = turf.bbox(circle);
+            areaSqMeters = Math.PI * (radiusMeters)**2;
+        }
 
         // OPTIMISTIC TILING STRATEGY:
-        // Start BIG to reduce request count drastically.
-        // If a big tile fails (Timeout/Limit), the client will split it.
-        // This is "Fast by Default, Granular on Demand".
+        // Use area size to determine initial granularity
+        // Area in sq meters -> sq km
+        const areaSqKm = areaSqMeters / 1_000_000;
 
-        let cellSideKm = 2; // Default 2km (16x larger area than 0.5km)
+        let cellSideKm = 2; // Default 2km
 
-        if (radiusMeters < 3000) {
-            cellSideKm = 1; // 1km for small/medium searches
-        }
-        if (radiusMeters < 1000) {
-            cellSideKm = 0.5; // 0.5km for very small precision searches
-        }
-        if (radiusMeters > 20000) {
-            cellSideKm = 5; // 5km for huge areas
-        }
+        if (areaSqKm < 10) cellSideKm = 1;
+        if (areaSqKm < 1) cellSideKm = 0.5;
+        if (areaSqKm > 400) cellSideKm = 5;
 
         const grid = turf.squareGrid(bbox, cellSideKm, { units: 'kilometers' });
-        const relevantCells = grid.features.filter(cell => !turf.booleanDisjoint(cell, circle));
+
+        // Filter cells that intersect with the geometry
+        const relevantCells = grid.features.filter(cell => !turf.booleanDisjoint(cell, geometry));
 
         return {
             success: true,
             tiles: relevantCells.map(cell => turf.bbox(cell)),
-            totalAreaKm2: (Math.PI * (radiusMeters/1000)**2).toFixed(2),
-            estimatedTiles: relevantCells.length
+            totalAreaKm2: areaSqKm.toFixed(2),
+            estimatedTiles: relevantCells.length,
+            bounds: bbox // Return bounds to fit map view
         };
 
     } catch (e) {

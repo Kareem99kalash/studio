@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -31,7 +33,9 @@ import {
   RefreshCw,
   ChevronDown,
   X,
-  Grid
+  Grid,
+  FileText,
+  Upload
 } from 'lucide-react';
 import {
   Popover,
@@ -123,7 +127,7 @@ export type TileStatus = 'pending' | 'loading' | 'success' | 'empty' | 'error' |
 
 // Engine Types
 interface QueueItem {
-    id: string; // Unique ID for tracking
+    id: string;
     bbox: number[];
     depth: number;
     parentId?: string;
@@ -210,8 +214,11 @@ export default function DataScraperPage() {
   const { toast } = useToast();
 
   // --- STATE ---
+  const [mode, setMode] = useState<'radius' | 'polygon'>('radius');
+
   const [center, setCenter] = useState<[number, number]>([33.5138, 36.2765]);
   const [radius, setRadius] = useState<number>(1000);
+  const [polygonWkt, setPolygonWkt] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['generic']);
 
   const [isScraping, setIsScraping] = useState(false);
@@ -219,6 +226,7 @@ export default function DataScraperPage() {
   // Visual State
   const [tileStates, setTileStates] = useState<TileState[]>([]);
   const [results, setResults] = useState<ScrapedBusiness[]>([]);
+  const [highlightedBusinessId, setHighlightedBusinessId] = useState<string | null>(null);
 
   // Counters
   const [queueLength, setQueueLength] = useState(0);
@@ -244,6 +252,11 @@ export default function DataScraperPage() {
         return;
     }
 
+    if (mode === 'polygon' && !polygonWkt.trim()) {
+        toast({ variant: "destructive", title: "Missing WKT", description: "Please enter a valid WKT Polygon." });
+        return;
+    }
+
     setIsScraping(true);
     stopRef.current = false;
     setResults([]);
@@ -253,8 +266,14 @@ export default function DataScraperPage() {
     try {
         toast({ title: "Initializing", description: "Generating search grid..." });
 
-        // 1. Initial Grid
-        const gridRes = await generateScrapeGrid(center[0], center[1], radius);
+        // 1. Initial Grid (Supports WKT now)
+        const gridRes = await generateScrapeGrid(
+            center[0],
+            center[1],
+            radius,
+            mode === 'polygon' ? polygonWkt : undefined
+        );
+
         if (!gridRes.success || !gridRes.tiles) throw new Error(gridRes.error);
 
         // 2. Initialize Queue
@@ -275,12 +294,13 @@ export default function DataScraperPage() {
         setTileStates(initialStates);
         setQueueLength(queue.length);
 
-        const MAX_WORKERS = 12; // INCREASED CONCURRENCY (12 workers)
-        const MAX_DEPTH = 3;    // DEEPER RECURSION if needed
+        const MAX_WORKERS = 12;
+        const MAX_DEPTH = 3;
 
         let activeWorkers = 0;
         let completed = 0;
 
+        // Use a set for uniqueness
         const uniqueResults = new Map<string, ScrapedBusiness>();
 
         // WORKER LOOP
@@ -290,18 +310,15 @@ export default function DataScraperPage() {
             while (queue.length > 0 || activeWorkers > 0) {
                 if (stopRef.current) break;
 
-                // If we can spawn a worker and there is work
                 if (activeWorkers < MAX_WORKERS && queue.length > 0) {
                     const item = queue.shift()!;
                     setQueueLength(queue.length);
                     activeWorkers++;
 
-                    // Fire and forget (but track promise)
                     (async () => {
                         try {
                             updateTileStatus(item.id, 'loading');
 
-                            // Exponential Backoff if retrying
                             if (item.attempts > 0) {
                                 updateTileStatus(item.id, 'retrying');
                                 await wait(1000 * Math.pow(2, item.attempts));
@@ -319,12 +336,10 @@ export default function DataScraperPage() {
                                 setResults(Array.from(uniqueResults.values()));
                                 completed++;
                                 setProcessedCount(c => c + 1);
-
-                                // Minimal Delay (50ms) now that we have mirrors and large initial tiles
                                 await wait(50);
 
                             } else if (res.shouldSplit && item.depth < MAX_DEPTH) {
-                                // SPLIT (Timeout or Too Big)
+                                // SPLIT
                                 const newTiles = await splitTile(item.bbox);
 
                                 const childItems: QueueItem[] = newTiles.map((bbox, idx) => ({
@@ -334,13 +349,11 @@ export default function DataScraperPage() {
                                     attempts: 0
                                 }));
 
-                                // Add to front
                                 queue.unshift(...childItems);
                                 setQueueLength(queue.length);
 
-                                // Update Visual State
                                 setTileStates(prev => {
-                                    const next = prev.filter(p => p.id !== item.id); // Remove parent
+                                    const next = prev.filter(p => p.id !== item.id);
                                     const newStates = childItems.map(c => ({
                                         id: c.id,
                                         bbox: c.bbox,
@@ -355,8 +368,6 @@ export default function DataScraperPage() {
                                 item.attempts++;
                                 queue.unshift(item);
                                 setQueueLength(queue.length);
-
-                                // Pause briefly, not global lock since we have mirrors
                                 await wait(2000);
 
                             } else {
@@ -427,6 +438,25 @@ export default function DataScraperPage() {
     document.body.removeChild(link);
   };
 
+  // Helper to parse file
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const text = event.target?.result as string;
+          // Simple heuristic: if it contains "POLYGON", treat as WKT
+          // If CSV, try to find a WKT column? For now, assume raw text or simple content
+          if (text.includes('POLYGON') || text.includes('MULTIPOLYGON')) {
+              setPolygonWkt(text.trim());
+              toast({ title: "Loaded", description: "Polygon loaded from file." });
+          } else {
+              toast({ variant: "destructive", title: "Invalid File", description: "Could not find WKT Polygon data." });
+          }
+      };
+      reader.readAsText(file);
+  };
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
         {/* HEADER */}
@@ -450,26 +480,57 @@ export default function DataScraperPage() {
             <div className="w-80 bg-white border-r flex flex-col shrink-0 z-10 shadow-xl shadow-slate-200/50">
                 <div className="p-4 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
 
-                    {/* 1. LOCATION */}
+                    {/* 1. LOCATION MODE */}
                     <div className="space-y-3">
                         <div className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wide">
                             <MapPin className="h-4 w-4 text-indigo-500" /> Target Area
                         </div>
-                        <div className="p-3 bg-slate-50 rounded-xl border space-y-3">
-                            <div>
-                                <Label className="text-xs text-slate-500 font-bold uppercase">Center Point</Label>
-                                <div className="text-xs font-mono text-slate-700 bg-white p-2 rounded border mt-1">
-                                    {center[0].toFixed(5)}, {center[1].toFixed(5)}
+
+                        <Tabs value={mode} onValueChange={(v) => setMode(v as 'radius' | 'polygon')} className="w-full">
+                            <TabsList className="w-full grid grid-cols-2 mb-2">
+                                <TabsTrigger value="radius">Radius</TabsTrigger>
+                                <TabsTrigger value="polygon">Polygon</TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="radius" className="mt-0 space-y-3 p-3 bg-slate-50 rounded-xl border">
+                                <div>
+                                    <Label className="text-xs text-slate-500 font-bold uppercase">Center Point</Label>
+                                    <div className="text-xs font-mono text-slate-700 bg-white p-2 rounded border mt-1">
+                                        {center[0].toFixed(5)}, {center[1].toFixed(5)}
+                                    </div>
                                 </div>
-                            </div>
-                            <div>
-                                <Label className="text-xs text-slate-500 font-bold uppercase flex justify-between">
-                                    Radius
-                                    <span className="text-indigo-600">{(radius / 1000).toFixed(1)} km</span>
-                                </Label>
-                                <Slider value={[radius]} min={100} max={20000} step={100} onValueChange={(v) => setRadius(v[0])} className="mt-2" disabled={isScraping} />
-                            </div>
-                        </div>
+                                <div>
+                                    <Label className="text-xs text-slate-500 font-bold uppercase flex justify-between">
+                                        Radius
+                                        <span className="text-indigo-600">{(radius / 1000).toFixed(1)} km</span>
+                                    </Label>
+                                    <Slider value={[radius]} min={100} max={20000} step={100} onValueChange={(v) => setRadius(v[0])} className="mt-2" disabled={isScraping} />
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="polygon" className="mt-0 space-y-3 p-3 bg-slate-50 rounded-xl border">
+                                <div className="space-y-2">
+                                    <Label className="text-xs text-slate-500 font-bold uppercase">WKT Polygon</Label>
+                                    <Textarea
+                                        placeholder="POLYGON((...))"
+                                        className="text-[10px] h-20 font-mono"
+                                        value={polygonWkt}
+                                        onChange={(e) => setPolygonWkt(e.target.value)}
+                                        disabled={isScraping}
+                                    />
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="file"
+                                            className="text-[10px] h-8 file:text-[10px]"
+                                            accept=".csv,.txt"
+                                            onChange={handleFileUpload}
+                                            disabled={isScraping}
+                                        />
+                                    </div>
+                                    <p className="text-[9px] text-slate-400">Supports Raw WKT or file containing WKT string.</p>
+                                </div>
+                            </TabsContent>
+                        </Tabs>
                     </div>
 
                     {/* 2. FILTERS */}
@@ -536,6 +597,7 @@ export default function DataScraperPage() {
                         // Pass dynamic tile states
                         gridTiles={tileStates.map(t => t.bbox)}
                         tileStatuses={tileStates.map(t => t.status)}
+                        highlightedBusinessId={highlightedBusinessId}
                     />
                 </div>
                 <div className="flex-[2] bg-white flex flex-col min-h-0">
@@ -567,7 +629,11 @@ export default function DataScraperPage() {
                                     </TableRow>
                                 ) : (
                                     results.map((r) => (
-                                        <TableRow key={r.id} className="hover:bg-slate-50 text-xs">
+                                        <TableRow
+                                            key={r.id}
+                                            className={`cursor-pointer hover:bg-indigo-50 text-xs transition-colors ${highlightedBusinessId === r.id ? 'bg-indigo-100 border-l-4 border-indigo-500' : ''}`}
+                                            onClick={() => setHighlightedBusinessId(r.id)}
+                                        >
                                             <TableCell className="font-medium">{r.name}</TableCell>
                                             <TableCell><Badge variant="outline" className="text-[10px] font-normal">{r.type}</Badge></TableCell>
                                             <TableCell className="truncate max-w-[180px]" title={r.address}>{r.address || '-'}</TableCell>

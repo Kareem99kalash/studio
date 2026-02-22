@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Circle, CircleMarker, Popup, useMap, useMapEvents, Rectangle, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, CircleMarker, Popup, useMap, useMapEvents, Rectangle, Marker, Polygon } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ interface ScraperMapProps {
   results: ScrapedBusiness[];
   gridTiles: number[][]; // [minLon, minLat, maxLon, maxLat]
   tileStatuses?: TileStatus[];
+  highlightedBusinessId?: string | null;
 }
 
 function LocationMarker({ position, onDragEnd }: { position: [number, number], onDragEnd: (lat: number, lng: number) => void }) {
@@ -73,16 +74,23 @@ function LocationMarker({ position, onDragEnd }: { position: [number, number], o
 }
 
 // Component to handle map view updates
-function MapUpdater({ center }: { center: [number, number] }) {
+function MapUpdater({ center, highlightedBusiness, results }: { center: [number, number], highlightedBusiness: string | null | undefined, results: ScrapedBusiness[] }) {
     const map = useMap();
+
+    // Auto-pan to highlighted business
     useEffect(() => {
-        // map.flyTo(center, 13); // Don't fly aggressively if user is dragging
-        // Maybe only on init?
-    }, [center, map]);
+        if (highlightedBusiness) {
+            const business = results.find(r => r.id === highlightedBusiness);
+            if (business) {
+                map.flyTo([business.lat, business.lng], 16);
+            }
+        }
+    }, [highlightedBusiness, results, map]);
+
     return null;
 }
 
-export default function ScraperMap({ center, radius, onCenterChange, results, gridTiles, tileStatuses }: ScraperMapProps) {
+export default function ScraperMap({ center, radius, onCenterChange, results, gridTiles, tileStatuses, highlightedBusinessId }: ScraperMapProps) {
 
   const [activeBusiness, setActiveBusiness] = useState<ScrapedBusiness | null>(null);
 
@@ -134,7 +142,7 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
 
-        <MapUpdater center={center} />
+        <MapUpdater center={center} highlightedBusiness={highlightedBusinessId} results={results} />
 
         {/* Search Radius */}
         <Circle
@@ -153,38 +161,39 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
                 bounds={tile.bounds}
                 pathOptions={{ color: tile.color, weight: 1, fillOpacity: tile.fillOpacity }}
             >
-                {/* Optional: Add Popup for debug info on tile click */}
-                {/* <Popup>Tile {i}: {tile.status}</Popup> */}
             </Rectangle>
         ))}
 
         {/* Results Markers */}
-        {results.map((biz) => (
-            <CircleMarker
-                key={biz.id}
-                center={[biz.lat, biz.lng]}
-                radius={6}
-                pathOptions={{
-                    color: '#fff',
-                    weight: 1,
-                    fillColor: biz.type.includes('restaurant') ? '#ef4444' : '#3b82f6',
-                    fillOpacity: 0.8
-                }}
-                eventHandlers={{
-                    click: () => setActiveBusiness(biz)
-                }}
-            >
-                <Popup>
-                    <div className="text-xs">
-                        <strong className="block text-sm mb-1">{biz.name}</strong>
-                        <Badge variant="outline" className="mb-2 text-[10px]">{biz.type}</Badge>
-                        <p>{biz.address}</p>
-                        {biz.phone && <p>📞 {biz.phone}</p>}
-                        {biz.website && <a href={biz.website} target="_blank" className="text-blue-500 underline block mt-1">Website</a>}
-                    </div>
-                </Popup>
-            </CircleMarker>
-        ))}
+        {results.map((biz) => {
+            const isHighlighted = biz.id === highlightedBusinessId;
+            return (
+                <CircleMarker
+                    key={biz.id}
+                    center={[biz.lat, biz.lng]}
+                    radius={isHighlighted ? 10 : 6}
+                    pathOptions={{
+                        color: isHighlighted ? '#4f46e5' : '#fff',
+                        weight: isHighlighted ? 3 : 1,
+                        fillColor: isHighlighted ? '#4f46e5' : (biz.type.includes('restaurant') ? '#ef4444' : '#3b82f6'),
+                        fillOpacity: isHighlighted ? 1 : 0.8
+                    }}
+                    eventHandlers={{
+                        click: () => setActiveBusiness(biz)
+                    }}
+                >
+                    <Popup>
+                        <div className="text-xs">
+                            <strong className="block text-sm mb-1">{biz.name}</strong>
+                            <Badge variant="outline" className="mb-2 text-[10px]">{biz.type}</Badge>
+                            <p>{biz.address}</p>
+                            {biz.phone && <p>📞 {biz.phone}</p>}
+                            {biz.website && <a href={biz.website} target="_blank" className="text-blue-500 underline block mt-1">Website</a>}
+                        </div>
+                    </Popup>
+                </CircleMarker>
+            );
+        })}
 
       </MapContainer>
 
