@@ -35,7 +35,10 @@ import {
   EyeOff,
   HelpCircle,
   CheckCircle2,
-  Copy
+  Copy,
+  Users,
+  Settings,
+  List
 } from 'lucide-react';
 import { useSession } from '@/hooks/use-session';
 import Link from 'next/link';
@@ -65,10 +68,15 @@ export default function UserManagementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [selectedPreset, setSelectedPreset] = useState<string>('');
-  const [newPresetName, setNewPresetName] = useState('');
 
   // GROUP FORM STATE
   const [newGroupName, setNewGroupName] = useState('');
+
+  // PRESET FORM STATE
+  const [newPresetName, setNewPresetName] = useState('');
+  const [presetPermissions, setPresetPermissions] = useState<Record<string, boolean>>({});
+  const [isEditingPreset, setIsEditingPreset] = useState(false);
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
 
   // EDIT MODAL STATE
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -252,7 +260,8 @@ export default function UserManagementPage() {
       }
   };
 
-  const saveAsPreset = async () => {
+  // PRESET MANAGEMENT
+  const handleSavePreset = async () => {
       if (!newPresetName.trim()) return;
       if (!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS)) {
           toast({ variant: "destructive", title: "Access Denied", description: "You cannot manage presets." });
@@ -261,16 +270,27 @@ export default function UserManagementPage() {
       try {
           const docRef = await addDoc(collection(db, 'permission_presets'), {
               name: newPresetName.trim(),
-              permissions: createPermissions,
+              permissions: presetPermissions,
               createdBy: currentUser?.username,
               createdAt: new Date().toISOString()
           });
-          setPresets([...presets, { id: docRef.id, name: newPresetName.trim(), permissions: createPermissions }]);
+          setPresets([...presets, { id: docRef.id, name: newPresetName.trim(), permissions: presetPermissions }]);
           setNewPresetName('');
-          toast({ title: "Preset Saved", description: "New permission template created." });
+          setPresetPermissions({});
+          toast({ title: "Preset Created", description: "New permission template created." });
       } catch(e) {
           toast({ variant: "destructive", title: "Error", description: "Failed to save preset." });
       }
+  };
+
+  const handleDeletePreset = async (id: string) => {
+      if (!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS)) return;
+      if(!confirm("Delete this preset?")) return;
+      try {
+          await deleteDoc(doc(db, 'permission_presets', id));
+          setPresets(presets.filter(p => p.id !== id));
+          toast({ title: "Deleted", description: "Preset removed." });
+      } catch(e) { toast({ variant: "destructive", title: "Error" }); }
   };
 
   const nextStep = () => {
@@ -395,9 +415,6 @@ export default function UserManagementPage() {
           // Check if password change is allowed for this specific interaction
           if (canChangePassword(editingUser)) {
             updates.password = editPassword.trim();
-          } else {
-             // If they tried to set it but aren't allowed, ignore or warn?
-             // Ideally UI hides the input, but safe to ignore here.
           }
       }
 
@@ -541,18 +558,11 @@ export default function UserManagementPage() {
                    <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                     <div className="flex items-center gap-2 mb-2">
                          <Select value={selectedPreset} onValueChange={applyPreset}>
-                            <SelectTrigger className="h-8 text-xs bg-white border-slate-200"><SelectValue placeholder="Load Preset..." /></SelectTrigger>
+                            <SelectTrigger className="h-8 text-xs bg-white border-slate-200"><SelectValue placeholder="Load a Preset..." /></SelectTrigger>
                             <SelectContent>
                                 {presets.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                             </SelectContent>
                          </Select>
-
-                         {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS) && (
-                            <div className="flex items-center gap-1 w-full max-w-[50%]">
-                                <Input className="h-8 text-xs" placeholder="Save as..." value={newPresetName} onChange={e => setNewPresetName(e.target.value)} />
-                                <Button type="button" size="icon" className="h-8 w-8 shrink-0" onClick={saveAsPreset}><Save className="h-3 w-3" /></Button>
-                            </div>
-                         )}
                     </div>
 
                     <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50">
@@ -657,24 +667,69 @@ export default function UserManagementPage() {
             </CardContent>
           </Card>
 
-          {/* GROUPS LIST */}
-          <Card className="border-t-4 border-t-slate-400 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
-            <CardHeader className="pb-2"><CardTitle className="text-lg">Geographic Groups</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-9 text-xs rounded-xl" aria-label="New group name" disabled={!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)} />
-                <Button size="sm" onClick={handleCreateGroup} className="h-9 w-9 p-0 rounded-xl" aria-label="Create group" disabled={!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)}><PlusCircle className="h-4 w-4" /></Button>
-              </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                {groups.map(g => (
-                    <div key={g.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
-                        <span className="font-bold text-slate-600">{g.name}</span>
-                        {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS) && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
-                        )}
-                    </div>
-                ))}
-              </div>
+          {/* GROUPS & PRESETS TABS */}
+          <Card className="border-t-4 border-t-slate-400 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden min-h-[300px]">
+            <CardContent className="p-0">
+                <Tabs defaultValue="groups" className="w-full">
+                    <TabsList className="w-full grid grid-cols-2 rounded-none p-0 h-12 bg-slate-50 border-b border-slate-100">
+                        <TabsTrigger value="groups" className="rounded-none h-full data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Groups</TabsTrigger>
+                        <TabsTrigger value="presets" className="rounded-none h-full data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Permission Presets</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="groups" className="p-4 space-y-4">
+                        <div className="flex gap-2">
+                            <Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-9 text-xs rounded-xl" aria-label="New group name" disabled={!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)} />
+                            <Button size="sm" onClick={handleCreateGroup} className="h-9 w-9 p-0 rounded-xl" aria-label="Create group" disabled={!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)}><PlusCircle className="h-4 w-4" /></Button>
+                        </div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                            {groups.map(g => (
+                                <div key={g.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
+                                    <span className="font-bold text-slate-600">{g.name}</span>
+                                    {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS) && (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="presets" className="p-4 space-y-4">
+                        <div className="flex flex-col gap-2">
+                            <Input placeholder="New Preset Name" value={newPresetName} onChange={(e) => setNewPresetName(e.target.value)} className="h-9 text-xs rounded-xl" />
+                            <div className="max-h-[150px] overflow-y-auto border rounded-xl p-2 bg-slate-50 custom-scrollbar">
+                                {PERMISSION_GROUPS_UI.map(group => (
+                                    <div key={group.category} className="mb-2">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">{group.category}</p>
+                                        <div className="grid grid-cols-1 gap-1">
+                                            {group.permissions.map(perm => (
+                                                <div key={perm.id} className="flex items-center gap-2">
+                                                    <Checkbox
+                                                        id={`preset-${perm.id}`}
+                                                        checked={presetPermissions[perm.id] || false}
+                                                        onCheckedChange={() => togglePermission(perm.id, presetPermissions, setPresetPermissions)}
+                                                        className="h-3 w-3"
+                                                    />
+                                                    <label htmlFor={`preset-${perm.id}`} className="text-[10px] text-slate-600 cursor-pointer">{perm.label}</label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button size="sm" onClick={handleSavePreset} disabled={!newPresetName || !hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS)} className="w-full h-9 rounded-xl text-xs"><Save className="h-3.5 w-3.5 mr-2" /> Save Preset</Button>
+                        </div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1 border-t pt-2">
+                            {presets.map(p => (
+                                <div key={p.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
+                                    <span className="font-bold text-slate-600">{p.name}</span>
+                                    {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS) && (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeletePreset(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </TabsContent>
+                </Tabs>
             </CardContent>
           </Card>
         </div>
