@@ -149,7 +149,7 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
         {/* Grid Tiles Visualization */}
         {tileRects.map((tile, i) => (
             <Rectangle
-                key={i}
+                key={`${tile.bounds.toString()}-${tile.status}-${i}`}
                 bounds={tile.bounds}
                 pathOptions={{ color: tile.color, weight: 1, fillOpacity: tile.fillOpacity }}
             >

@@ -30,7 +30,8 @@ import {
   AlertTriangle,
   RefreshCw,
   ChevronDown,
-  X
+  X,
+  Grid
 } from 'lucide-react';
 import {
   Popover,
@@ -39,7 +40,7 @@ import {
 } from "@/components/ui/popover";
 
 import { useToast } from '@/hooks/use-toast';
-import { generateScrapeGrid, scrapeTile, ScrapedBusiness, ScrapeTileResult } from '@/app/actions/scrape-data';
+import { generateScrapeGrid, scrapeTile, splitTile, ScrapedBusiness, ScrapeTileResult } from '@/app/actions/scrape-data';
 
 // Dynamically import Map with no SSR
 const ScraperMap = dynamic(() => import('@/components/dashboard/scraper-map'), {
@@ -119,6 +120,22 @@ const BUSINESS_CATEGORIES = [
 // Tile Status
 export type TileStatus = 'pending' | 'loading' | 'success' | 'empty' | 'error' | 'retrying';
 
+// Engine Types
+interface QueueItem {
+    id: string; // Unique ID for tracking
+    bbox: number[];
+    depth: number;
+    parentId?: string;
+    attempts: number;
+}
+
+interface TileState {
+    id: string;
+    bbox: number[];
+    status: TileStatus;
+    depth: number;
+}
+
 function CategorySelector({ selected, onChange, disabled }: { selected: string[], onChange: (s: string[]) => void, disabled: boolean }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [open, setOpen] = useState(false);
@@ -192,156 +209,203 @@ export default function DataScraperPage() {
   const { toast } = useToast();
 
   // --- STATE ---
-  const [center, setCenter] = useState<[number, number]>([33.5138, 36.2765]); // Default: Damascus
-  const [radius, setRadius] = useState<number>(1000); // 1km
+  const [center, setCenter] = useState<[number, number]>([33.5138, 36.2765]);
+  const [radius, setRadius] = useState<number>(1000);
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['generic']);
 
   const [isScraping, setIsScraping] = useState(false);
-  const [stopSignal, setStopSignal] = useState(false);
 
-  const [gridTiles, setGridTiles] = useState<number[][]>([]);
-  const [tileStatuses, setTileStatuses] = useState<TileStatus[]>([]);
-
-  const [processedTilesCount, setProcessedTilesCount] = useState(0);
-  const [errorCount, setErrorCount] = useState(0);
-
+  // Visual State
+  const [tileStates, setTileStates] = useState<TileState[]>([]);
   const [results, setResults] = useState<ScrapedBusiness[]>([]);
+
+  // Counters
+  const [queueLength, setQueueLength] = useState(0);
+  const [processedCount, setProcessedCount] = useState(0);
+  const [errorCount, setErrorCount] = useState(0);
 
   const stopRef = useRef(false);
 
   // --- HANDLERS ---
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // 🔴 ADDED THIS FUNCTION BACK
   const handleCenterChange = (lat: number, lng: number) => {
     setCenter([lat, lng]);
   };
 
-  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const updateTileStatus = (id: string, status: TileStatus) => {
+    setTileStates(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+  };
 
   const handleStartScraping = async () => {
     if (selectedTypes.length === 0) {
-        toast({ variant: "destructive", title: "Selection Required", description: "Please select at least one business type." });
+        toast({ variant: "destructive", title: "Selection Required", description: "Select at least one type." });
         return;
     }
 
     setIsScraping(true);
-    setStopSignal(false);
     stopRef.current = false;
     setResults([]);
-    setProcessedTilesCount(0);
     setErrorCount(0);
+    setProcessedCount(0);
 
     try {
-        // 1. Generate Grid
         toast({ title: "Initializing", description: "Generating search grid..." });
+
+        // 1. Initial Grid
         const gridRes = await generateScrapeGrid(center[0], center[1], radius);
+        if (!gridRes.success || !gridRes.tiles) throw new Error(gridRes.error);
 
-        if (!gridRes.success || !gridRes.tiles) {
-            throw new Error(gridRes.error || "Failed to generate grid");
-        }
+        // 2. Initialize Queue
+        let queue: QueueItem[] = gridRes.tiles.map((bbox, i) => ({
+            id: `tile-${i}`,
+            bbox,
+            depth: 0,
+            attempts: 0
+        }));
 
-        setGridTiles(gridRes.tiles);
-        setTileStatuses(new Array(gridRes.tiles.length).fill('pending'));
+        // 3. Initialize Visual State
+        const initialStates: TileState[] = queue.map(q => ({
+            id: q.id,
+            bbox: q.bbox,
+            status: 'pending',
+            depth: 0
+        }));
+        setTileStates(initialStates);
+        setQueueLength(queue.length);
 
-        const totalTiles = gridRes.tiles.length;
-        toast({ title: "Grid Ready", description: `Queued ${totalTiles} tiles covering ${gridRes.totalAreaKm2} km²` });
+        const MAX_WORKERS = 3; // Concurrency
+        const MAX_DEPTH = 2;   // Split Limit
 
+        let activeWorkers = 0;
+        let completed = 0;
+
+        // Use a set for uniqueness
         const uniqueResults = new Map<string, ScrapedBusiness>();
 
-        // 2. Sequential Processing with Retry Logic
-        for (let i = 0; i < totalTiles; i++) {
-            if (stopRef.current) break;
+        // WORKER LOOP
+        const processQueue = async () => {
+            if (stopRef.current) return;
 
-            const tileBbox = gridRes.tiles[i];
+            while (queue.length > 0 || activeWorkers > 0) {
+                if (stopRef.current) break;
 
-            // Mark as loading
-            setTileStatuses(prev => {
-                const n = [...prev];
-                n[i] = 'loading';
-                return n;
-            });
+                // If we can spawn a worker and there is work
+                if (activeWorkers < MAX_WORKERS && queue.length > 0) {
+                    const item = queue.shift()!;
+                    setQueueLength(queue.length);
+                    activeWorkers++;
 
-            let attempts = 0;
-            let success = false;
-            let finalStatus: TileStatus = 'error';
+                    // Fire and forget (but track promise)
+                    (async () => {
+                        try {
+                            updateTileStatus(item.id, 'loading');
 
-            while (attempts < 3 && !success && !stopRef.current) {
-                attempts++;
-
-                // If retrying, show that state
-                if (attempts > 1) {
-                    setTileStatuses(prev => {
-                        const n = [...prev];
-                        n[i] = 'retrying';
-                        return n;
-                    });
-                    const backoff = 5000 * Math.pow(2, attempts - 1);
-                    await wait(backoff);
-                }
-
-                try {
-                    const res: ScrapeTileResult = await scrapeTile(tileBbox, selectedTypes, i);
-
-                    if (res.success) {
-                        success = true;
-                        finalStatus = res.data.length > 0 ? 'success' : 'empty';
-
-                        // Add results
-                        res.data.forEach(item => {
-                            if (!uniqueResults.has(item.id)) {
-                                uniqueResults.set(item.id, item);
+                            // Exponential Backoff if retrying
+                            if (item.attempts > 0) {
+                                updateTileStatus(item.id, 'retrying');
+                                await wait(2000 * Math.pow(2, item.attempts));
+                                updateTileStatus(item.id, 'loading');
                             }
-                        });
-                        setResults(Array.from(uniqueResults.values()));
 
-                    } else if (res.status === 429 || res.status === 504) {
-                        console.warn(`Tile ${i}: ${res.error}. Retrying...`);
-                    } else {
-                        console.error(`Tile ${i}: Fatal Error ${res.status}`);
-                        break;
-                    }
-                } catch (e) {
-                    console.error("Network/Client Error", e);
+                            const res = await scrapeTile(item.bbox, selectedTypes, 0);
+
+                            if (res.success) {
+                                // SUCCESS
+                                updateTileStatus(item.id, res.data.length > 0 ? 'success' : 'empty');
+                                res.data.forEach(d => {
+                                    if(!uniqueResults.has(d.id)) uniqueResults.set(d.id, d);
+                                });
+                                setResults(Array.from(uniqueResults.values()));
+                                completed++;
+                                setProcessedCount(c => c + 1);
+
+                                // Polite Delay
+                                await wait(500);
+
+                            } else if (res.shouldSplit && item.depth < MAX_DEPTH) {
+                                // SPLIT (Timeout or Too Big)
+                                // Only if depth allows
+                                const newTiles = await splitTile(item.bbox);
+
+                                // Remove parent visually (or just mark generic processed?)
+                                // Better: Replace parent with 4 children visually
+                                const childItems: QueueItem[] = newTiles.map((bbox, idx) => ({
+                                    id: `${item.id}-sub${idx}`,
+                                    bbox,
+                                    depth: item.depth + 1,
+                                    attempts: 0
+                                }));
+
+                                // Add to front of queue (Depth First)
+                                queue.unshift(...childItems);
+                                setQueueLength(queue.length);
+
+                                // Update Visual State: Remove parent, Add children
+                                setTileStates(prev => {
+                                    const next = prev.filter(p => p.id !== item.id); // Remove parent
+                                    const newStates = childItems.map(c => ({
+                                        id: c.id,
+                                        bbox: c.bbox,
+                                        status: 'pending' as TileStatus,
+                                        depth: c.depth
+                                    }));
+                                    return [...next, ...newStates];
+                                });
+
+                            } else if (res.status === 429 && item.attempts < 3) {
+                                // RATE LIMIT -> RETRY
+                                // Push back to front or end? Front to retry soon.
+                                item.attempts++;
+                                queue.unshift(item);
+                                setQueueLength(queue.length);
+
+                                // Global pause for rate limit
+                                console.warn("Rate limit hit. Pausing workers for 5s...");
+                                await wait(5000);
+
+                            } else {
+                                // FATAL ERROR
+                                updateTileStatus(item.id, 'error');
+                                setErrorCount(c => c + 1);
+                                completed++;
+                                setProcessedCount(c => c + 1);
+                            }
+
+                        } catch (err) {
+                            console.error(err);
+                            updateTileStatus(item.id, 'error');
+                            setErrorCount(c => c + 1);
+                            completed++;
+                            setProcessedCount(c => c + 1);
+                        } finally {
+                            activeWorkers--;
+                        }
+                    })();
+                } else {
+                    // Wait a bit if no slots or no queue (but workers active)
+                    await wait(100);
                 }
             }
+        };
 
-            // Update Final Status
-            setTileStatuses(prev => {
-                const n = [...prev];
-                n[i] = finalStatus;
-                return n;
-            });
+        await processQueue();
 
-            if (!success) setErrorCount(prev => prev + 1);
-            setProcessedTilesCount(prev => prev + 1);
+        toast({ title: "Completed", description: `Found ${uniqueResults.size} businesses.` });
 
-            // Polite delay between successful requests
-            await wait(1500);
-        }
-
-        if (stopRef.current) {
-            toast({ title: "Stopped", description: `Scraping stopped. Found ${uniqueResults.size} businesses.` });
-        } else {
-            toast({ title: "Complete", description: `Scraping finished. Found ${uniqueResults.size} businesses.` });
-        }
-
-    } catch (error) {
-        console.error(error);
-        toast({ variant: "destructive", title: "Error", description: "Scraping failed." });
+    } catch (e) {
+        console.error(e);
+        toast({ variant: "destructive", title: "Error", description: "Operation failed." });
     } finally {
         setIsScraping(false);
-        stopRef.current = false;
     }
   };
 
-  const handleStop = () => {
-    stopRef.current = true;
-    setStopSignal(true);
-  };
+  const handleStop = () => { stopRef.current = true; };
 
   const handleExport = () => {
     if (results.length === 0) return;
-
-    // Convert to CSV
     const headers = ["ID", "Name", "Type", "Address", "City", "Phone", "Website", "Latitude", "Longitude", "Last Updated", "Opening Hours"];
     const csvContent = [
         headers.join(','),
@@ -355,7 +419,7 @@ export default function DataScraperPage() {
             r.website || '',
             r.lat,
             r.lng,
-            r.last_updated ? new Date(r.last_updated).toISOString().split('T')[0] : '', // YYYY-MM-DD
+            r.last_updated ? new Date(r.last_updated).toISOString().split('T')[0] : '',
             `"${(r.opening_hours || '').replace(/"/g, '""')}"`
         ].join(','))
     ].join('\n');
@@ -369,8 +433,6 @@ export default function DataScraperPage() {
     link.click();
     document.body.removeChild(link);
   };
-
-  const progressPercent = gridTiles.length > 0 ? (processedTilesCount / gridTiles.length) * 100 : 0;
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
@@ -406,23 +468,13 @@ export default function DataScraperPage() {
                                 <div className="text-xs font-mono text-slate-700 bg-white p-2 rounded border mt-1">
                                     {center[0].toFixed(5)}, {center[1].toFixed(5)}
                                 </div>
-                                <p className="text-[10px] text-slate-400 mt-1">Drag the marker on the map to move.</p>
                             </div>
-
                             <div>
                                 <Label className="text-xs text-slate-500 font-bold uppercase flex justify-between">
                                     Radius
                                     <span className="text-indigo-600">{(radius / 1000).toFixed(1)} km</span>
                                 </Label>
-                                <Slider
-                                    value={[radius]}
-                                    min={100}
-                                    max={20000}
-                                    step={100}
-                                    onValueChange={(v) => setRadius(v[0])}
-                                    className="mt-2"
-                                    disabled={isScraping}
-                                />
+                                <Slider value={[radius]} min={100} max={20000} step={100} onValueChange={(v) => setRadius(v[0])} className="mt-2" disabled={isScraping} />
                             </div>
                         </div>
                     </div>
@@ -433,11 +485,7 @@ export default function DataScraperPage() {
                             <Filter className="h-4 w-4 text-indigo-500" /> Business Types
                         </div>
                         <div className="p-1">
-                           <CategorySelector
-                                selected={selectedTypes}
-                                onChange={setSelectedTypes}
-                                disabled={isScraping}
-                           />
+                           <CategorySelector selected={selectedTypes} onChange={setSelectedTypes} disabled={isScraping} />
                            {selectedTypes.length > 0 && (
                                <div className="mt-2 flex flex-wrap gap-1">
                                    {selectedTypes.slice(0, 5).map(id => (
@@ -454,18 +502,18 @@ export default function DataScraperPage() {
                     {/* 3. STATUS */}
                     {isScraping && (
                         <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2 animate-in fade-in slide-in-from-bottom-2">
-                            <div className="flex justify-between text-xs font-bold text-indigo-900 uppercase">
-                                <span>Progress</span>
-                                <span>{Math.round(progressPercent)}%</span>
+                             <div className="flex justify-between text-xs font-bold text-indigo-900 uppercase">
+                                <span>Queue Load</span>
+                                <span>{queueLength} pending</span>
                             </div>
-                            <Progress value={progressPercent} className="h-2 bg-indigo-200" />
+                            <Progress value={tileStates.length > 0 ? (processedCount / tileStates.length) * 100 : 0} className="h-2 bg-indigo-200" />
                             <div className="flex justify-between text-[10px] text-indigo-600 font-medium">
-                                <span>{processedTilesCount} / {gridTiles.length} Tiles</span>
+                                <span>{processedCount} / {tileStates.length} Active Tiles</span>
                                 {errorCount > 0 && <span className="text-red-500">{errorCount} Failed</span>}
                             </div>
-                            <div className="flex items-center gap-1.5 justify-center pt-2">
+                             <div className="flex items-center gap-1.5 justify-center pt-2">
                                 <Loader2 className="h-3 w-3 animate-spin text-indigo-400" />
-                                <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Processing Grid...</span>
+                                <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Scraping (3x Threads)</span>
                             </div>
                         </div>
                     )}
@@ -486,22 +534,19 @@ export default function DataScraperPage() {
 
             {/* MAIN CONTENT: MAP & GRID */}
             <div className="flex-1 flex flex-col min-w-0">
-
-                {/* TOP: MAP (60%) */}
                 <div className="flex-[3] relative border-b border-slate-200 shadow-inner bg-slate-100">
                     <ScraperMap
                         center={center}
                         radius={radius}
                         onCenterChange={handleCenterChange}
                         results={results}
-                        gridTiles={gridTiles}
-                        tileStatuses={tileStatuses}
+                        // Pass dynamic tile states
+                        gridTiles={tileStates.map(t => t.bbox)}
+                        tileStatuses={tileStates.map(t => t.status)}
                     />
                 </div>
-
-                {/* BOTTOM: DATA GRID (40%) */}
                 <div className="flex-[2] bg-white flex flex-col min-h-0">
-                    <div className="px-4 py-2 border-b bg-slate-50 flex items-center justify-between shrink-0">
+                     <div className="px-4 py-2 border-b bg-slate-50 flex items-center justify-between shrink-0">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                             <CheckCircle2 className="h-3.5 w-3.5" /> Scraped Data ({results.length})
                         </h3>

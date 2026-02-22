@@ -24,6 +24,7 @@ export interface ScrapeTileResult {
     error?: string;
     status?: number;
     tileIndex?: number;
+    shouldSplit?: boolean;
 }
 
 // --- CONSTANTS ---
@@ -90,9 +91,9 @@ export async function generateScrapeGrid(lat: number, lng: number, radiusMeters:
         // 2km - 10km -> 1km tiles
         // > 10km -> 2.5km tiles
         let cellSideKm = 1;
-        if (radiusMeters < 2000) cellSideKm = 0.25;
-        else if (radiusMeters > 10000) cellSideKm = 2.5;
-        else cellSideKm = 1;
+        if (radiusMeters < 2000) cellSideKm = 0.5; // Back to 500m for initial pass (faster)
+        else if (radiusMeters > 10000) cellSideKm = 5;
+        else cellSideKm = 2;
 
         const grid = turf.squareGrid(bbox, cellSideKm, { units: 'kilometers' });
         const relevantCells = grid.features.filter(cell => !turf.booleanDisjoint(cell, circle));
@@ -108,6 +109,21 @@ export async function generateScrapeGrid(lat: number, lng: number, radiusMeters:
         console.error("Grid Generation Error", e);
         return { success: false, error: "Failed to generate grid." };
     }
+}
+
+// --- ACTION 3: Split Tile (Quadtree) ---
+export async function splitTile(bbox: number[]): Promise<number[][]> {
+    // bbox: [minLon, minLat, maxLon, maxLat]
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    const midLon = (minLon + maxLon) / 2;
+    const midLat = (minLat + maxLat) / 2;
+
+    return [
+        [minLon, midLat, midLon, maxLat], // Top-Left
+        [midLon, midLat, maxLon, maxLat], // Top-Right
+        [minLon, minLat, midLon, midLat], // Bottom-Left
+        [midLon, minLat, maxLon, midLat]  // Bottom-Right
+    ];
 }
 
 // --- ACTION 2: Scrape Single Tile ---
@@ -129,14 +145,20 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
             // Specific Error Handling
             if (response.status === 429) {
                 console.warn(`Tile ${tileIndex}: Rate Limit (429)`);
-                return { success: false, data: [], error: "Rate Limit Exceeded", status: 429, tileIndex };
+                return { success: false, data: [], error: "Rate Limit Exceeded", status: 429, tileIndex, shouldSplit: false };
             }
             if (response.status === 504) {
-                 console.warn(`Tile ${tileIndex}: Gateway Timeout (504)`);
-                 return { success: false, data: [], error: "Gateway Timeout", status: 504, tileIndex };
+                 console.warn(`Tile ${tileIndex}: Gateway Timeout (504) -> Splitting`);
+                 return { success: false, data: [], error: "Gateway Timeout (Too much data)", status: 504, tileIndex, shouldSplit: true };
             }
+            if (response.status === 400) {
+                 // Sometimes huge queries return 400 Bad Request if memory limit exceeded
+                 console.warn(`Tile ${tileIndex}: Bad Request (400) -> Splitting`);
+                 return { success: false, data: [], error: "Query too complex", status: 400, tileIndex, shouldSplit: true };
+            }
+
              console.error(`Tile ${tileIndex}: HTTP Error ${response.status}`);
-            return { success: false, data: [], error: `HTTP Error ${response.status}`, status: response.status, tileIndex };
+            return { success: false, data: [], error: `HTTP Error ${response.status}`, status: response.status, tileIndex, shouldSplit: false };
         }
 
         const data = await response.json();
@@ -191,10 +213,10 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
             };
         });
 
-        return { success: true, data: results, status: 200, tileIndex };
+        return { success: true, data: results, status: 200, tileIndex, shouldSplit: false };
 
     } catch (error: any) {
         console.error(`Tile ${tileIndex}: Unexpected Error`, error);
-        return { success: false, data: [], error: error.message || "Unknown Error", status: 500, tileIndex };
+        return { success: false, data: [], error: error.message || "Unknown Error", status: 500, tileIndex, shouldSplit: false };
     }
 }
