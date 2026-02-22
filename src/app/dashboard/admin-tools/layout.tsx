@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { Loader2, ShieldAlert, Lock } from 'lucide-react';
 import { useSession } from '@/hooks/use-session'; // 🟢 Import the new hook
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 export default function AdminToolsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -21,10 +22,10 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
     );
   }
 
-  // 3. Role Verification
-  // The user object comes from the cookie (via /api/auth/me)
-  const role = user?.role?.toLowerCase();
-  const isAuthorized = role === 'admin' || role === 'manager' || role === 'super_admin';
+  // 3. Permission Verification
+  // We now use granular permissions instead of strict role checks
+  // We also keep super_admin as an implicit allowed role
+  const isAuthorized = user?.role === 'super_admin' || hasPermission(user, PERMISSIONS.ADMIN_TOOLS.VIEW);
 
   // 4. Access Denied State (Logged in, but insufficient permissions)
   if (!isAuthorized) {

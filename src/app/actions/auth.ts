@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { encrypt } from '@/lib/auth';
 import { logger } from '@/lib/logger';
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb, adminAuth } from '@/lib/firebase-admin';
 
 export async function loginAction(formData: FormData) {
   const username = (formData.get('username') as string).toLowerCase().trim();
@@ -33,13 +33,26 @@ export async function loginAction(formData: FormData) {
     const accessToken = await encrypt({ ...sessionPayload, type: 'access' }, '15m');
     const refreshToken = await encrypt({ ...sessionPayload, type: 'refresh' }, '7d');
 
-    // 4. Store Valid Token ID in DB (Using Admin SDK)
+    // 4. Generate Firebase Custom Token for Client SDK Auth
+    // This allows the client-side Firebase SDK to be authenticated as the user
+    // ensuring Firestore Security Rules work correctly.
+    let customToken;
+    try {
+      customToken = await adminAuth.createCustomToken(username, {
+        role: userData?.role
+      });
+    } catch (tokenError) {
+      console.error("Failed to generate custom token:", tokenError);
+      // We continue, but client-side Firestore access might be limited.
+    }
+
+    // 5. Store Valid Token ID in DB (Using Admin SDK)
     await userRef.update({ 
       validRefreshToken: tokenId,
       lastLogin: new Date().toISOString()
     });
 
-    // 5. Set Secure Cookies
+    // 6. Set Secure Cookies
     const cookieStore = await cookies();
     const isProd = process.env.NODE_ENV === 'production';
     
@@ -62,7 +75,7 @@ export async function loginAction(formData: FormData) {
     });
 
     logger.info('Auth', `User logged in: ${username}`);
-    return { success: true };
+    return { success: true, customToken };
 
   } catch (error: any) {
     console.error("LOGIN ERROR:", error); 
