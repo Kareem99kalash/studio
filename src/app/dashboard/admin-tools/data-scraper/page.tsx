@@ -35,7 +35,8 @@ import {
   X,
   Grid,
   FileText,
-  Upload
+  Upload,
+  ShieldAlert
 } from 'lucide-react';
 import {
   Popover,
@@ -46,6 +47,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { generateScrapeGrid, scrapeTile, splitTile, ScrapedBusiness, ScrapeTileResult } from '@/app/actions/scrape-data';
 import Papa from 'papaparse';
+import { useSession } from '@/hooks/use-session';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
+import { useRouter } from 'next/navigation';
 
 // Dynamically import Map with no SSR
 const ScraperMap = dynamic(() => import('@/components/dashboard/scraper-map'), {
@@ -213,6 +217,8 @@ function CategorySelector({ selected, onChange, disabled }: { selected: string[]
 
 export default function DataScraperPage() {
   const { toast } = useToast();
+  const router = useRouter();
+  const { user, loading } = useSession(true);
 
   // --- STATE ---
   const [mode, setMode] = useState<'radius' | 'polygon'>('radius');
@@ -235,6 +241,28 @@ export default function DataScraperPage() {
   const [errorCount, setErrorCount] = useState(0);
 
   const stopRef = useRef(false);
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-slate-50/30">
+        <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
+      </div>
+    );
+  }
+
+  // Permission Check
+  if (!hasPermission(user, PERMISSIONS.ADMIN_TOOLS.DATA_SCRAPER)) {
+    return (
+        <div className="h-screen w-full flex flex-col items-center justify-center gap-4">
+            <ShieldAlert className="h-12 w-12 text-red-500" />
+            <div className="text-center">
+                <h2 className="text-xl font-bold">Access Restricted</h2>
+                <p className="text-slate-500">You do not have permission to use the Data Scraper.</p>
+            </div>
+            <Button variant="outline" onClick={() => router.push('/dashboard')}>Return</Button>
+        </div>
+    );
+  }
 
   // --- HANDLERS ---
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

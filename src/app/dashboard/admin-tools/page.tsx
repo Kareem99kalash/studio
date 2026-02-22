@@ -19,7 +19,8 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EngineStatusCard } from '@/components/dashboard/engine-status'; 
-import { useSession } from '@/hooks/use-session'; // 🟢 Import the new hook
+import { useSession } from '@/hooks/use-session';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 
 // 🛠️ CONFIGURATION
 const tools = [
@@ -30,7 +31,7 @@ const tools = [
     href: "/dashboard/admin-tools/batch-processor",
     color: "text-blue-500",
     bg: "bg-blue-50",
-    requiredPermission: 'tool_batch',
+    requiredPermission: PERMISSIONS.ADMIN_TOOLS.BATCH_PROCESSOR,
     locked: false
   },
   {
@@ -40,7 +41,7 @@ const tools = [
     href: "/dashboard/admin-tools/dark-store-analyzer",
     color: "text-pink-600",
     bg: "bg-pink-50",
-    requiredPermission: 'tool_darkstore',
+    requiredPermission: PERMISSIONS.ADMIN_TOOLS.DARK_STORE_ANALYZER,
     locked: false
   },
   {
@@ -50,7 +51,7 @@ const tools = [
     href: "/dashboard/admin-tools/data-scraper",
     color: "text-indigo-500",
     bg: "bg-indigo-50",
-    requiredPermission: 'tool_scraper',
+    requiredPermission: PERMISSIONS.ADMIN_TOOLS.DATA_SCRAPER,
     locked: false
   },
   {
@@ -60,7 +61,7 @@ const tools = [
     href: "/dashboard/admin-tools/topology-check",
     color: "text-orange-500",
     bg: "bg-orange-50",
-    requiredPermission: 'tool_topology',
+    requiredPermission: PERMISSIONS.ADMIN_TOOLS.TOPOLOGY_ARCHITECT,
     locked: false
   },
   {
@@ -70,7 +71,7 @@ const tools = [
     href: "/dashboard/admin-tools/map-architect",
     color: "text-purple-500",
     bg: "bg-purple-50",
-    requiredPermission: 'tool_maps',
+    requiredPermission: PERMISSIONS.ADMIN_TOOLS.MAP_ARCHITECT,
     locked: false
   },
   {
@@ -80,7 +81,7 @@ const tools = [
     href: "/dashboard/admin-tools/coord-flipper",
     color: "text-emerald-500",
     bg: "bg-emerald-50",
-    requiredPermission: 'tool_coords',
+    requiredPermission: PERMISSIONS.ADMIN_TOOLS.COORDINATE_FLIPPER,
     locked: false
   },
   {
@@ -90,7 +91,7 @@ const tools = [
     href: "/dashboard/admin-tools/notifications",
     color: "text-pink-500",
     bg: "bg-pink-50",
-    requiredPermission: 'tool_broadcast',
+    requiredPermission: PERMISSIONS.ADMIN_TOOLS.BROADCAST_CENTER,
     locked: false
   }
 ];
@@ -102,19 +103,11 @@ export default function AdminUtilitiesPage() {
   const { user, loading } = useSession(true);
 
   // 2. GLOBAL PAGE GUARD
-  const canAccessPage = user && (
-    user.role === 'admin' || 
-    user.role === 'super_admin' || 
-    user.permissions?.access_admin_tools ||
-    // Granular Check: Do they have AT LEAST ONE tool permission?
-    tools.some(t => user.permissions?.[t.requiredPermission] === true)
-  );
+  const canAccessPage = user && hasPermission(user, PERMISSIONS.ADMIN_TOOLS.VIEW);
 
   // 3. ITEM CHECKER
   const canSeeTool = (toolPermission: string) => {
-    if (!user) return false;
-    if (user.role === 'admin' || user.role === 'super_admin') return true; 
-    return user.permissions?.[toolPermission] === true;
+    return hasPermission(user, toolPermission);
   };
 
   if (loading) {
@@ -162,13 +155,8 @@ export default function AdminUtilitiesPage() {
         {/* Helper badge */}
         <div className="mt-4 inline-flex items-center gap-2">
            <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider shadow-sm">
-             Role: {user.role || 'Custom'}
+             Role: {user.role || 'User'}
            </Badge>
-           {user.role === 'custom' && (
-             <Badge className="bg-primary/5 text-primary border-primary/10 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">
-               Custom Clearances Active
-             </Badge>
-           )}
         </div>
       </div>
 
