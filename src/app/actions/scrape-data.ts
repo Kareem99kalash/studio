@@ -27,56 +27,87 @@ export interface ScrapeTileResult {
     shouldSplit?: boolean;
 }
 
-// --- CONSTANTS ---
-const OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter';
+// --- CONSTANTS & MIRRORS ---
+// We rotate between these to avoid rate limits and increase concurrency.
+const OVERPASS_MIRRORS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+    'https://api.openstreetmap.fr/oapi/interpreter'
+];
 
 // --- HELPER: Build Query ---
 function buildOverpassQuery(bbox: number[], types: string[]): string {
-  // bbox: [minLon, minLat, maxLon, maxLat]
   const [minLon, minLat, maxLon, maxLat] = bbox;
   const bboxStr = `${minLat},${minLon},${maxLat},${maxLon}`;
 
   let queryParts = '';
-
   const hasGeneric = types.includes('generic');
 
   if (hasGeneric) {
-      // Broad Search: Union of major keys
       const broadKeys = ['amenity', 'shop', 'office', 'craft', 'tourism', 'leisure', 'club'];
+      broadKeys.forEach(key => queryParts += `nwr["${key}"](${bboxStr});\n`);
 
-      broadKeys.forEach(key => {
-          queryParts += `nwr["${key}"](${bboxStr});\n`;
-      });
-
-      // Also catch anything with a name that is a building (often malls or major POIs are just named buildings)
-      // Assuming if it has a name and is a building=commercial/retail.
       queryParts += `nwr["building"="commercial"]["name"](${bboxStr});\n`;
       queryParts += `nwr["building"="retail"]["name"](${bboxStr});\n`;
       queryParts += `nwr["landuse"="retail"]["name"](${bboxStr});\n`;
-
   } else {
-      // Specific Search based on selected tags
-      const tagsToSearch = types.length > 0 ? types : ['amenity=restaurant', 'amenity=cafe', 'shop=*'];
-
+      const tagsToSearch = types.length > 0 ? types : ['amenity=restaurant'];
       tagsToSearch.forEach(tag => {
         if (tag.includes('=')) {
             const [key, value] = tag.split('=');
-            if (value === '*') {
-                queryParts += `nwr["${key}"](${bboxStr});\n`;
-            } else {
-                queryParts += `nwr["${key}"="${value}"](${bboxStr});\n`;
-            }
+            if (value === '*') queryParts += `nwr["${key}"](${bboxStr});\n`;
+            else queryParts += `nwr["${key}"="${value}"](${bboxStr});\n`;
         }
       });
   }
 
-  return `
-    [out:json][timeout:25];
-    (
-      ${queryParts}
-    );
-    out meta center;
-  `;
+  return `[out:json][timeout:25];( ${queryParts} ); out meta center;`;
+}
+
+// --- HELPER: Smart Fetch with Failover ---
+async function fetchWithFailover(query: string): Promise<any> {
+    // Randomize start index to distribute load across mirrors from the get-go
+    let startIndex = Math.floor(Math.random() * OVERPASS_MIRRORS.length);
+    let lastError: any = null;
+
+    for (let i = 0; i < OVERPASS_MIRRORS.length; i++) {
+        const mirror = OVERPASS_MIRRORS[(startIndex + i) % OVERPASS_MIRRORS.length];
+
+        try {
+            const response = await fetch(mirror, {
+                method: 'POST',
+                body: query,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'User-Agent': 'NextN_Dashboard_Scraper/2.0'
+                },
+                cache: 'no-store'
+            });
+
+            if (response.ok) {
+                return await response.json();
+            }
+
+            // If 429 (Rate Limit) or 504 (Timeout), try next mirror immediately
+            if (response.status === 429 || response.status === 504 || response.status >= 500) {
+                console.warn(`Mirror ${mirror} failed with ${response.status}. Switching...`);
+                lastError = { status: response.status, message: response.statusText };
+                continue;
+            }
+
+            // 400 Bad Request usually means query issue, don't retry elsewhere
+            if (response.status === 400) {
+                throw { status: 400, message: "Bad Request" };
+            }
+
+        } catch (e: any) {
+            console.warn(`Mirror ${mirror} connection error. Switching...`, e.message);
+            lastError = { status: 0, message: e.message };
+        }
+    }
+
+    throw lastError || { status: 500, message: "All mirrors failed" };
 }
 
 // --- ACTION 1: Generate Grid ---
@@ -86,14 +117,11 @@ export async function generateScrapeGrid(lat: number, lng: number, radiusMeters:
         const circle = turf.circle(centerPoint, radiusMeters, { steps: 64, units: 'meters' });
         const bbox = turf.bbox(circle);
 
-        // SMALLER TILE SIZE for higher granularity & lower timeout risk
-        // < 2km -> 0.25km (250m) tiles
-        // 2km - 10km -> 1km tiles
-        // > 10km -> 2.5km tiles
-        let cellSideKm = 1;
-        if (radiusMeters < 2000) cellSideKm = 0.5; // Back to 500m for initial pass (faster)
-        else if (radiusMeters > 10000) cellSideKm = 5;
-        else cellSideKm = 2;
+        // OPTIMIZED TILE SIZES
+        // Smaller default tiles = fewer timeouts = faster overall (less retries/splits)
+        let cellSideKm = 0.5; // Default 500m
+        if (radiusMeters < 2000) cellSideKm = 0.25; // 250m for small areas
+        else if (radiusMeters > 15000) cellSideKm = 2; // 2km for huge areas
 
         const grid = turf.squareGrid(bbox, cellSideKm, { units: 'kilometers' });
         const relevantCells = grid.features.filter(cell => !turf.booleanDisjoint(cell, circle));
@@ -113,7 +141,6 @@ export async function generateScrapeGrid(lat: number, lng: number, radiusMeters:
 
 // --- ACTION 3: Split Tile (Quadtree) ---
 export async function splitTile(bbox: number[]): Promise<number[][]> {
-    // bbox: [minLon, minLat, maxLon, maxLat]
     const [minLon, minLat, maxLon, maxLat] = bbox;
     const midLon = (minLon + maxLon) / 2;
     const midLat = (minLat + maxLat) / 2;
@@ -131,37 +158,8 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
     const query = buildOverpassQuery(bbox, types);
 
     try {
-        const response = await fetch(OVERPASS_API_URL, {
-            method: 'POST',
-            body: query,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'NextN_Dashboard_Scraper/1.0'
-            },
-            cache: 'no-store'
-        });
-
-        if (!response.ok) {
-            // Specific Error Handling
-            if (response.status === 429) {
-                console.warn(`Tile ${tileIndex}: Rate Limit (429)`);
-                return { success: false, data: [], error: "Rate Limit Exceeded", status: 429, tileIndex, shouldSplit: false };
-            }
-            if (response.status === 504) {
-                 console.warn(`Tile ${tileIndex}: Gateway Timeout (504) -> Splitting`);
-                 return { success: false, data: [], error: "Gateway Timeout (Too much data)", status: 504, tileIndex, shouldSplit: true };
-            }
-            if (response.status === 400) {
-                 // Sometimes huge queries return 400 Bad Request if memory limit exceeded
-                 console.warn(`Tile ${tileIndex}: Bad Request (400) -> Splitting`);
-                 return { success: false, data: [], error: "Query too complex", status: 400, tileIndex, shouldSplit: true };
-            }
-
-             console.error(`Tile ${tileIndex}: HTTP Error ${response.status}`);
-            return { success: false, data: [], error: `HTTP Error ${response.status}`, status: response.status, tileIndex, shouldSplit: false };
-        }
-
-        const data = await response.json();
+        // Use Smart Fetch
+        const data = await fetchWithFailover(query);
 
         const results = (data.elements || []).map((el: any) => {
             const tags = el.tags || {};
@@ -173,6 +171,7 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
                 itemLng = el.center.lon;
             }
 
+            // Data extraction
             const house = tags['addr:housenumber'] || '';
             const street = tags['addr:street'] || '';
             const city = tags['addr:city'] || '';
@@ -180,12 +179,11 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
             if (address.startsWith(',')) address = address.substring(1).trim();
             if (address === ',') address = '';
 
-            // Improved Type Detection
             const typeKeys = ['amenity', 'shop', 'office', 'craft', 'tourism', 'leisure', 'club', 'man_made', 'building'];
             let type = 'business';
             for (const key of typeKeys) {
                 if (tags[key] && tags[key] !== 'yes') {
-                    type = `${key}=${tags[key]}`; // e.g., amenity=restaurant
+                    type = `${key}=${tags[key]}`;
                     break;
                 }
             }
@@ -201,7 +199,7 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
                 website: tags.website || tags['contact:website'] || tags['url'] || tags['facebook'] || tags['instagram'],
                 opening_hours: tags.opening_hours,
                 city: city || undefined,
-                last_updated: el.timestamp || undefined, // Extracted from 'out meta center;'
+                last_updated: el.timestamp || undefined,
                 details: {
                     cuisine: tags.cuisine,
                     brand: tags.brand,
@@ -216,7 +214,20 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
         return { success: true, data: results, status: 200, tileIndex, shouldSplit: false };
 
     } catch (error: any) {
-        console.error(`Tile ${tileIndex}: Unexpected Error`, error);
-        return { success: false, data: [], error: error.message || "Unknown Error", status: 500, tileIndex, shouldSplit: false };
+        // If we exhausted all mirrors and still failed
+        console.error(`Tile ${tileIndex}: Exhausted Mirrors. Error:`, error);
+
+        // Decide if we should split based on final error
+        const status = error.status || 500;
+        const shouldSplit = status === 504 || status === 400 || (status === 0 && error.message?.includes('timeout'));
+
+        return {
+            success: false,
+            data: [],
+            error: error.message || "Unknown Error",
+            status: status,
+            tileIndex,
+            shouldSplit
+        };
     }
 }

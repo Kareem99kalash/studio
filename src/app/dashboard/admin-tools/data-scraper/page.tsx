@@ -229,7 +229,6 @@ export default function DataScraperPage() {
   // --- HANDLERS ---
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // 🔴 ADDED THIS FUNCTION BACK
   const handleCenterChange = (lat: number, lng: number) => {
     setCenter([lat, lng]);
   };
@@ -275,8 +274,8 @@ export default function DataScraperPage() {
         setTileStates(initialStates);
         setQueueLength(queue.length);
 
-        const MAX_WORKERS = 3; // Concurrency
-        const MAX_DEPTH = 2;   // Split Limit
+        const MAX_WORKERS = 6; // Increased to 6 for speed (using mirrors)
+        const MAX_DEPTH = 3;   // Increased split limit for finer granularity
 
         let activeWorkers = 0;
         let completed = 0;
@@ -305,7 +304,7 @@ export default function DataScraperPage() {
                             // Exponential Backoff if retrying
                             if (item.attempts > 0) {
                                 updateTileStatus(item.id, 'retrying');
-                                await wait(2000 * Math.pow(2, item.attempts));
+                                await wait(1000 * Math.pow(2, item.attempts));
                                 updateTileStatus(item.id, 'loading');
                             }
 
@@ -321,16 +320,13 @@ export default function DataScraperPage() {
                                 completed++;
                                 setProcessedCount(c => c + 1);
 
-                                // Polite Delay
-                                await wait(500);
+                                // Min delay now that we rotate mirrors
+                                await wait(100);
 
                             } else if (res.shouldSplit && item.depth < MAX_DEPTH) {
                                 // SPLIT (Timeout or Too Big)
-                                // Only if depth allows
                                 const newTiles = await splitTile(item.bbox);
 
-                                // Remove parent visually (or just mark generic processed?)
-                                // Better: Replace parent with 4 children visually
                                 const childItems: QueueItem[] = newTiles.map((bbox, idx) => ({
                                     id: `${item.id}-sub${idx}`,
                                     bbox,
@@ -338,11 +334,11 @@ export default function DataScraperPage() {
                                     attempts: 0
                                 }));
 
-                                // Add to front of queue (Depth First)
+                                // Add to front
                                 queue.unshift(...childItems);
                                 setQueueLength(queue.length);
 
-                                // Update Visual State: Remove parent, Add children
+                                // Update Visual State
                                 setTileStates(prev => {
                                     const next = prev.filter(p => p.id !== item.id); // Remove parent
                                     const newStates = childItems.map(c => ({
@@ -354,16 +350,14 @@ export default function DataScraperPage() {
                                     return [...next, ...newStates];
                                 });
 
-                            } else if (res.status === 429 && item.attempts < 3) {
-                                // RATE LIMIT -> RETRY
-                                // Push back to front or end? Front to retry soon.
+                            } else if ((res.status === 429 || res.status === 504) && item.attempts < 3) {
+                                // RETRY
                                 item.attempts++;
                                 queue.unshift(item);
                                 setQueueLength(queue.length);
 
-                                // Global pause for rate limit
-                                console.warn("Rate limit hit. Pausing workers for 5s...");
-                                await wait(5000);
+                                // Pause briefly, not global lock since we have mirrors
+                                await wait(2000);
 
                             } else {
                                 // FATAL ERROR
@@ -384,8 +378,7 @@ export default function DataScraperPage() {
                         }
                     })();
                 } else {
-                    // Wait a bit if no slots or no queue (but workers active)
-                    await wait(100);
+                    await wait(50);
                 }
             }
         };
@@ -441,7 +434,7 @@ export default function DataScraperPage() {
             <div className="flex items-center gap-3">
                 <div className="bg-indigo-600 p-2 rounded-lg"><Search className="h-5 w-5 text-white" /></div>
                 <h1 className="font-bold text-lg text-slate-800">OpenStreetMap Data Scraper</h1>
-                <Badge variant="secondary" className="text-xs font-mono">Free Tier</Badge>
+                <Badge variant="secondary" className="text-xs font-mono">Free Tier (Accelerated)</Badge>
             </div>
             <div className="flex items-center gap-3">
                 {results.length > 0 && (
@@ -513,7 +506,7 @@ export default function DataScraperPage() {
                             </div>
                              <div className="flex items-center gap-1.5 justify-center pt-2">
                                 <Loader2 className="h-3 w-3 animate-spin text-indigo-400" />
-                                <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Scraping (3x Threads)</span>
+                                <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Scraping (6x Threads)</span>
                             </div>
                         </div>
                     )}
