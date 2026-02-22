@@ -5,7 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import Link from "next/link";
 import { doc, onSnapshot, collection, query, where } from 'firebase/firestore'; 
 import { db } from '@/firebase'; 
-import { logoutAction } from '@/app/actions/auth'; // 🟢 Added Server Action
+import { logoutAction } from '@/app/actions/auth';
 import { 
   LayoutDashboard, 
   Users, 
@@ -34,27 +34,28 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { NotificationBell } from '@/components/dashboard/notification-bell';
 import { logger } from '@/lib/logger';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 
 // --- NAVIGATION CONFIG ---
 const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
-  { label: 'User Roles', href: '/dashboard/user-management', icon: Users, permission: 'manage_users' },
-  { label: 'Thresholds', href: '/dashboard/city-thresholds', icon: Settings2, permission: 'manage_thresholds' },
-  { label: 'Cities', href: '/dashboard/city-management', icon: Building2, permission: 'view_cities' },
-  { label: 'Activity Logs', href: '/dashboard/audit-logs', icon: History, permission: 'view_audit' },
-  { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket, permission: 'view_tickets' },
-  { label: 'Admin Tools', href: '/dashboard/admin-tools', icon: ShieldCheck, permission: 'access_admin_tools' },
-  { label: 'Documentation', href: '/dashboard/documentation', icon: BookOpen, permission: 'view_documentation' },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD.VIEW },
+  { label: 'User Roles', href: '/dashboard/user-management', icon: Users, permission: PERMISSIONS.USER_MANAGEMENT.VIEW },
+  { label: 'Thresholds', href: '/dashboard/city-thresholds', icon: Settings2, permission: PERMISSIONS.CITY_THRESHOLDS.VIEW },
+  { label: 'Cities', href: '/dashboard/city-management', icon: Building2, permission: PERMISSIONS.CITY_MANAGEMENT.VIEW },
+  { label: 'Activity Logs', href: '/dashboard/audit-logs', icon: History, permission: PERMISSIONS.AUDIT_LOGS.VIEW },
+  { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket, permission: PERMISSIONS.TICKETS.VIEW },
+  { label: 'Admin Tools', href: '/dashboard/admin-tools', icon: ShieldCheck, permission: PERMISSIONS.ADMIN_TOOLS.VIEW },
+  { label: 'Documentation', href: '/dashboard/documentation', icon: BookOpen, permission: PERMISSIONS.DOCUMENTATION.VIEW },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true); // 🟢 Start in loading state
+  const [loading, setLoading] = useState(true);
   const [openTicketCount, setOpenTicketCount] = useState(0);
   
-  // Sidebar State (The "Curtain")
+  // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Search State
@@ -105,18 +106,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [pathname]);
 
   // --- 2. PERMISSION CHECKER ---
-  const hasAccess = (permissionKey: string) => {
-    if (!user) return false;
-    if (user.role === 'admin' || user.role === 'super_admin') return true;
-    if (permissionKey === 'view_dashboard') return true;
-    if (user.permissions && user.permissions[permissionKey] === true) return true;
-    return false;
+  const checkAccess = (permissionKey: string) => {
+    return hasPermission(user, permissionKey);
   };
 
   // --- 3. TICKET COUNTER ---
   useEffect(() => {
     if (loading || !user) return;
-    if (!hasAccess('view_tickets')) return;
+    if (!checkAccess(PERMISSIONS.TICKETS.VIEW)) return;
 
     const q = query(
       collection(db, 'tickets'), 
@@ -136,7 +133,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const lowerQuery = searchQuery.toLowerCase();
     const results = NAV_ITEMS.filter(item => 
-      hasAccess(item.permission) && 
+      checkAccess(item.permission) &&
       item.label.toLowerCase().includes(lowerQuery)
     );
     
@@ -200,7 +197,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <nav className="hidden lg:flex items-center gap-1 ml-8">
             {NAV_ITEMS.map((item) => {
-              if (!hasAccess(item.permission)) return null;
+              if (!checkAccess(item.permission)) return null;
               
               const isActive = pathname === item.href;
               return (
@@ -278,7 +275,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {user.username}
                   </p>
                   <p className="text-[9px] text-slate-500 font-bold uppercase mt-1 tracking-wider">
-                    {user.role === 'admin' ? 'Admin' : 'Staff'}
+                    {user.role === 'admin' ? 'Admin' : 'User'}
                   </p>
                 </div>
                 <Avatar className="h-9 w-9 border border-slate-800 rounded-xl group-hover:border-slate-700 transition-all">
@@ -299,7 +296,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div>
                   <h4 className="font-bold text-slate-900 text-sm">{user.username}</h4>
                   <Badge className="mt-1 bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-wider rounded-md px-2 py-0 border-none shadow-none">
-                    {user.role === 'admin' ? 'Full Administrator' : 'Access Level 1'}
+                    {user.role === 'admin' ? 'Full Administrator' : 'User Access'}
                   </Badge>
                 </div>
               </div>
@@ -367,7 +364,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="p-4 space-y-1 overflow-y-auto">
            <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mb-4 px-4">Menu</p>
            {NAV_ITEMS.map((item) => {
-              if (!hasAccess(item.permission)) return null;
+              if (!checkAccess(item.permission)) return null;
               const isActive = pathname === item.href;
               return (
                 <Link 

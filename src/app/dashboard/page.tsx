@@ -10,13 +10,14 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, Map as MapIcon, Table as TableIcon, AlertTriangle, Download, Store, Activity, Radar, Zap, Settings2, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { logActivity, logger } from '@/lib/logger'; 
 import * as turf from '@turf/turf';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 
 // Maintenance & System Imports
 import { MaintenanceScreen } from '@/components/system/maintenance-screen';
@@ -96,7 +97,7 @@ export default function DashboardPage() {
      // Fetch session info from the server because we no longer use localStorage
      const fetchSession = async () => {
          try {
-             const res = await fetch('/api/auth/me'); // You will need to create this simple API route
+             const res = await fetch('/api/auth/me');
              if (res.ok) {
                  const data = await res.json();
                  setUser(data.user);
@@ -166,6 +167,10 @@ export default function DashboardPage() {
   };
 
   const addStore = () => { 
+      if (!hasPermission(user, PERMISSIONS.DASHBOARD.MANAGE_HUBS)) {
+          toast({ variant: "destructive", title: "Access Denied", description: "You cannot manage distribution hubs." });
+          return;
+      }
       setStores([...stores, { 
           id: Date.now(), 
           name: `Hub ${stores.length + 1}`, 
@@ -186,7 +191,10 @@ export default function DashboardPage() {
     }
     setStores(stores.map(s => s.id === id ? { ...s, coordinates: input, lat, lng } : s));
   };
-  const removeStore = (id: number) => { setStores(stores.filter(s => s.id !== id)); };
+  const removeStore = (id: number) => {
+      if (!hasPermission(user, PERMISSIONS.DASHBOARD.MANAGE_HUBS)) return;
+      setStores(stores.filter(s => s.id !== id));
+  };
 
   const getZoneKeyPoints = (store: any, feature: any) => {
       const center = feature.properties.centroid;
@@ -259,6 +267,10 @@ export default function DashboardPage() {
   };
 
   const handleAnalyze = async () => {
+    if (!hasPermission(user, PERMISSIONS.DASHBOARD.RUN_ANALYSIS)) {
+        toast({ variant: "destructive", title: "Access Denied", description: "You do not have permission to run analysis." });
+        return;
+    }
     if (!selectedCity || stores.length === 0) return toast({ variant: "destructive", title: "Action Required", description: "Select a city and add at least one branch." });
     const validStores = stores.filter(s => !isNaN(parseFloat(s.lat)) && !isNaN(parseFloat(s.lng)));
     if (validStores.length === 0) return toast({ variant: "destructive", title: "Invalid Data", description: "Ensure branches have valid coordinates." });
@@ -377,6 +389,10 @@ export default function DashboardPage() {
 
   const downloadCSV = () => {
       if (!analysisData?.assignments) return;
+      if (!hasPermission(user, PERMISSIONS.DASHBOARD.EXPORT_DATA)) {
+          toast({ variant: "destructive", title: "Access Denied", description: "You do not have permission to export data." });
+          return;
+      }
       const rows = [['Zone ID', 'Zone Name', 'Assigned Hub', 'Hub Rule', 'Avg Dist (KM)', 'Status']];
       Object.values(analysisData.assignments).forEach((a: any) => rows.push([a.id, a.name, a.storeName, a.category, a.distance, a.status.toUpperCase()]));
       const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
@@ -435,16 +451,18 @@ export default function DashboardPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
                 <div className="space-y-3">
                     <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapIcon className="h-3.5 w-3.5 text-primary/50" /> Regional Territory</Label>
-                    <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id}>
-                        <SelectTrigger className="h-11 border-slate-100 bg-slate-50/50 hover:border-primary/20 transition-all text-xs font-bold rounded-xl shadow-none"><SelectValue placeholder="Select Territory" /></SelectTrigger>
+                    <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id} disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.SELECT_REGION)}>
+                        <SelectTrigger className="h-11 border-slate-100 bg-slate-50/50 hover:border-primary/20 transition-all text-xs font-bold rounded-xl shadow-none"><SelectValue placeholder={hasPermission(user, PERMISSIONS.DASHBOARD.SELECT_REGION) ? "Select Territory" : "Locked"} /></SelectTrigger>
                         <SelectContent className="rounded-xl border-slate-100 shadow-2xl">{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-semibold text-xs py-2.5">{c.name}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
                 <div className="space-y-4">
                     <div className="flex items-center justify-between border-b border-slate-50 pb-3">
                         <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Store className="h-3.5 w-3.5 text-primary/50" /> Distribution Hubs</Label>
-                        <Button variant="ghost" size="sm" onClick={addStore} className="h-8 text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary hover:text-white rounded-lg uppercase tracking-wide transition-all"><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Node</Button>
+                        <Button variant="ghost" size="sm" onClick={addStore} disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.MANAGE_HUBS)} className="h-8 text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary hover:text-white rounded-lg uppercase tracking-wide transition-all"><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Node</Button>
                     </div>
+
+                    {hasPermission(user, PERMISSIONS.DASHBOARD.MANAGE_HUBS) ? (
                     <div className="space-y-3 min-h-[100px]">
                         {stores.map((store, idx) => (
                             <div key={store.id} className="relative group bg-slate-50/50 rounded-2xl border p-4 shadow-none border-slate-100 hover:border-primary/20 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
@@ -476,10 +494,18 @@ export default function DashboardPage() {
                             </div>
                         ))}
                     </div>
+                    ) : (
+                         <div className="min-h-[100px] flex items-center justify-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                             <div className="flex flex-col items-center gap-2 text-slate-400">
+                                <Lock className="h-5 w-5 opacity-50" />
+                                <span className="text-[10px] font-bold uppercase tracking-widest">Hub Management Locked</span>
+                             </div>
+                         </div>
+                    )}
                 </div>
             </div>
             <div className="p-6 border-t border-slate-50 bg-white">
-                <Button className="w-full h-12 rounded-2xl bg-primary text-white font-bold uppercase tracking-widest text-[10px] hover:bg-primary/90 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity}>
+                <Button className="w-full h-12 rounded-2xl bg-primary text-white font-bold uppercase tracking-widest text-[10px] hover:bg-primary/90 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity || !hasPermission(user, PERMISSIONS.DASHBOARD.RUN_ANALYSIS)}>
                     <div className="flex items-center gap-3 relative z-10">
                         {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-white" /> : <Zap className="h-4 w-4 text-white group-hover:scale-110 transition-transform" />}
                         <span>{analyzing ? "Processing Matrix..." : "Start Coverage Analysis"}</span>
@@ -502,8 +528,8 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-4">
                             <span className="text-[9px] font-bold uppercase text-slate-300 tracking-widest">View Mode:</span>
                             <TabsList className="bg-slate-100 p-1 h-9 rounded-xl w-[280px]">
-                                <TabsTrigger value="map" className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><MapIcon className="h-3.5 w-3.5 mr-2" /> Geo-Map</TabsTrigger>
-                                <TabsTrigger value="table" className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><TableIcon className="h-3.5 w-3.5 mr-2" /> Data-Grid</TabsTrigger>
+                                <TabsTrigger value="map" disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_MAP)} className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><MapIcon className="h-3.5 w-3.5 mr-2" /> Geo-Map</TabsTrigger>
+                                <TabsTrigger value="table" disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_DATA_GRID)} className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><TableIcon className="h-3.5 w-3.5 mr-2" /> Data-Grid</TabsTrigger>
                             </TabsList>
                         </div>
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
@@ -513,74 +539,88 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 relative bg-slate-50/50">
                         <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full border-none">
-                             {getDisplayPolygons().features.length > 0 ? (
-                                <MapView 
-                                    key={selectedCity.id} 
-                                    selectedCity={{
-                                        ...selectedCity,
-                                        polygons: getDisplayPolygons() 
-                                    }}
-                                    stores={stores} 
-                                    analysisData={analysisData} 
-                                    isLoading={analyzing} 
-                                />
-                            ) : (
+                             {hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_MAP) ? (
+                                 getDisplayPolygons().features.length > 0 ? (
+                                    <MapView
+                                        key={selectedCity.id}
+                                        selectedCity={{
+                                            ...selectedCity,
+                                            polygons: getDisplayPolygons()
+                                        }}
+                                        stores={stores}
+                                        analysisData={analysisData}
+                                        isLoading={analyzing}
+                                    />
+                                ) : (
+                                    <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
+                                        <AlertTriangle className="h-12 w-12 mb-4 text-slate-100" />
+                                        <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Spatial Data Unavailable</p>
+                                        <p className="text-[10px] text-slate-300 mt-2 text-center max-w-[240px]">Please upload region geometry in the administration tools.</p>
+                                    </div>
+                                )
+                             ) : (
                                 <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
-                                    <AlertTriangle className="h-12 w-12 mb-4 text-slate-100" />
-                                    <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Spatial Data Unavailable</p>
-                                    <p className="text-[10px] text-slate-300 mt-2 text-center max-w-[240px]">Please upload region geometry in the administration tools.</p>
+                                    <Lock className="h-12 w-12 mb-4 text-slate-100" />
+                                    <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Access Restricted</p>
                                 </div>
-                            )}
+                             )}
                         </TabsContent>
                         <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto scrollbar-hide">
-                            <div className="p-8 max-w-5xl mx-auto">
-                                <Card className="border border-slate-100 shadow-xl shadow-slate-200/50 rounded-3xl overflow-hidden bg-white">
-                                    <div className="p-6 border-b border-slate-50 bg-white flex justify-between items-center sticky top-0 z-10">
-                                        <div>
-                                            <h3 className="font-bold text-lg text-slate-900 tracking-tight">Assignment Matrix</h3>
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Optimization Results</p>
-                                        </div>
-                                        {analysisData?.assignments && (
-                                            <Button size="sm" className="bg-primary hover:bg-primary/90 text-white font-bold rounded-xl h-9 px-5 uppercase tracking-wider text-[10px] shadow-lg shadow-primary/20 transition-all" onClick={downloadCSV}>
-                                                <Download className="h-4 w-4 mr-2" /> Export Dataset
-                                            </Button>
-                                        )}
-                                    </div>
-                                    <div className="bg-white min-h-[400px]">
-                                        {analysisData?.assignments ? (
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 border-b border-slate-50">
-                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 pl-6">Zone Area</TableHead>
-                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Assigned Hub</TableHead>
-                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Protocol</TableHead>
-                                                        <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 text-right pr-6">Status</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {Object.values(analysisData.assignments).map((row: any, i) => (
-                                                        <TableRow key={i} className="hover:bg-slate-50/30 transition-colors border-slate-50">
-                                                            <TableCell className="font-bold text-xs text-slate-700 h-14 pl-6">{row.name}</TableCell>
-                                                            <TableCell><Badge className="bg-slate-100 text-slate-500 text-[9px] font-bold border-none uppercase tracking-wide px-2.5 py-0.5 rounded-md shadow-none">{row.storeName}</Badge></TableCell>
-                                                            <TableCell className="text-[10px] font-mono text-slate-400 uppercase">{row.category || 'Default'}</TableCell>
-                                                            <TableCell className="text-right pr-6">
-                                                              <Badge className={`${row.status === 'in' ? 'bg-emerald-50 text-emerald-600' : row.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'} text-[9px] font-bold border-none shadow-none uppercase tracking-wider px-2 rounded-md`}>
-                                                                    {row.status === 'in' ? 'Secure' : row.status === 'warning' ? 'At Risk' : 'Outside'}
-                                                              </Badge>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center h-[400px] gap-4">
-                                                <Activity className="h-10 w-10 text-slate-50 animate-pulse" />
-                                                <p className="text-slate-300 font-bold uppercase tracking-widest text-[10px]">Interface awaiting data synchronization</p>
+                            {hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_DATA_GRID) ? (
+                                <div className="p-8 max-w-5xl mx-auto">
+                                    <Card className="border border-slate-100 shadow-xl shadow-slate-200/50 rounded-3xl overflow-hidden bg-white">
+                                        <div className="p-6 border-b border-slate-50 bg-white flex justify-between items-center sticky top-0 z-10">
+                                            <div>
+                                                <h3 className="font-bold text-lg text-slate-900 tracking-tight">Assignment Matrix</h3>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Optimization Results</p>
                                             </div>
-                                        )}
-                                    </div>
-                                </Card>
-                            </div>
+                                            {analysisData?.assignments && hasPermission(user, PERMISSIONS.DASHBOARD.EXPORT_DATA) && (
+                                                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white font-bold rounded-xl h-9 px-5 uppercase tracking-wider text-[10px] shadow-lg shadow-primary/20 transition-all" onClick={downloadCSV}>
+                                                    <Download className="h-4 w-4 mr-2" /> Export Dataset
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <div className="bg-white min-h-[400px]">
+                                            {analysisData?.assignments ? (
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 border-b border-slate-50">
+                                                            <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 pl-6">Zone Area</TableHead>
+                                                            <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Assigned Hub</TableHead>
+                                                            <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Protocol</TableHead>
+                                                            <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 text-right pr-6">Status</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {Object.values(analysisData.assignments).map((row: any, i) => (
+                                                            <TableRow key={i} className="hover:bg-slate-50/30 transition-colors border-slate-50">
+                                                                <TableCell className="font-bold text-xs text-slate-700 h-14 pl-6">{row.name}</TableCell>
+                                                                <TableCell><Badge className="bg-slate-100 text-slate-500 text-[9px] font-bold border-none uppercase tracking-wide px-2.5 py-0.5 rounded-md shadow-none">{row.storeName}</Badge></TableCell>
+                                                                <TableCell className="text-[10px] font-mono text-slate-400 uppercase">{row.category || 'Default'}</TableCell>
+                                                                <TableCell className="text-right pr-6">
+                                                                  <Badge className={`${row.status === 'in' ? 'bg-emerald-50 text-emerald-600' : row.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'} text-[9px] font-bold border-none shadow-none uppercase tracking-wider px-2 rounded-md`}>
+                                                                        {row.status === 'in' ? 'Secure' : row.status === 'warning' ? 'At Risk' : 'Outside'}
+                                                                  </Badge>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                                                    <Activity className="h-10 w-10 text-slate-50 animate-pulse" />
+                                                    <p className="text-slate-300 font-bold uppercase tracking-widest text-[10px]">Interface awaiting data synchronization</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Card>
+                                </div>
+                            ) : (
+                                <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
+                                    <Lock className="h-12 w-12 mb-4 text-slate-100" />
+                                    <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Access Restricted</p>
+                                </div>
+                            )}
                         </TabsContent>
                     </div>
                 </Tabs>

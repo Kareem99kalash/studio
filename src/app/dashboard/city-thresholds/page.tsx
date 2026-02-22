@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { 
   Card, CardContent, CardHeader, CardTitle, CardDescription 
@@ -16,11 +16,12 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Save, Loader2, ChevronDown, ChevronUp, Plus, Trash2, Store, 
-  Lock, Layers, Split, HelpCircle
+  Lock, Layers, Split, HelpCircle, ShieldAlert
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
-import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
+import { useSession } from '@/hooks/use-session';
 import Link from 'next/link';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 
 interface Threshold {
   green: number;
@@ -57,12 +58,23 @@ export default function CityThresholdsPage() {
   const [newRuleExternal, setNewRuleExternal] = useState<Threshold>({ green: 1, yellow: 3 });
 
   // 3. Permission Logic (Derived)
-  const canManage = user?.role === 'admin' || user?.role === 'super_admin' || user?.permissions?.manage_thresholds;
+  const canView = hasPermission(user, PERMISSIONS.CITY_THRESHOLDS.VIEW);
+  const canManage = hasPermission(user, PERMISSIONS.CITY_THRESHOLDS.MANAGE);
 
   // 4. Fetch Data
   const fetchCities = async () => {
     try {
-      const snap = await getDocs(collection(db, 'cities'));
+      let citiesQuery;
+
+      // If admin or no group assigned, fetch all
+      if (user.role === 'admin' || !user.groupId) {
+          citiesQuery = collection(db, 'cities');
+      } else {
+          // If assigned to a group, only fetch cities in that group
+          citiesQuery = query(collection(db, 'cities'), where('groupId', '==', user.groupId));
+      }
+
+      const snap = await getDocs(citiesQuery);
       setCities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { 
       console.error(e);
@@ -82,6 +94,19 @@ export default function CityThresholdsPage() {
       <div className="h-screen w-full flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
       </div>
+    );
+  }
+
+  if (!canView) {
+    return (
+        <div className="h-[80vh] w-full flex flex-col items-center justify-center gap-4">
+            <ShieldAlert className="h-12 w-12 text-red-500" />
+            <div className="text-center">
+                <h2 className="text-xl font-bold">Access Restricted</h2>
+                <p className="text-slate-500">You do not have permission to view city thresholds.</p>
+            </div>
+            <Button variant="outline" onClick={() => router.push('/dashboard')}>Return</Button>
+        </div>
     );
   }
 
