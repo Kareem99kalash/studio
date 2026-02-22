@@ -28,7 +28,6 @@ export interface ScrapeTileResult {
 }
 
 // --- CONSTANTS & MIRRORS ---
-// We rotate between these to avoid rate limits and increase concurrency.
 const OVERPASS_MIRRORS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
@@ -47,7 +46,6 @@ function buildOverpassQuery(bbox: number[], types: string[]): string {
   if (hasGeneric) {
       const broadKeys = ['amenity', 'shop', 'office', 'craft', 'tourism', 'leisure', 'club'];
       broadKeys.forEach(key => queryParts += `nwr["${key}"](${bboxStr});\n`);
-
       queryParts += `nwr["building"="commercial"]["name"](${bboxStr});\n`;
       queryParts += `nwr["building"="retail"]["name"](${bboxStr});\n`;
       queryParts += `nwr["landuse"="retail"]["name"](${bboxStr});\n`;
@@ -67,7 +65,6 @@ function buildOverpassQuery(bbox: number[], types: string[]): string {
 
 // --- HELPER: Smart Fetch with Failover ---
 async function fetchWithFailover(query: string): Promise<any> {
-    // Randomize start index to distribute load across mirrors from the get-go
     let startIndex = Math.floor(Math.random() * OVERPASS_MIRRORS.length);
     let lastError: any = null;
 
@@ -85,21 +82,15 @@ async function fetchWithFailover(query: string): Promise<any> {
                 cache: 'no-store'
             });
 
-            if (response.ok) {
-                return await response.json();
-            }
+            if (response.ok) return await response.json();
 
-            // If 429 (Rate Limit) or 504 (Timeout), try next mirror immediately
             if (response.status === 429 || response.status === 504 || response.status >= 500) {
                 console.warn(`Mirror ${mirror} failed with ${response.status}. Switching...`);
                 lastError = { status: response.status, message: response.statusText };
                 continue;
             }
 
-            // 400 Bad Request usually means query issue, don't retry elsewhere
-            if (response.status === 400) {
-                throw { status: 400, message: "Bad Request" };
-            }
+            if (response.status === 400) throw { status: 400, message: "Bad Request" };
 
         } catch (e: any) {
             console.warn(`Mirror ${mirror} connection error. Switching...`, e.message);
@@ -110,18 +101,29 @@ async function fetchWithFailover(query: string): Promise<any> {
     throw lastError || { status: 500, message: "All mirrors failed" };
 }
 
-// --- ACTION 1: Generate Grid ---
+// --- ACTION 1: Generate Grid (Optimistic Strategy) ---
 export async function generateScrapeGrid(lat: number, lng: number, radiusMeters: number) {
     try {
         const centerPoint = turf.point([lng, lat]);
         const circle = turf.circle(centerPoint, radiusMeters, { steps: 64, units: 'meters' });
         const bbox = turf.bbox(circle);
 
-        // OPTIMIZED TILE SIZES
-        // Smaller default tiles = fewer timeouts = faster overall (less retries/splits)
-        let cellSideKm = 0.5; // Default 500m
-        if (radiusMeters < 2000) cellSideKm = 0.25; // 250m for small areas
-        else if (radiusMeters > 15000) cellSideKm = 2; // 2km for huge areas
+        // OPTIMISTIC TILING STRATEGY:
+        // Start BIG to reduce request count drastically.
+        // If a big tile fails (Timeout/Limit), the client will split it.
+        // This is "Fast by Default, Granular on Demand".
+
+        let cellSideKm = 2; // Default 2km (16x larger area than 0.5km)
+
+        if (radiusMeters < 3000) {
+            cellSideKm = 1; // 1km for small/medium searches
+        }
+        if (radiusMeters < 1000) {
+            cellSideKm = 0.5; // 0.5km for very small precision searches
+        }
+        if (radiusMeters > 20000) {
+            cellSideKm = 5; // 5km for huge areas
+        }
 
         const grid = turf.squareGrid(bbox, cellSideKm, { units: 'kilometers' });
         const relevantCells = grid.features.filter(cell => !turf.booleanDisjoint(cell, circle));
@@ -146,10 +148,10 @@ export async function splitTile(bbox: number[]): Promise<number[][]> {
     const midLat = (minLat + maxLat) / 2;
 
     return [
-        [minLon, midLat, midLon, maxLat], // Top-Left
-        [midLon, midLat, maxLon, maxLat], // Top-Right
-        [minLon, minLat, midLon, midLat], // Bottom-Left
-        [midLon, minLat, maxLon, midLat]  // Bottom-Right
+        [minLon, midLat, midLon, maxLat],
+        [midLon, midLat, maxLon, maxLat],
+        [minLon, minLat, midLon, midLat],
+        [midLon, minLat, maxLon, midLat]
     ];
 }
 
@@ -158,12 +160,10 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
     const query = buildOverpassQuery(bbox, types);
 
     try {
-        // Use Smart Fetch
         const data = await fetchWithFailover(query);
 
         const results = (data.elements || []).map((el: any) => {
             const tags = el.tags || {};
-
             let itemLat = el.lat;
             let itemLng = el.lon;
             if (el.center) {
@@ -171,7 +171,6 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
                 itemLng = el.center.lon;
             }
 
-            // Data extraction
             const house = tags['addr:housenumber'] || '';
             const street = tags['addr:street'] || '';
             const city = tags['addr:city'] || '';
@@ -200,25 +199,17 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
                 opening_hours: tags.opening_hours,
                 city: city || undefined,
                 last_updated: el.timestamp || undefined,
-                details: {
-                    cuisine: tags.cuisine,
-                    brand: tags.brand,
-                    operator: tags.operator,
-                    capacity: tags.capacity,
-                    stars: tags.stars,
-                    ...tags
-                }
+                details: { ...tags }
             };
         });
 
         return { success: true, data: results, status: 200, tileIndex, shouldSplit: false };
 
     } catch (error: any) {
-        // If we exhausted all mirrors and still failed
         console.error(`Tile ${tileIndex}: Exhausted Mirrors. Error:`, error);
 
-        // Decide if we should split based on final error
         const status = error.status || 500;
+        // Split if Timeout (504), Bad Request (400 - often memory limit), or generic timeout message
         const shouldSplit = status === 504 || status === 400 || (status === 0 && error.message?.includes('timeout'));
 
         return {

@@ -64,6 +64,7 @@ const BUSINESS_CATEGORIES = [
             { id: 'amenity=bar', label: 'Bars' },
             { id: 'amenity=pub', label: 'Pubs' },
             { id: 'amenity=ice_cream', label: 'Ice Cream' },
+            { id: 'shop=confectionery', label: 'Confectionery / Sweets' },
             { id: 'amenity=biergarten', label: 'Biergarten' },
             { id: 'amenity=food_court', label: 'Food Court' },
             { id: 'shop=bakery', label: 'Bakeries' },
@@ -274,13 +275,12 @@ export default function DataScraperPage() {
         setTileStates(initialStates);
         setQueueLength(queue.length);
 
-        const MAX_WORKERS = 6; // Increased to 6 for speed (using mirrors)
-        const MAX_DEPTH = 3;   // Increased split limit for finer granularity
+        const MAX_WORKERS = 12; // INCREASED CONCURRENCY (12 workers)
+        const MAX_DEPTH = 3;    // DEEPER RECURSION if needed
 
         let activeWorkers = 0;
         let completed = 0;
 
-        // Use a set for uniqueness
         const uniqueResults = new Map<string, ScrapedBusiness>();
 
         // WORKER LOOP
@@ -320,8 +320,8 @@ export default function DataScraperPage() {
                                 completed++;
                                 setProcessedCount(c => c + 1);
 
-                                // Min delay now that we rotate mirrors
-                                await wait(100);
+                                // Minimal Delay (50ms) now that we have mirrors and large initial tiles
+                                await wait(50);
 
                             } else if (res.shouldSplit && item.depth < MAX_DEPTH) {
                                 // SPLIT (Timeout or Too Big)
@@ -378,7 +378,7 @@ export default function DataScraperPage() {
                         }
                     })();
                 } else {
-                    await wait(50);
+                    await wait(20);
                 }
             }
         };
@@ -506,7 +506,7 @@ export default function DataScraperPage() {
                             </div>
                              <div className="flex items-center gap-1.5 justify-center pt-2">
                                 <Loader2 className="h-3 w-3 animate-spin text-indigo-400" />
-                                <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Scraping (6x Threads)</span>
+                                <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Scraping (12x Threads)</span>
                             </div>
                         </div>
                     )}
