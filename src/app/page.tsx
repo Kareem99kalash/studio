@@ -8,6 +8,8 @@ import { MapPin, Loader2, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { loginAction } from '@/app/actions/auth'; // 🟢 Import Server Action
 import { getSafeRedirect } from '@/lib/security';
+import { auth } from '@/firebase';
+import { signInWithCustomToken } from 'firebase/auth';
 
 // 🟢 1. INTERNAL CONTENT COMPONENT
 function LoginContent() {
@@ -27,6 +29,15 @@ function LoginContent() {
       const result = await loginAction(formData);
 
       if (result.success) {
+        // 🟢 Authenticate Client SDK for Firestore Access
+        if (result.customToken) {
+           try {
+             await signInWithCustomToken(auth, result.customToken);
+           } catch (sdkError) {
+             console.error("Client Auth Sync Failed:", sdkError);
+           }
+        }
+
         toast({ 
           title: "Access Granted", 
           description: "Secure session established.",

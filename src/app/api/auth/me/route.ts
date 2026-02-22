@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { decrypt } from '@/lib/auth';
-import { adminDb } from '@/lib/firebase-admin'; // Use Admin SDK for reliable role fetching
+import { adminDb, adminAuth } from '@/lib/firebase-admin'; // Use Admin SDK for reliable role fetching
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,6 +44,16 @@ export async function GET(request: NextRequest) {
         console.warn("[API /auth/me] Failed to fetch fresh permissions from Firestore, using session cache.", dbError);
     }
 
+    // Generate custom token for client-side SDK auth
+    let customToken;
+    try {
+      customToken = await adminAuth.createCustomToken(session.uid as string, {
+        role: userRole
+      });
+    } catch (e) {
+      console.error("Failed to generate custom token in /api/auth/me:", e);
+    }
+
     // Return user data with fresh permissions
     return NextResponse.json({
       user: {
@@ -52,7 +62,8 @@ export async function GET(request: NextRequest) {
         role: userRole,
         permissions: userPermissions,
         groupId: session.groupId // If group ID is in session, pass it. If not, maybe fetch it too.
-      }
+      },
+      customToken
     });
 
   } catch (error) {
