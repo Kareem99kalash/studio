@@ -28,8 +28,16 @@ import {
   Filter,
   CheckCircle2,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  ChevronDown,
+  X
 } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+
 import { useToast } from '@/hooks/use-toast';
 import { generateScrapeGrid, scrapeTile, ScrapedBusiness, ScrapeTileResult } from '@/app/actions/scrape-data';
 
@@ -39,26 +47,146 @@ const ScraperMap = dynamic(() => import('@/components/dashboard/scraper-map'), {
   loading: () => <div className="h-full w-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold">Loading Map Engine...</div>
 });
 
-const BUSINESS_TYPES = [
-  { id: 'generic', label: '⚡ BROAD SEARCH (Everything)' },
-  { id: 'amenity=restaurant', label: 'Restaurants' },
-  { id: 'amenity=cafe', label: 'Cafes' },
-  { id: 'amenity=fast_food', label: 'Fast Food' },
-  { id: 'amenity=bar', label: 'Bars' },
-  { id: 'shop=supermarket', label: 'Supermarkets' },
-  { id: 'shop=convenience', label: 'Convenience Stores' },
-  { id: 'shop=*', label: 'All Shops' },
-  { id: 'tourism=hotel', label: 'Hotels' },
-  { id: 'amenity=pharmacy', label: 'Pharmacies' },
-  { id: 'amenity=hospital', label: 'Hospitals' },
-  { id: 'craft=*', label: 'Crafts & Services' },
-  { id: 'office=*', label: 'Offices' },
-  { id: 'leisure=*', label: 'Leisure & Sports' },
-  { id: 'tourism=*', label: 'Tourism' },
+const BUSINESS_CATEGORIES = [
+    {
+        name: "Broad Search",
+        options: [
+            { id: 'generic', label: '⚡ BROAD SEARCH (Everything)' }
+        ]
+    },
+    {
+        name: "Food & Drink",
+        options: [
+            { id: 'amenity=restaurant', label: 'Restaurants' },
+            { id: 'amenity=cafe', label: 'Cafes' },
+            { id: 'amenity=fast_food', label: 'Fast Food' },
+            { id: 'amenity=bar', label: 'Bars' },
+            { id: 'amenity=pub', label: 'Pubs' },
+            { id: 'amenity=ice_cream', label: 'Ice Cream' },
+            { id: 'amenity=biergarten', label: 'Biergarten' },
+            { id: 'amenity=food_court', label: 'Food Court' },
+            { id: 'shop=bakery', label: 'Bakeries' },
+        ]
+    },
+    {
+        name: "Shopping",
+        options: [
+            { id: 'shop=supermarket', label: 'Supermarkets' },
+            { id: 'shop=convenience', label: 'Convenience Stores' },
+            { id: 'shop=mall', label: 'Shopping Malls' },
+            { id: 'shop=department_store', label: 'Department Stores' },
+            { id: 'shop=clothes', label: 'Clothing' },
+            { id: 'shop=shoes', label: 'Shoes' },
+            { id: 'shop=electronics', label: 'Electronics' },
+            { id: 'shop=jewelry', label: 'Jewelry' },
+            { id: 'shop=*', label: 'All Shops (Generic)' },
+        ]
+    },
+    {
+        name: "Health",
+        options: [
+            { id: 'amenity=pharmacy', label: 'Pharmacies' },
+            { id: 'amenity=hospital', label: 'Hospitals' },
+            { id: 'amenity=clinic', label: 'Clinics' },
+            { id: 'amenity=dentist', label: 'Dentists' },
+            { id: 'amenity=doctors', label: 'Doctors' },
+        ]
+    },
+    {
+        name: "Services",
+        options: [
+            { id: 'amenity=bank', label: 'Banks' },
+            { id: 'amenity=atm', label: 'ATMs' },
+            { id: 'amenity=post_office', label: 'Post Offices' },
+            { id: 'craft=*', label: 'Crafts (Plumber, Electrician)' },
+            { id: 'office=*', label: 'Offices (Corporate, Gov)' },
+        ]
+    },
+    {
+        name: "Tourism & Leisure",
+        options: [
+            { id: 'tourism=hotel', label: 'Hotels' },
+            { id: 'tourism=hostel', label: 'Hostels' },
+            { id: 'tourism=museum', label: 'Museums' },
+            { id: 'leisure=fitness_centre', label: 'Gyms' },
+            { id: 'leisure=park', label: 'Parks' },
+            { id: 'leisure=*', label: 'All Leisure' },
+            { id: 'tourism=*', label: 'All Tourism' },
+        ]
+    }
 ];
 
 // Tile Status
 export type TileStatus = 'pending' | 'loading' | 'success' | 'empty' | 'error' | 'retrying';
+
+function CategorySelector({ selected, onChange, disabled }: { selected: string[], onChange: (s: string[]) => void, disabled: boolean }) {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [open, setOpen] = useState(false);
+
+    const toggle = (id: string) => {
+        if (selected.includes(id)) onChange(selected.filter(s => s !== id));
+        else onChange([...selected, id]);
+    };
+
+    const count = selected.length;
+    const allOptions = BUSINESS_CATEGORIES.flatMap(c => c.options);
+
+    const filteredCategories = BUSINESS_CATEGORIES.map(cat => ({
+        ...cat,
+        options: cat.options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase()))
+    })).filter(cat => cat.options.length > 0);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between" disabled={disabled}>
+                    {count === 0 ? "Select types..." : count === 1 ? allOptions.find(o => o.id === selected[0])?.label : `${count} types selected`}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+                <div className="p-2 border-b">
+                    <Input
+                        placeholder="Search categories..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="h-8 text-xs"
+                    />
+                </div>
+                <div className="max-h-[300px] overflow-y-auto p-2 space-y-4">
+                    {filteredCategories.length === 0 && <div className="text-xs text-center py-4 text-slate-400">No categories found.</div>}
+                    {filteredCategories.map((category) => (
+                        <div key={category.name}>
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider px-2">{category.name}</h4>
+                            <div className="space-y-1">
+                                {category.options.map((opt) => (
+                                    <div
+                                        key={opt.id}
+                                        className="flex items-center space-x-2 px-2 py-1.5 hover:bg-slate-100 rounded-md cursor-pointer transition-colors"
+                                        onClick={() => toggle(opt.id)}
+                                    >
+                                        <Checkbox
+                                            id={`cat-${opt.id}`}
+                                            checked={selected.includes(opt.id)}
+                                            onCheckedChange={() => toggle(opt.id)}
+                                        />
+                                        <label htmlFor={`cat-${opt.id}`} className="text-xs font-medium leading-none cursor-pointer flex-1">
+                                            {opt.label}
+                                        </label>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="p-2 border-t bg-slate-50 flex justify-between">
+                     <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => onChange([])}>Clear All</Button>
+                     <Button variant="default" size="sm" className="h-6 text-[10px]" onClick={() => setOpen(false)}>Done</Button>
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 export default function DataScraperPage() {
   const { toast } = useToast();
@@ -87,15 +215,6 @@ export default function DataScraperPage() {
     setCenter([lat, lng]);
   };
 
-  const toggleType = (typeId: string) => {
-    setSelectedTypes(prev =>
-      prev.includes(typeId)
-        ? prev.filter(t => t !== typeId)
-        : [...prev, typeId]
-    );
-  };
-
-  // Helper delay
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   const handleStartScraping = async () => {
@@ -129,7 +248,6 @@ export default function DataScraperPage() {
         const uniqueResults = new Map<string, ScrapedBusiness>();
 
         // 2. Sequential Processing with Retry Logic
-        // We process 1 by 1 to be extremely safe with rate limits
         for (let i = 0; i < totalTiles; i++) {
             if (stopRef.current) break;
 
@@ -156,7 +274,6 @@ export default function DataScraperPage() {
                         n[i] = 'retrying';
                         return n;
                     });
-                    // Exponential backoff: 5s, 10s, 20s
                     const backoff = 5000 * Math.pow(2, attempts - 1);
                     await wait(backoff);
                 }
@@ -177,16 +294,13 @@ export default function DataScraperPage() {
                         setResults(Array.from(uniqueResults.values()));
 
                     } else if (res.status === 429 || res.status === 504) {
-                        // Rate limit or timeout -> Retry loop continues
                         console.warn(`Tile ${i}: ${res.error}. Retrying...`);
                     } else {
-                        // Other error -> Break retry loop
                         console.error(`Tile ${i}: Fatal Error ${res.status}`);
                         break;
                     }
                 } catch (e) {
                     console.error("Network/Client Error", e);
-                    // Network error -> Retry loop continues
                 }
             }
 
@@ -228,7 +342,7 @@ export default function DataScraperPage() {
     if (results.length === 0) return;
 
     // Convert to CSV
-    const headers = ["ID", "Name", "Type", "Address", "City", "Phone", "Website", "Latitude", "Longitude", "Opening Hours"];
+    const headers = ["ID", "Name", "Type", "Address", "City", "Phone", "Website", "Latitude", "Longitude", "Last Updated", "Opening Hours"];
     const csvContent = [
         headers.join(','),
         ...results.map(r => [
@@ -241,6 +355,7 @@ export default function DataScraperPage() {
             r.website || '',
             r.lat,
             r.lng,
+            r.last_updated ? new Date(r.last_updated).toISOString().split('T')[0] : '', // YYYY-MM-DD
             `"${(r.opening_hours || '').replace(/"/g, '""')}"`
         ].join(','))
     ].join('\n');
@@ -317,20 +432,22 @@ export default function DataScraperPage() {
                         <div className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wide">
                             <Filter className="h-4 w-4 text-indigo-500" /> Business Types
                         </div>
-                        <div className="grid grid-cols-1 gap-2 p-1">
-                            {BUSINESS_TYPES.map(type => (
-                                <div key={type.id} className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id={type.id}
-                                        checked={selectedTypes.includes(type.id)}
-                                        onCheckedChange={() => toggleType(type.id)}
-                                        disabled={isScraping}
-                                    />
-                                    <label htmlFor={type.id} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                                        {type.label}
-                                    </label>
-                                </div>
-                            ))}
+                        <div className="p-1">
+                           <CategorySelector
+                                selected={selectedTypes}
+                                onChange={setSelectedTypes}
+                                disabled={isScraping}
+                           />
+                           {selectedTypes.length > 0 && (
+                               <div className="mt-2 flex flex-wrap gap-1">
+                                   {selectedTypes.slice(0, 5).map(id => (
+                                       <Badge key={id} variant="secondary" className="text-[10px] bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
+                                           {id === 'generic' ? 'Broad Search' : id.split('=')[1] || id}
+                                       </Badge>
+                                   ))}
+                                   {selectedTypes.length > 5 && <span className="text-[10px] text-slate-400">+{selectedTypes.length - 5} more</span>}
+                               </div>
+                           )}
                         </div>
                     </div>
 
@@ -393,19 +510,20 @@ export default function DataScraperPage() {
                         <Table>
                             <TableHeader className="bg-slate-50 sticky top-0 z-10">
                                 <TableRow>
-                                    <TableHead className="w-[200px]">Name</TableHead>
+                                    <TableHead className="w-[180px]">Name</TableHead>
                                     <TableHead className="w-[100px]">Type</TableHead>
-                                    <TableHead className="w-[200px]">Address</TableHead>
+                                    <TableHead className="w-[180px]">Address</TableHead>
                                     <TableHead className="w-[100px]">City</TableHead>
+                                    <TableHead className="w-[120px]">Coordinates</TableHead>
+                                    <TableHead className="w-[120px]">Last Updated</TableHead>
                                     <TableHead className="w-[120px]">Phone</TableHead>
                                     <TableHead className="w-[150px]">Website</TableHead>
-                                    <TableHead className="w-[100px]">Hours</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {results.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="h-24 text-center text-slate-400 italic">
+                                        <TableCell colSpan={8} className="h-24 text-center text-slate-400 italic">
                                             No data scraped yet. Configure the area and click Start.
                                         </TableCell>
                                     </TableRow>
@@ -414,11 +532,16 @@ export default function DataScraperPage() {
                                         <TableRow key={r.id} className="hover:bg-slate-50 text-xs">
                                             <TableCell className="font-medium">{r.name}</TableCell>
                                             <TableCell><Badge variant="outline" className="text-[10px] font-normal">{r.type}</Badge></TableCell>
-                                            <TableCell className="truncate max-w-[200px]" title={r.address}>{r.address || '-'}</TableCell>
+                                            <TableCell className="truncate max-w-[180px]" title={r.address}>{r.address || '-'}</TableCell>
                                             <TableCell>{r.city || '-'}</TableCell>
+                                            <TableCell className="font-mono text-[10px] text-slate-500">
+                                                {r.lat.toFixed(5)}, {r.lng.toFixed(5)}
+                                            </TableCell>
+                                            <TableCell className="text-slate-500">
+                                                {r.last_updated ? new Date(r.last_updated).toLocaleDateString() : '-'}
+                                            </TableCell>
                                             <TableCell>{r.phone || '-'}</TableCell>
                                             <TableCell>{r.website ? <a href={r.website} target="_blank" className="text-blue-500 hover:underline">Link</a> : '-'}</TableCell>
-                                            <TableCell className="truncate max-w-[150px]" title={r.opening_hours}>{r.opening_hours || '-'}</TableCell>
                                         </TableRow>
                                     ))
                                 )}

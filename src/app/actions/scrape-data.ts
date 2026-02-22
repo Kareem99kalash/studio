@@ -14,6 +14,7 @@ export interface ScrapedBusiness {
   website?: string;
   opening_hours?: string;
   city?: string;
+  last_updated?: string;
   details?: Record<string, any>;
 }
 
@@ -73,7 +74,7 @@ function buildOverpassQuery(bbox: number[], types: string[]): string {
     (
       ${queryParts}
     );
-    out center;
+    out meta center;
   `;
 }
 
@@ -178,6 +179,7 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
                 website: tags.website || tags['contact:website'] || tags['url'] || tags['facebook'] || tags['instagram'],
                 opening_hours: tags.opening_hours,
                 city: city || undefined,
+                last_updated: el.timestamp || undefined, // Extracted from 'out meta center;'
                 details: {
                     cuisine: tags.cuisine,
                     brand: tags.brand,
