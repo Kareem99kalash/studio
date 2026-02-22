@@ -12,7 +12,8 @@ import {
   Loader2, 
   ShieldAlert,
   Bell,
-  ShoppingBasket 
+  ShoppingBasket,
+  Search
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +41,16 @@ const tools = [
     color: "text-pink-600",
     bg: "bg-pink-50",
     requiredPermission: 'tool_darkstore',
+    locked: false
+  },
+  {
+    title: "Data Scraper",
+    description: "Search and export business data from OpenStreetMap for any location.",
+    icon: Search,
+    href: "/dashboard/admin-tools/data-scraper",
+    color: "text-indigo-500",
+    bg: "bg-indigo-50",
+    requiredPermission: 'tool_scraper',
     locked: false
   },
   {

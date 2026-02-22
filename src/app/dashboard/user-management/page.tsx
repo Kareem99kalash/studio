@@ -59,6 +59,7 @@ const PERMISSION_GROUPS = [
       { id: 'tool_darkstore', label: 'Dark Store Analyzer' }, 
       { id: 'tool_topology', label: 'Topology Architect' },
       { id: 'tool_maps', label: 'Map Architect' },
+      { id: 'tool_scraper', label: 'Data Scraper' },
       { id: 'tool_users', label: 'Team Access Manager' },
       { id: 'tool_coords', label: 'Coordinate Flipper' },
       { id: 'tool_broadcast', label: 'Broadcast Center' },
