@@ -36,6 +36,18 @@ const OVERPASS_MIRRORS = [
     'https://api.openstreetmap.fr/oapi/interpreter'
 ];
 
+// --- HELPER: Parse WKT to GeoJSON ---
+function parseWktToGeoJson(wkt: string): any {
+    const cleanWkt = wkt.replace(/^"|"$/g, '').trim();
+    const parsed = parse(cleanWkt) as any;
+    // terraformer-wkt-parser returns an object with prototype methods (bbox)
+    // which confuses turf.bbox(). We must convert it to a plain GeoJSON object.
+    return {
+        type: parsed.type,
+        coordinates: parsed.coordinates
+    };
+}
+
 // --- HELPER: Build Query ---
 function buildOverpassQuery(bbox: number[], types: string[]): string {
   const [minLon, minLat, maxLon, maxLat] = bbox;
@@ -117,15 +129,25 @@ export async function generateScrapeGrid(
         // MODE 1: POLYGON WKT
         if (polygonWkt) {
             try {
-                // Defensive Cleaning
-                const cleanWkt = polygonWkt.replace(/^"|"$/g, '').trim();
-                const parsed = parse(cleanWkt);
-                geometry = parsed;
+                geometry = parseWktToGeoJson(polygonWkt);
+
                 if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') {
                     throw new Error("WKT must be a Polygon or MultiPolygon");
                 }
                 bbox = turf.bbox(geometry);
                 areaSqMeters = turf.area(geometry);
+
+                // --- NEW LOGIC: Single Tile Coverage ---
+                // Instead of generating a grid, return the single bounding box.
+                // This ensures full coverage and delegates splitting to the client if needed.
+                return {
+                    success: true,
+                    tiles: [bbox],
+                    totalAreaKm2: (areaSqMeters / 1_000_000).toFixed(2),
+                    estimatedTiles: 1,
+                    bounds: bbox
+                };
+
             } catch (e) {
                 console.error("WKT Parse Error", e);
                 return { success: false, error: "Invalid WKT format" };
@@ -181,13 +203,18 @@ export async function splitTile(bbox: number[]): Promise<number[][]> {
 }
 
 // --- ACTION 2: Scrape Single Tile ---
-export async function scrapeTile(bbox: number[], types: string[], tileIndex: number): Promise<ScrapeTileResult> {
+export async function scrapeTile(
+    bbox: number[],
+    types: string[],
+    tileIndex: number,
+    polygonWkt?: string
+): Promise<ScrapeTileResult> {
     const query = buildOverpassQuery(bbox, types);
 
     try {
         const data = await fetchWithFailover(query);
 
-        const results = (data.elements || []).map((el: any) => {
+        let results = (data.elements || []).map((el: any) => {
             const tags = el.tags || {};
             let itemLat = el.lat;
             let itemLng = el.lon;
@@ -227,6 +254,22 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
                 details: { ...tags }
             };
         });
+
+        // --- NEW LOGIC: Polygon Filtering ---
+        if (polygonWkt) {
+            try {
+                const polygonGeoJson = parseWktToGeoJson(polygonWkt);
+                results = results.filter((item: ScrapedBusiness) => {
+                    // Turf expects [lng, lat]
+                    const pt = turf.point([item.lng, item.lat]);
+                    return turf.booleanPointInPolygon(pt, polygonGeoJson);
+                });
+            } catch (e) {
+                console.error("Polygon Filtering Error", e);
+                // On error, we proceed with unfiltered results to avoid total data loss,
+                // but logs will indicate the issue.
+            }
+        }
 
         return { success: true, data: results, status: 200, tileIndex, shouldSplit: false };
 

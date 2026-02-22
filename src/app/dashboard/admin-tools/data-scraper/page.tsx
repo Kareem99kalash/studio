@@ -326,7 +326,12 @@ export default function DataScraperPage() {
                                 updateTileStatus(item.id, 'loading');
                             }
 
-                            const res = await scrapeTile(item.bbox, selectedTypes, 0);
+                            const res = await scrapeTile(
+                                item.bbox,
+                                selectedTypes,
+                                0,
+                                mode === 'polygon' ? polygonWkt : undefined
+                            );
 
                             if (res.success) {
                                 // SUCCESS
