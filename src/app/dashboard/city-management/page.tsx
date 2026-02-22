@@ -2,18 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, where } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert, Layers, ArrowRightLeft, Server, HelpCircle } from 'lucide-react';
+import { Trash2, Settings2, Loader2, Save, X, Users, ShieldAlert, Layers, ArrowRightLeft, Server, HelpCircle, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { HelpGuide } from '@/components/dashboard/help-guide'; 
-import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
+import { useSession } from '@/hooks/use-session';
 import Link from 'next/link';
+import { PERMISSIONS, hasPermission } from '@/lib/permissions';
 
 // --- CONFIGURATION ---
 const ENGINES = [
@@ -76,8 +77,19 @@ export default function CityManagementPage() {
   // 3. Fetch Data
   const fetchData = async () => {
     try {
-      const snap = await getDocs(collection(db, 'cities'));
+      let citiesQuery;
+
+      // If admin or no group assigned, fetch all
+      if (user.role === 'admin' || !user.groupId) {
+          citiesQuery = collection(db, 'cities');
+      } else {
+          // If assigned to a group, only fetch cities in that group
+          citiesQuery = query(collection(db, 'cities'), where('groupId', '==', user.groupId));
+      }
+
+      const snap = await getDocs(citiesQuery);
       setCities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
       const groupSnap = await getDocs(collection(db, 'agent_groups'));
       setGroups(groupSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error(e); } 
@@ -98,15 +110,19 @@ export default function CityManagementPage() {
   }
 
   // Permission Check
-  const canManage = user?.permissions?.manage_cities || user?.role === 'admin';
+  // Use new permission system
+  const canView = hasPermission(user, PERMISSIONS.CITY_MANAGEMENT.VIEW);
+  const canCreate = hasPermission(user, PERMISSIONS.CITY_MANAGEMENT.CREATE_CITIES);
+  const canEdit = hasPermission(user, PERMISSIONS.CITY_MANAGEMENT.EDIT_CITIES);
+  const canDelete = hasPermission(user, PERMISSIONS.CITY_MANAGEMENT.DELETE_CITIES);
 
-  if (!user?.permissions?.view_cities && user?.role !== 'admin' && user?.role !== 'manager') {
+  if (!canView) {
     return (
         <div className="h-[80vh] w-full flex flex-col items-center justify-center gap-4">
             <ShieldAlert className="h-12 w-12 text-red-500" />
             <div className="text-center">
                 <h2 className="text-xl font-bold">Access Restricted</h2>
-                <p className="text-slate-500">You do not have permission to manage cities.</p>
+                <p className="text-slate-500">You do not have permission to view cities.</p>
             </div>
             <Button variant="outline" onClick={() => router.push('/dashboard')}>Return</Button>
         </div>
@@ -171,7 +187,7 @@ export default function CityManagementPage() {
   };
 
   const handleFinalSave = async () => {
-    if (!canManage) return; 
+    if (!canCreate) return;
     if (!cityName.trim() || csvData.length === 0) return;
     setIsSaving(true);
     
@@ -216,14 +232,14 @@ export default function CityManagementPage() {
   };
 
   const handleDeleteCity = async (id: string) => {
-    if (!canManage) return;
+    if (!canDelete) return;
     if (!confirm("Delete city?")) return;
     await deleteDoc(doc(db, 'cities', id));
     fetchData();
   };
 
   const saveCityChanges = async (id: string) => {
-      if (!canManage) return;
+      if (!canEdit) return;
       try {
           const cityRef = cities.find(c => c.id === id);
           if (!cityRef) return;
@@ -246,7 +262,7 @@ export default function CityManagementPage() {
   };
 
   const startEdit = (city: any) => {
-      if (!canManage) return;
+      if (!canEdit) return;
       setEditingId(city.id);
       setEditName(city.name);
       setEditGroupId(city.groupId || '');
@@ -276,11 +292,11 @@ export default function CityManagementPage() {
               <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
            </Link>
         </h1>
-        <Badge variant="outline" className="bg-white border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">{canManage ? 'Full Access' : 'View Only'}</Badge>
+        <Badge variant="outline" className="bg-white border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">{canCreate && canEdit && canDelete ? 'Full Access' : 'Restricted Access'}</Badge>
       </div>
 
       <div className="grid gap-8 md:grid-cols-3">
-        {canManage && (
+        {canCreate && (
           <Card className="md:col-span-1 border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
             <CardHeader><CardTitle className="text-xl">Add New City</CardTitle><CardDescription>Configure zones and engine.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
@@ -366,7 +382,7 @@ export default function CityManagementPage() {
         )}
 
         {/* ACTIVE CITIES TABLE */}
-        <Card className={`${canManage ? "md:col-span-2" : "md:col-span-3"} shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100`}>
+        <Card className={`${canCreate ? "md:col-span-2" : "md:col-span-3"} shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100`}>
           <CardHeader className="bg-white border-b border-slate-50"><CardTitle className="text-xl">Active Cities</CardTitle></CardHeader>
           <CardContent>
             <Table>
@@ -376,7 +392,7 @@ export default function CityManagementPage() {
                       <TableHead>Engine</TableHead>
                       <TableHead>Sub-Zones</TableHead>
                       <TableHead>Rules (In / Out)</TableHead>
-                      {canManage && <TableHead className="text-right">Action</TableHead>}
+                      {(canEdit || canDelete) && <TableHead className="text-right">Action</TableHead>}
                   </TableRow>
               </TableHeader>
               <TableBody>
@@ -408,7 +424,7 @@ export default function CityManagementPage() {
                         <TableCell>
                             <span className="text-xs text-slate-400 italic">View Details</span>
                         </TableCell>
-                        {canManage && (
+                        {(canEdit || canDelete) && (
                             <TableCell className="text-right">
                                 {editingId === c.id ? (
                                     <div className="flex justify-end gap-1">
@@ -417,8 +433,13 @@ export default function CityManagementPage() {
                                     </div>
                                 ) : (
                                     <div className="flex justify-end gap-1">
-                                        <Button size="icon" variant="ghost" onClick={() => startEdit(c)}><Settings2 className="h-4 w-4" /></Button>
-                                        <Button size="icon" variant="ghost" className="text-red-400" onClick={() => handleDeleteCity(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                                        {canEdit && (
+                                            <Button size="icon" variant="ghost" onClick={() => startEdit(c)}><Settings2 className="h-4 w-4" /></Button>
+                                        )}
+                                        {canDelete && (
+                                            <Button size="icon" variant="ghost" className="text-red-400" onClick={() => handleDeleteCity(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                                        )}
+                                        {!canEdit && !canDelete && <Lock className="h-4 w-4 text-slate-200" />}
                                     </div>
                                 )}
                             </TableCell>

@@ -12,6 +12,7 @@ import {
   addDoc,
   query, 
   orderBy, 
+  where
 } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,79 +23,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
 import { 
   Shield, 
-  UserPlus, 
   Trash2, 
   Loader2, 
   ShieldCheck,
-  LayoutGrid,
-  Ticket,
-  Map as MapIcon,
   Lock,
   PlusCircle,
   Pencil,
   Save,
   X,
-  Wrench,
   Eye,
   EyeOff,
-  HelpCircle
+  HelpCircle,
+  CheckCircle2,
+  Copy,
+  Users,
+  Settings,
+  List
 } from 'lucide-react';
-import { useSession } from '@/hooks/use-session'; // 🟢 Import Hook
+import { useSession } from '@/hooks/use-session';
 import Link from 'next/link';
-
-// --- CONFIGURATION ---
-const ROLE_PRESETS: Record<string, string[]> = {
-  'viewer': ['view_dashboard', 'view_cities', 'view_tickets'],
-  'analyst': ['view_dashboard', 'view_cities', 'view_tickets', 'tool_topology', 'tool_maps', 'tool_coords'],
-  'manager': ['view_dashboard', 'view_audit', 'view_cities', 'view_tickets', 'create_tickets', 'manage_tickets', 'manage_cities', 'tool_batch', 'view_documentation'],
-  'admin': [] // Admin gets everything automatically
-};
-
-const PERMISSION_GROUPS = [
-  {
-    category: "Admin Toolbox",
-    icon: Wrench,
-    actions: [
-      { id: 'tool_batch', label: 'Batch Coverage Processor' },
-      { id: 'tool_darkstore', label: 'Dark Store Analyzer' }, 
-      { id: 'tool_topology', label: 'Topology Architect' },
-      { id: 'tool_maps', label: 'Map Architect' },
-      { id: 'tool_scraper', label: 'Data Scraper' },
-      { id: 'tool_users', label: 'Team Access Manager' },
-      { id: 'tool_coords', label: 'Coordinate Flipper' },
-      { id: 'tool_broadcast', label: 'Broadcast Center' },
-    ]
-  },
-  {
-    category: "General Access",
-    icon: LayoutGrid,
-    actions: [
-      { id: 'view_dashboard', label: 'View Dashboard' },
-      { id: 'view_documentation', label: 'View Documentation' },
-      { id: 'view_audit', label: 'View Audit Logs' },
-      { id: 'view_cities', label: 'View City Data' },
-    ]
-  },
-  {
-    category: "Operational",
-    icon: Ticket,
-    actions: [
-      { id: 'view_tickets', label: 'View Tickets' },
-      { id: 'create_tickets', label: 'Create Tickets' },
-      { id: 'manage_tickets', label: 'Resolve/Delete Tickets' },
-      { id: 'manage_cities', label: 'Edit City Data' },
-    ]
-  },
-  {
-    category: "System",
-    icon: ShieldCheck,
-    actions: [
-      { id: 'access_admin_tools', label: 'Access Admin Page' }, 
-      { id: 'manage_users', label: 'Manage Users (Global)' },
-      { id: 'restrict_raw_view', label: 'Restrict to Obfuscated View (Hexbins)' },
-    ]
-  }
-];
+import { PERMISSIONS, PERMISSION_GROUPS_UI, hasPermission } from '@/lib/permissions';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function UserManagementPage() {
   const { toast } = useToast();
@@ -105,6 +55,7 @@ export default function UserManagementPage() {
   // 2. Local State
   const [users, setUsers] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
+  const [presets, setPresets] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   // CREATE FORM STATE
@@ -112,20 +63,26 @@ export default function UserManagementPage() {
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false); 
   const [createGroup, setCreateGroup] = useState('');
-  const [createRole, setCreateRole] = useState('viewer'); 
+  const [createRole, setCreateRole] = useState<'admin' | 'user'>('user');
   const [createPermissions, setCreatePermissions] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
 
   // GROUP FORM STATE
   const [newGroupName, setNewGroupName] = useState('');
+
+  // PRESET FORM STATE
+  const [newPresetName, setNewPresetName] = useState('');
+  const [presetPermissions, setPresetPermissions] = useState<Record<string, boolean>>({});
+  const [isEditingPreset, setIsEditingPreset] = useState(false);
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
 
   // EDIT MODAL STATE
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editGroup, setEditGroup] = useState('');
-  const [editRole, setEditRole] = useState('custom');
+  const [editRole, setEditRole] = useState<'admin' | 'user'>('user');
   const [editPermissions, setEditPermissions] = useState<Record<string, boolean>>({});
   const [editPassword, setEditPassword] = useState(''); 
   const [isSaving, setIsSaving] = useState(false);
@@ -140,9 +97,14 @@ export default function UserManagementPage() {
       // Fetch Groups
       const groupSnap = await getDocs(query(collection(db, 'agent_groups'), orderBy('name')));
       setGroups(groupSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      // Fetch Presets
+      const presetSnap = await getDocs(collection(db, 'permission_presets'));
+      setPresets(presetSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
     } catch (e) {
       console.error(e);
-      toast({ variant: "destructive", title: "Error", description: "Could not load user data." });
+      toast({ variant: "destructive", title: "Error", description: "Could not load data." });
     } finally {
       setDataLoading(false);
     }
@@ -151,13 +113,8 @@ export default function UserManagementPage() {
   useEffect(() => {
     if (currentUser) {
         fetchData();
-        // Initialize default permissions for viewer role
-        const preset = ROLE_PRESETS['viewer'] || [];
-        const newPerms: Record<string, boolean> = {};
-        preset.forEach(p => newPerms[p] = true);
-        setCreatePermissions(newPerms);
     }
-  }, [currentUser, toast]);
+  }, [currentUser]);
 
   // Loading State
   if (sessionLoading || dataLoading) {
@@ -173,52 +130,60 @@ export default function UserManagementPage() {
   const isAllowedToManage = (targetUser: any) => {
     if (!currentUser) return false;
     
-    const targetRole = targetUser.role || 'viewer';
+    // Self-management (limited) is handled by UI checks, but generally admins can manage themselves
+    if (currentUser.username === targetUser.username) return true;
 
-    // ⛔ IMMUTABLE ADMINS
-    if (targetRole === 'admin' || targetRole === 'super_admin') {
-        return false;
+    // ⛔ Target is Admin
+    if (targetUser.role === 'admin') {
+        // Only an Admin can manage another Admin, BUT
+        // Requirement: "Admins can't change each others passwords" & "Can't delete admins"
+        // This function controls "Can I open the edit modal?".
+        // We will restrict specific actions inside the modal.
+        return currentUser.role === 'admin';
     }
 
     // 👑 Current User is Admin
-    if (currentUser.role === 'admin' || currentUser.role === 'super_admin') {
-        return true;
-    }
+    if (currentUser.role === 'admin') return true;
 
-    // 👷 Current User is Manager
-    if (currentUser.role === 'manager') {
-        if (targetUser.username === currentUser.username) return false;
-        if (targetRole === 'manager' || targetRole === 'custom') return false;
-        return true;
+    // 👷 Current User is User with permissions
+    if (hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.EDIT_USERS)) {
+         // Cannot manage admins (handled above)
+         return true;
     }
 
     return false;
   };
 
-  const getAssignableRoles = () => {
-    if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') {
-        return [
-            { val: 'viewer', label: 'Viewer' },
-            { val: 'analyst', label: 'Analyst' },
-            { val: 'manager', label: 'Manager' },
-            { val: 'admin', label: 'System Administrator' }, 
-            { val: 'custom', label: 'Custom Permissions' }
-        ];
-    }
-    if (currentUser?.role === 'manager') {
-        return [
-            { val: 'viewer', label: 'Viewer (Read-Only)' },
-            { val: 'analyst', label: 'Analyst (Agent)' },
-        ];
-    }
-    return [];
+  const canCreateAdmin = () => {
+      return currentUser?.role === 'admin';
   };
 
+  // Check if the current user has the specific permission themselves
   const canAssignPermission = (permissionId: string) => {
-      if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') return true;
-      if (currentUser?.role === 'manager') {
-          return currentUser.permissions?.[permissionId] === true;
-      }
+      if (currentUser?.role === 'admin') return true;
+      return currentUser?.permissions?.[permissionId] === true;
+  };
+
+  // Can current user change target user's password?
+  const canChangePassword = (targetUser: any) => {
+      if (currentUser.username === targetUser.username) return true; // Can change own? (Usually yes, but UI might be different)
+
+      // Target is Admin: No one can change another admin's password
+      if (targetUser.role === 'admin') return false;
+
+      // I am Admin: I can change User's password
+      if (currentUser.role === 'admin') return true;
+
+      // I have permission: I can change User's password
+      if (hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.CHANGE_PASSWORDS)) return true;
+
+      return false;
+  };
+
+  const canDeleteUser = (targetUser: any) => {
+      if (targetUser.role === 'admin') return false; // "Admins... only can be deleted form the database itself"
+      if (currentUser.role === 'admin') return true;
+      if (hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.DELETE_USERS)) return true;
       return false;
   };
 
@@ -241,6 +206,10 @@ export default function UserManagementPage() {
   
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
+    if (!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)) {
+        toast({ variant: "destructive", title: "Access Denied", description: "You cannot manage groups." });
+        return;
+    }
     try {
       const docRef = await addDoc(collection(db, 'agent_groups'), {
         name: newGroupName.trim(),
@@ -257,6 +226,7 @@ export default function UserManagementPage() {
   };
 
   const handleDeleteGroup = async (groupId: string) => {
+    if (!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)) return;
     if(!confirm("Delete this group?")) return;
     try {
       await deleteDoc(doc(db, 'agent_groups', groupId));
@@ -274,18 +244,53 @@ export default function UserManagementPage() {
     setFunction({ ...currentPermissions, [permissionId]: !currentPermissions[permissionId] });
   };
 
-  const handleRoleChange = (role: string) => {
-    setCreateRole(role);
-    if (role === 'custom') {
-      setShowAdvanced(true);
-      setCreatePermissions({});
-    } else {
-      setShowAdvanced(false);
-      const preset = ROLE_PRESETS[role] || [];
-      const newPerms: Record<string, boolean> = {};
-      preset.forEach(p => newPerms[p] = true);
-      setCreatePermissions(newPerms);
-    }
+  const applyPreset = (presetId: string) => {
+      const preset = presets.find(p => p.id === presetId);
+      if (preset && preset.permissions) {
+          // Only apply permissions that the current user is allowed to grant
+          const filteredPermissions: Record<string, boolean> = {};
+          Object.entries(preset.permissions).forEach(([key, val]) => {
+              if (val === true && canAssignPermission(key)) {
+                  filteredPermissions[key] = true;
+              }
+          });
+          setCreatePermissions(filteredPermissions);
+          setSelectedPreset(presetId);
+          toast({ title: "Preset Applied", description: `Applied permissions from ${preset.name}` });
+      }
+  };
+
+  // PRESET MANAGEMENT
+  const handleSavePreset = async () => {
+      if (!newPresetName.trim()) return;
+      if (!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS)) {
+          toast({ variant: "destructive", title: "Access Denied", description: "You cannot manage presets." });
+          return;
+      }
+      try {
+          const docRef = await addDoc(collection(db, 'permission_presets'), {
+              name: newPresetName.trim(),
+              permissions: presetPermissions,
+              createdBy: currentUser?.username,
+              createdAt: new Date().toISOString()
+          });
+          setPresets([...presets, { id: docRef.id, name: newPresetName.trim(), permissions: presetPermissions }]);
+          setNewPresetName('');
+          setPresetPermissions({});
+          toast({ title: "Preset Created", description: "New permission template created." });
+      } catch(e) {
+          toast({ variant: "destructive", title: "Error", description: "Failed to save preset." });
+      }
+  };
+
+  const handleDeletePreset = async (id: string) => {
+      if (!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS)) return;
+      if(!confirm("Delete this preset?")) return;
+      try {
+          await deleteDoc(doc(db, 'permission_presets', id));
+          setPresets(presets.filter(p => p.id !== id));
+          toast({ title: "Deleted", description: "Preset removed." });
+      } catch(e) { toast({ variant: "destructive", title: "Error" }); }
   };
 
   const nextStep = () => {
@@ -296,18 +301,17 @@ export default function UserManagementPage() {
         }
     }
     if (wizardStep === 2) {
-        if (createRole === 'custom') {
-            setWizardStep(3);
+        // If role is admin, skip permissions (implicitly all)
+        if (createRole === 'admin') {
+            setWizardStep(4);
             return;
         }
-        setWizardStep(4);
-        return;
     }
     setWizardStep(prev => prev + 1);
   };
 
   const prevStep = () => {
-    if (wizardStep === 4 && createRole !== 'custom') {
+    if (wizardStep === 4 && createRole === 'admin') {
         setWizardStep(2);
         return;
     }
@@ -317,18 +321,23 @@ export default function UserManagementPage() {
   const handleCreateUser = async () => {
     if (!newUsername || !newPassword) return;
 
+    // Security Check: Non-admins cannot create admins
+    if (createRole === 'admin' && !canCreateAdmin()) {
+        toast({ variant: "destructive", title: "Access Denied", description: "You cannot create Administrator accounts." });
+        return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const cleanUsername = newUsername.toLowerCase().trim();
       const userRef = doc(db, 'users', cleanUsername);
-      const isMasterAdmin = createRole === 'admin';
 
       const newUser = {
         username: cleanUsername,
         password: newPassword, 
         role: createRole, 
-        permissions: isMasterAdmin ? {} : createPermissions, 
+        permissions: createRole === 'admin' ? {} : createPermissions,
         groupId: createGroup || null,
         createdAt: new Date().toISOString(),
         createdBy: currentUser?.username
@@ -341,8 +350,8 @@ export default function UserManagementPage() {
       setNewUsername('');
       setNewPassword('');
       setCreateGroup('');
+      setCreatePermissions({});
       setWizardStep(1);
-      handleRoleChange('viewer');
       
       toast({ title: "User Created", description: `${cleanUsername} ready.` });
 
@@ -355,8 +364,8 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (targetUser: any) => {
-    if (!isAllowedToManage(targetUser)) {
-        toast({ variant: "destructive", title: "Permission Denied", description: "This user cannot be deleted via UI." });
+    if (!canDeleteUser(targetUser)) {
+        toast({ variant: "destructive", title: "Permission Denied", description: "Cannot delete this user." });
         return;
     }
 
@@ -376,7 +385,7 @@ export default function UserManagementPage() {
 
     setEditingUser(user);
     setEditGroup(user.groupId || '');
-    setEditRole(user.role || 'custom');
+    setEditRole(user.role === 'admin' ? 'admin' : 'user');
     setEditPermissions(user.permissions || {});
     setEditPassword(''); 
     setEditModalOpen(true);
@@ -384,20 +393,29 @@ export default function UserManagementPage() {
 
   const handleSaveEdit = async () => {
     if (!editingUser) return;
+
+    // Security Check: Prevent elevating to admin if not allowed
+    if (editRole === 'admin' && editingUser.role !== 'admin' && !canCreateAdmin()) {
+         toast({ variant: "destructive", title: "Access Denied", description: "You cannot promote users to Administrator." });
+         return;
+    }
+
     setIsSaving(true);
 
     try {
       const userRef = doc(db, 'users', editingUser.username);
-      const isMasterAdmin = editRole === 'admin';
 
       const updates: any = {
         role: editRole,
         groupId: editGroup || null,
-        permissions: isMasterAdmin ? {} : editPermissions
+        permissions: editRole === 'admin' ? {} : editPermissions
       };
 
       if (editPassword && editPassword.trim() !== '') {
-        updates.password = editPassword.trim();
+          // Check if password change is allowed for this specific interaction
+          if (canChangePassword(editingUser)) {
+            updates.password = editPassword.trim();
+          }
       }
 
       await updateDoc(userRef, updates);
@@ -420,6 +438,11 @@ export default function UserManagementPage() {
 
   const getGroupName = (id: string) => groups.find(g => g.id === id)?.name || "Unassigned";
 
+  // If user doesn't have view access (should be caught by Layout, but double check)
+  if (!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.VIEW)) {
+      return <div className="p-10 text-center">Access Denied</div>;
+  }
+
   return (
     <div className="p-8 space-y-8 relative max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
@@ -436,8 +459,9 @@ export default function UserManagementPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         
         {/* LEFT COLUMN: QUICK ADD USER (WIZARD) */}
+        {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.CREATE_USERS) && (
         <div className="xl:col-span-1 space-y-8">
-          <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden min-h-[420px] flex flex-col">
+          <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden min-h-[450px] flex flex-col">
             <CardHeader className="pb-3">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">User Wizard</CardTitle>
@@ -445,7 +469,7 @@ export default function UserManagementPage() {
               </div>
               <CardDescription>
                 {wizardStep === 1 && "Secure the identity of the new member."}
-                {wizardStep === 2 && "Assign location & baseline access level."}
+                {wizardStep === 2 && "Assign location & system role."}
                 {wizardStep === 3 && "Configure granular access overrides."}
                 {wizardStep === 4 && "Final review before account creation."}
               </CardDescription>
@@ -506,53 +530,72 @@ export default function UserManagementPage() {
                       </div>
 
                       <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Primary Role Template</label>
-                          <select
-                            className="w-full p-2 h-10 border rounded-lg bg-white text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary outline-none"
-                            value={createRole}
-                            onChange={(e) => handleRoleChange(e.target.value)}
-                          >
-                            {getAssignableRoles().map(r => (
-                                <option key={r.val} value={r.val}>{r.label}</option>
-                            ))}
-                          </select>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">System Role</label>
+                          <div className="grid grid-cols-2 gap-2">
+                             <div
+                                onClick={() => setCreateRole('user')}
+                                className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-2 transition-all ${createRole === 'user' ? 'bg-primary/5 border-primary text-primary' : 'bg-white border-slate-200 hover:border-slate-300'}`}
+                             >
+                                <div className="font-bold text-xs">Standard User</div>
+                                <div className="text-[9px] text-center text-slate-400">Customizable access</div>
+                             </div>
+
+                             <div
+                                onClick={() => canCreateAdmin() && setCreateRole('admin')}
+                                className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-2 transition-all ${createRole === 'admin' ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200'} ${!canCreateAdmin() ? 'opacity-50 cursor-not-allowed' : 'hover:border-slate-300'}`}
+                             >
+                                <div className="font-bold text-xs flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Administrator</div>
+                                <div className="text-[9px] text-center text-slate-400">Full Access</div>
+                             </div>
+                          </div>
                       </div>
                     </div>
                   </div>
                 )}
 
                 {/* STEP 3: GRANULAR PERMISSIONS */}
-                {wizardStep === 3 && (
+                {wizardStep === 3 && createRole === 'user' && (
                    <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                    <div className="flex items-center gap-2 mb-2">
+                         <Select value={selectedPreset} onValueChange={applyPreset}>
+                            <SelectTrigger className="h-8 text-xs bg-white border-slate-200"><SelectValue placeholder="Load a Preset..." /></SelectTrigger>
+                            <SelectContent>
+                                {presets.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                            </SelectContent>
+                         </Select>
+                    </div>
+
                     <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50">
                         <div className="flex items-center justify-between mb-4">
-                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Protocol Overrides</span>
-                             <Badge className="text-[9px] bg-primary text-white rounded-md">Advanced</Badge>
+                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Access Controls</span>
                         </div>
-                        <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                            {PERMISSION_GROUPS.map((group) => (
+                        <div className="space-y-4 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                            {PERMISSION_GROUPS_UI.map((group) => (
                                 <div key={group.category} className="mb-4 last:mb-0">
-                                    <h5 className="text-[10px] font-bold text-slate-900 uppercase mb-2 flex items-center gap-2">
-                                      <group.icon className="h-3 w-3 text-slate-400" /> {group.category}
+                                    <h5 className="text-[10px] font-bold text-slate-900 uppercase mb-2 border-b border-slate-200 pb-1">
+                                      {group.category}
                                     </h5>
-                                    <div className="grid grid-cols-1 gap-1.5 pl-5">
-                                        {group.actions.map((action) => (
-                                            <div key={action.id} className="flex items-center space-x-2">
-                                                <Checkbox 
-                                                    id={`create-${action.id}`} 
-                                                    checked={createPermissions[action.id] || false} 
-                                                    onCheckedChange={() => togglePermission(action.id, createPermissions, setCreatePermissions)} 
-                                                    disabled={!canAssignPermission(action.id)} 
-                                                    className="h-4 w-4 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                                                />
-                                                <label 
-                                                    htmlFor={`create-${action.id}`} 
-                                                    className={`text-[11px] font-medium cursor-pointer ${canAssignPermission(action.id) ? 'text-slate-600' : 'text-slate-300 line-through'}`}
-                                                >
-                                                    {action.label}
-                                                </label>
-                                            </div>
-                                        ))}
+                                    <div className="grid grid-cols-1 gap-1.5 pl-2">
+                                        {group.permissions.map((perm) => {
+                                            const allowed = canAssignPermission(perm.id);
+                                            return (
+                                                <div key={perm.id} className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={`create-${perm.id}`}
+                                                        checked={createPermissions[perm.id] || false}
+                                                        onCheckedChange={() => togglePermission(perm.id, createPermissions, setCreatePermissions)}
+                                                        disabled={!allowed}
+                                                        className="h-3.5 w-3.5 border-slate-300"
+                                                    />
+                                                    <label
+                                                        htmlFor={`create-${perm.id}`}
+                                                        className={`text-[10px] font-medium cursor-pointer ${allowed ? 'text-slate-600' : 'text-slate-300 line-through'}`}
+                                                    >
+                                                        {perm.label}
+                                                    </label>
+                                                </div>
+                                            )
+                                        })}
                                     </div>
                                 </div>
                             ))}
@@ -614,7 +657,7 @@ export default function UserManagementPage() {
                       </>
                     ) : (
                       <>
-                        <ShieldCheck className="mr-2 h-4 w-4" /> Create Account
+                        <CheckCircle2 className="mr-2 h-4 w-4" /> Confirm & Create
                       </>
                     )}
                   </Button>
@@ -624,28 +667,76 @@ export default function UserManagementPage() {
             </CardContent>
           </Card>
 
-          {/* GROUPS LIST */}
-          <Card className="border-t-4 border-t-slate-400 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
-            <CardHeader className="pb-2"><CardTitle className="text-lg">Geographic Groups</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-9 text-xs rounded-xl" aria-label="New group name" />
-                <Button size="sm" onClick={handleCreateGroup} className="h-9 w-9 p-0 rounded-xl" aria-label="Create group"><PlusCircle className="h-4 w-4" /></Button>
-              </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                {groups.map(g => (
-                    <div key={g.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
-                        <span className="font-bold text-slate-600">{g.name}</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
-                    </div>
-                ))}
-              </div>
+          {/* GROUPS & PRESETS TABS */}
+          <Card className="border-t-4 border-t-slate-400 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden min-h-[300px]">
+            <CardContent className="p-0">
+                <Tabs defaultValue="groups" className="w-full">
+                    <TabsList className="w-full grid grid-cols-2 rounded-none p-0 h-12 bg-slate-50 border-b border-slate-100">
+                        <TabsTrigger value="groups" className="rounded-none h-full data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Groups</TabsTrigger>
+                        <TabsTrigger value="presets" className="rounded-none h-full data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Permission Presets</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="groups" className="p-4 space-y-4">
+                        <div className="flex gap-2">
+                            <Input placeholder="New Group" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="h-9 text-xs rounded-xl" aria-label="New group name" disabled={!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)} />
+                            <Button size="sm" onClick={handleCreateGroup} className="h-9 w-9 p-0 rounded-xl" aria-label="Create group" disabled={!hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS)}><PlusCircle className="h-4 w-4" /></Button>
+                        </div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                            {groups.map(g => (
+                                <div key={g.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
+                                    <span className="font-bold text-slate-600">{g.name}</span>
+                                    {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS) && (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="presets" className="p-4 space-y-4">
+                        <div className="flex flex-col gap-2">
+                            <Input placeholder="New Preset Name" value={newPresetName} onChange={(e) => setNewPresetName(e.target.value)} className="h-9 text-xs rounded-xl" />
+                            <div className="max-h-[150px] overflow-y-auto border rounded-xl p-2 bg-slate-50 custom-scrollbar">
+                                {PERMISSION_GROUPS_UI.map(group => (
+                                    <div key={group.category} className="mb-2">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">{group.category}</p>
+                                        <div className="grid grid-cols-1 gap-1">
+                                            {group.permissions.map(perm => (
+                                                <div key={perm.id} className="flex items-center gap-2">
+                                                    <Checkbox
+                                                        id={`preset-${perm.id}`}
+                                                        checked={presetPermissions[perm.id] || false}
+                                                        onCheckedChange={() => togglePermission(perm.id, presetPermissions, setPresetPermissions)}
+                                                        className="h-3 w-3"
+                                                    />
+                                                    <label htmlFor={`preset-${perm.id}`} className="text-[10px] text-slate-600 cursor-pointer">{perm.label}</label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button size="sm" onClick={handleSavePreset} disabled={!newPresetName || !hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS)} className="w-full h-9 rounded-xl text-xs"><Save className="h-3.5 w-3.5 mr-2" /> Save Preset</Button>
+                        </div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1 border-t pt-2">
+                            {presets.map(p => (
+                                <div key={p.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
+                                    <span className="font-bold text-slate-600">{p.name}</span>
+                                    {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS) && (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeletePreset(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </TabsContent>
+                </Tabs>
             </CardContent>
           </Card>
         </div>
+        )}
 
         {/* RIGHT COLUMN: USER LIST */}
-        <Card className="xl:col-span-2 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100 h-fit">
+        <Card className={`${hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.CREATE_USERS) ? 'xl:col-span-2' : 'xl:col-span-3'} shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100 h-fit`}>
           <CardHeader className="bg-white border-b border-slate-50"><CardTitle className="text-lg">System Users</CardTitle></CardHeader>
           <CardContent className="p-0">
             <div className="overflow-hidden">
@@ -669,7 +760,7 @@ export default function UserManagementPage() {
                         <td className="px-6 py-5">
                             <div className="flex flex-col gap-1.5">
                                 <Badge variant="outline" className="w-fit bg-slate-50 text-slate-600 border-slate-200 rounded-md font-bold text-[9px] uppercase tracking-wide">{getGroupName(user.groupId)}</Badge>
-                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{user.role === 'custom' ? 'Custom Protocol' : user.role}</span>
+                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{user.role}</span>
                             </div>
                         </td>
                         <td className="px-6 py-5">
@@ -686,7 +777,9 @@ export default function UserManagementPage() {
                             ) : (
                                 <>
                                 <Button variant="ghost" size="icon" onClick={() => openEditModal(user)} className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg" aria-label={`Edit user ${user.username}`}><Pencil className="h-3.5 w-3.5" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleDelete(user)} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg" aria-label={`Delete user ${user.username}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                {canDeleteUser(user) && (
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(user)} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg" aria-label={`Delete user ${user.username}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                )}
                                 </>
                             )}
                             </div>
@@ -727,18 +820,20 @@ export default function UserManagementPage() {
 
                     <div className="p-6 overflow-y-auto flex-1">
                       <TabsContent value="general" className="space-y-4 mt-0">
-                          <div className="space-y-1">
-                             <label htmlFor="edit-password" className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
-                             <Input 
-                               id="edit-password"
-                               type="password" 
-                               value={editPassword} 
-                               onChange={(e) => setEditPassword(e.target.value)} 
-                               autoComplete="new-password" 
-                               name="new-password-field" 
-                               placeholder="Set new password (optional)"
-                             />
-                          </div>
+                          {canChangePassword(editingUser) && (
+                              <div className="space-y-1">
+                                 <label htmlFor="edit-password" className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
+                                 <Input
+                                   id="edit-password"
+                                   type="password"
+                                   value={editPassword}
+                                   onChange={(e) => setEditPassword(e.target.value)}
+                                   autoComplete="new-password"
+                                   name="new-password-field"
+                                   placeholder="Set new password (optional)"
+                                 />
+                              </div>
+                          )}
 
                           <div className="grid grid-cols-2 gap-4">
                              <div className="space-y-1">
@@ -750,10 +845,15 @@ export default function UserManagementPage() {
                              </div>
                              <div className="space-y-1">
                                 <label htmlFor="edit-role" className="text-xs font-bold text-slate-500 uppercase">Role Level</label>
-                                <select id="edit-role" className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editRole} onChange={(e) => setEditRole(e.target.value)}>
-                                   {getAssignableRoles().map(r => (
-                                       <option key={r.val} value={r.val}>{r.label}</option>
-                                   ))}
+                                <select
+                                    id="edit-role"
+                                    className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm"
+                                    value={editRole}
+                                    onChange={(e) => setEditRole(e.target.value as 'admin' | 'user')}
+                                    disabled={!canCreateAdmin() && editingUser.role === 'admin'}
+                                >
+                                   <option value="user">Standard User</option>
+                                   {canCreateAdmin() && <option value="admin">Administrator</option>}
                                 </select>
                              </div>
                           </div>
@@ -761,26 +861,29 @@ export default function UserManagementPage() {
 
                        <TabsContent value="permissions" className="mt-0">
                           <div className="space-y-5">
-                             {PERMISSION_GROUPS.map((group) => (
+                             {PERMISSION_GROUPS_UI.map((group) => (
                                <div key={group.category} className="space-y-2 border-b border-slate-100 pb-3 last:border-0">
-                                 <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2"><group.icon className="h-4 w-4 text-slate-400" /> {group.category}</h4>
+                                 <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">{group.category}</h4>
                                  <div className="grid grid-cols-2 gap-3 pl-2">
-                                   {group.actions.map((action) => (
-                                     <div key={action.id} className="flex items-center space-x-2">
-                                       <Checkbox 
-                                         id={`edit-${action.id}`} 
-                                         checked={editPermissions[action.id] || false} 
-                                         onCheckedChange={() => togglePermission(action.id, editPermissions, setEditPermissions)}
-                                         disabled={!canAssignPermission(action.id)} 
-                                       />
-                                       <label 
-                                            htmlFor={`edit-${action.id}`} 
-                                            className={`text-sm font-medium leading-none cursor-pointer ${canAssignPermission(action.id) ? 'text-slate-600' : 'text-slate-300 line-through'}`}
-                                       >
-                                            {action.label}
-                                       </label>
-                                     </div>
-                                   ))}
+                                   {group.permissions.map((perm) => {
+                                     const allowed = canAssignPermission(perm.id);
+                                     return (
+                                         <div key={perm.id} className="flex items-center space-x-2">
+                                           <Checkbox
+                                             id={`edit-${perm.id}`}
+                                             checked={editPermissions[perm.id] || false}
+                                             onCheckedChange={() => togglePermission(perm.id, editPermissions, setEditPermissions)}
+                                             disabled={!allowed}
+                                           />
+                                           <label
+                                                htmlFor={`edit-${perm.id}`}
+                                                className={`text-sm font-medium leading-none cursor-pointer ${allowed ? 'text-slate-600' : 'text-slate-300 line-through'}`}
+                                           >
+                                                {perm.label}
+                                           </label>
+                                         </div>
+                                     );
+                                   })}
                                  </div>
                                </div>
                              ))}
