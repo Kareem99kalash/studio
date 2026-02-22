@@ -38,15 +38,21 @@ const ScraperMap = dynamic(() => import('@/components/dashboard/scraper-map'), {
 });
 
 const BUSINESS_TYPES = [
+  { id: 'generic', label: '⚡ BROAD SEARCH (Everything)' },
   { id: 'amenity=restaurant', label: 'Restaurants' },
   { id: 'amenity=cafe', label: 'Cafes' },
   { id: 'amenity=fast_food', label: 'Fast Food' },
   { id: 'amenity=bar', label: 'Bars' },
   { id: 'shop=supermarket', label: 'Supermarkets' },
   { id: 'shop=convenience', label: 'Convenience Stores' },
-  { id: 'shop=clothes', label: 'Clothing Stores' },
-  { id: 'shop=*', label: 'All Shops (Generic)' },
+  { id: 'shop=*', label: 'All Shops' },
   { id: 'tourism=hotel', label: 'Hotels' },
+  { id: 'amenity=pharmacy', label: 'Pharmacies' },
+  { id: 'amenity=hospital', label: 'Hospitals' },
+  { id: 'craft=*', label: 'Crafts & Services' },
+  { id: 'office=*', label: 'Offices' },
+  { id: 'leisure=*', label: 'Leisure & Sports' },
+  { id: 'tourism=*', label: 'Tourism' },
 ];
 
 export default function DataScraperPage() {

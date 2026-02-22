@@ -24,31 +24,47 @@ const OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter';
 function buildOverpassQuery(bbox: number[], types: string[]): string {
   // bbox: [minLon, minLat, maxLon, maxLat]
   const [minLon, minLat, maxLon, maxLat] = bbox;
-
-  // Construct a slightly larger bbox string for Overpass to ensure we catch everything on the edge
-  // Overpass order: south, west, north, east (minLat, minLon, maxLat, maxLon)
   const bboxStr = `${minLat},${minLon},${maxLat},${maxLon}`;
 
   let queryParts = '';
-  const tagsToSearch = types.length > 0 ? types : ['amenity=restaurant', 'amenity=cafe', 'shop=*'];
 
-  tagsToSearch.forEach(tag => {
-    // Basic support for "key=value" or "key=*"
-    if (tag.includes('=')) {
-        const [key, value] = tag.split('=');
-        // We query nodes, ways, and relations to get points and polygons (buildings)
-        // For ways/relations, we need "center" in the out statement, which we handle below
-        if (value === '*') {
-            queryParts += `node["${key}"](${bboxStr});\n`;
-            queryParts += `way["${key}"](${bboxStr});\n`;
-            queryParts += `relation["${key}"](${bboxStr});\n`;
-        } else {
-            queryParts += `node["${key}"="${value}"](${bboxStr});\n`;
-            queryParts += `way["${key}"="${value}"](${bboxStr});\n`;
-            queryParts += `relation["${key}"="${value}"](${bboxStr});\n`;
+  // If user selects "generic", we want to search for *everything* that looks like a business.
+  // We can look for named nodes/ways with *any* of the major business keys.
+  const hasGeneric = types.includes('generic');
+
+  if (hasGeneric) {
+      // Broad Search: Any Node/Way/Relation with a NAME + one of these primary keys
+      const broadKeys = ['amenity', 'shop', 'office', 'craft', 'tourism', 'leisure', 'club'];
+
+      // We construct a query that unions these possibilities.
+      // nwr = node, way, relation
+      broadKeys.forEach(key => {
+          queryParts += `nwr["${key}"](${bboxStr});\n`;
+      });
+
+      // Also catch anything with a name that is a building (often malls or major POIs are just named buildings)
+      // queryParts += `nwr["building"]["name"](${bboxStr});\n`;
+      // ^ This might be too broad (houses), let's stick to commercial markers if possible,
+      // or just assume if it has a name and is a building=commercial/retail.
+      queryParts += `nwr["building"="commercial"]["name"](${bboxStr});\n`;
+      queryParts += `nwr["building"="retail"]["name"](${bboxStr});\n`;
+      queryParts += `nwr["landuse"="retail"]["name"](${bboxStr});\n`;
+
+  } else {
+      // Specific Search based on selected tags
+      const tagsToSearch = types.length > 0 ? types : ['amenity=restaurant', 'amenity=cafe', 'shop=*'];
+
+      tagsToSearch.forEach(tag => {
+        if (tag.includes('=')) {
+            const [key, value] = tag.split('=');
+            if (value === '*') {
+                queryParts += `nwr["${key}"](${bboxStr});\n`;
+            } else {
+                queryParts += `nwr["${key}"="${value}"](${bboxStr});\n`;
+            }
         }
-    }
-  });
+      });
+  }
 
   return `
     [out:json][timeout:25];
@@ -60,28 +76,21 @@ function buildOverpassQuery(bbox: number[], types: string[]): string {
 }
 
 // --- ACTION 1: Generate Grid ---
-// Returns a list of BBox arrays [minLon, minLat, maxLon, maxLat] representing the tiles
 export async function generateScrapeGrid(lat: number, lng: number, radiusMeters: number) {
     try {
         const centerPoint = turf.point([lng, lat]);
         const circle = turf.circle(centerPoint, radiusMeters, { steps: 64, units: 'meters' });
-        const bbox = turf.bbox(circle); // [minLon, minLat, maxLon, maxLat]
+        const bbox = turf.bbox(circle);
 
-        // Dynamic Cell Size based on Radius to optimize request count
-        // For small radius (< 2km), use 500m tiles.
-        // For medium radius (2km - 10km), use 2km tiles.
-        // For large radius (> 10km), use 5km tiles.
+        // Adjust grid size
         let cellSideKm = 1;
         if (radiusMeters < 2000) cellSideKm = 0.5;
         else if (radiusMeters > 10000) cellSideKm = 5;
         else cellSideKm = 2;
 
         const grid = turf.squareGrid(bbox, cellSideKm, { units: 'kilometers' });
-
-        // Filter cells that intersect with the circle
         const relevantCells = grid.features.filter(cell => !turf.booleanDisjoint(cell, circle));
 
-        // Return array of bboxes
         return {
             success: true,
             tiles: relevantCells.map(cell => turf.bbox(cell)),
@@ -111,7 +120,6 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
         });
 
         if (!response.ok) {
-            // If 429 (Too Many Requests), we might want to return a specific error so client can retry
             if (response.status === 429) {
                 console.warn("Overpass Rate Limit Hit");
                 throw new Error("RATE_LIMIT");
@@ -124,8 +132,6 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
         return (data.elements || []).map((el: any) => {
             const tags = el.tags || {};
 
-            // Normalize Coordinates
-            // For ways/relations, 'out center' provides el.center.lat/lon
             let itemLat = el.lat;
             let itemLng = el.lon;
             if (el.center) {
@@ -133,7 +139,6 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
                 itemLng = el.center.lon;
             }
 
-            // Normalize Address
             const house = tags['addr:housenumber'] || '';
             const street = tags['addr:street'] || '';
             const city = tags['addr:city'] || '';
@@ -141,18 +146,26 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
             if (address.startsWith(',')) address = address.substring(1).trim();
             if (address === ',') address = '';
 
-            // Normalize Type (Prioritize amenity, then shop, then generic)
-            const type = tags.amenity || tags.shop || tags.tourism || tags.leisure || 'business';
+            // Improved Type Detection
+            // We iterate through common keys to find the most specific "type" label
+            const typeKeys = ['amenity', 'shop', 'office', 'craft', 'tourism', 'leisure', 'club', 'man_made', 'building'];
+            let type = 'business';
+            for (const key of typeKeys) {
+                if (tags[key] && tags[key] !== 'yes') {
+                    type = `${key}=${tags[key]}`; // e.g., amenity=restaurant
+                    break;
+                }
+            }
 
             return {
                 id: `${el.type}/${el.id}`,
-                name: tags.name || `Unnamed ${type}`,
+                name: tags.name || `Unnamed ${type.split('=')[1] || 'Business'}`,
                 lat: itemLat,
                 lng: itemLng,
-                type: type,
+                type: type, // Now returns "key=value" format for better filtering later if needed
                 address: address || undefined,
                 phone: tags.phone || tags['contact:phone'],
-                website: tags.website || tags['contact:website'] || tags['url'],
+                website: tags.website || tags['contact:website'] || tags['url'] || tags['facebook'] || tags['instagram'],
                 opening_hours: tags.opening_hours,
                 city: city || undefined,
                 details: {
@@ -160,6 +173,7 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
                     brand: tags.brand,
                     operator: tags.operator,
                     capacity: tags.capacity,
+                    stars: tags.stars,
                     ...tags
                 }
             };
