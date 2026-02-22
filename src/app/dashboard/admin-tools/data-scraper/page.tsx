@@ -26,10 +26,12 @@ import {
   StopCircle,
   Search,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { generateScrapeGrid, scrapeTile, ScrapedBusiness } from '@/app/actions/scrape-data';
+import { generateScrapeGrid, scrapeTile, ScrapedBusiness, ScrapeTileResult } from '@/app/actions/scrape-data';
 
 // Dynamically import Map with no SSR
 const ScraperMap = dynamic(() => import('@/components/dashboard/scraper-map'), {
@@ -55,24 +57,27 @@ const BUSINESS_TYPES = [
   { id: 'tourism=*', label: 'Tourism' },
 ];
 
+// Tile Status
+export type TileStatus = 'pending' | 'loading' | 'success' | 'empty' | 'error' | 'retrying';
+
 export default function DataScraperPage() {
   const { toast } = useToast();
 
   // --- STATE ---
-  const [center, setCenter] = useState<[number, number]>([51.505, -0.09]); // Default: London
+  const [center, setCenter] = useState<[number, number]>([33.5138, 36.2765]); // Default: Damascus
   const [radius, setRadius] = useState<number>(1000); // 1km
-  const [selectedTypes, setSelectedTypes] = useState<string[]>(['amenity=restaurant']);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(['generic']);
 
   const [isScraping, setIsScraping] = useState(false);
   const [stopSignal, setStopSignal] = useState(false);
 
   const [gridTiles, setGridTiles] = useState<number[][]>([]);
+  const [tileStatuses, setTileStatuses] = useState<TileStatus[]>([]);
+
   const [processedTilesCount, setProcessedTilesCount] = useState(0);
+  const [errorCount, setErrorCount] = useState(0);
 
   const [results, setResults] = useState<ScrapedBusiness[]>([]);
-
-  // To prevent multiple rapid state updates from freezing UI, we might buffer results?
-  // For now, direct updates are fine for < 1000 items.
 
   const stopRef = useRef(false);
 
@@ -90,6 +95,9 @@ export default function DataScraperPage() {
     );
   };
 
+  // Helper delay
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
   const handleStartScraping = async () => {
     if (selectedTypes.length === 0) {
         toast({ variant: "destructive", title: "Selection Required", description: "Please select at least one business type." });
@@ -101,6 +109,7 @@ export default function DataScraperPage() {
     stopRef.current = false;
     setResults([]);
     setProcessedTilesCount(0);
+    setErrorCount(0);
 
     try {
         // 1. Generate Grid
@@ -112,38 +121,87 @@ export default function DataScraperPage() {
         }
 
         setGridTiles(gridRes.tiles);
+        setTileStatuses(new Array(gridRes.tiles.length).fill('pending'));
+
         const totalTiles = gridRes.tiles.length;
+        toast({ title: "Grid Ready", description: `Queued ${totalTiles} tiles covering ${gridRes.totalAreaKm2} km²` });
 
-        toast({ title: "Grid Ready", description: `Starting scrape for ${totalTiles} tiles covering ${gridRes.totalAreaKm2} km²` });
-
-        // 2. Process Tiles
         const uniqueResults = new Map<string, ScrapedBusiness>();
 
-        // Batch processing (2 at a time) to respect client-side concurrency
-        const BATCH_SIZE = 2;
-
-        for (let i = 0; i < totalTiles; i += BATCH_SIZE) {
+        // 2. Sequential Processing with Retry Logic
+        // We process 1 by 1 to be extremely safe with rate limits
+        for (let i = 0; i < totalTiles; i++) {
             if (stopRef.current) break;
 
-            const batch = gridRes.tiles.slice(i, i + BATCH_SIZE);
-            const promises = batch.map(tileBbox => scrapeTile(tileBbox, selectedTypes));
+            const tileBbox = gridRes.tiles[i];
 
-            const batchResults = await Promise.all(promises);
-
-            // Flatten and add to results
-            let newItemsCount = 0;
-            batchResults.flat().forEach(item => {
-                if (!uniqueResults.has(item.id)) {
-                    uniqueResults.set(item.id, item);
-                    newItemsCount++;
-                }
+            // Mark as loading
+            setTileStatuses(prev => {
+                const n = [...prev];
+                n[i] = 'loading';
+                return n;
             });
 
-            setResults(Array.from(uniqueResults.values()));
-            setProcessedTilesCount(prev => Math.min(prev + batch.length, totalTiles));
+            let attempts = 0;
+            let success = false;
+            let finalStatus: TileStatus = 'error';
 
-            // Small delay to be polite
-            await new Promise(r => setTimeout(r, 200));
+            while (attempts < 3 && !success && !stopRef.current) {
+                attempts++;
+
+                // If retrying, show that state
+                if (attempts > 1) {
+                    setTileStatuses(prev => {
+                        const n = [...prev];
+                        n[i] = 'retrying';
+                        return n;
+                    });
+                    // Exponential backoff: 5s, 10s, 20s
+                    const backoff = 5000 * Math.pow(2, attempts - 1);
+                    await wait(backoff);
+                }
+
+                try {
+                    const res: ScrapeTileResult = await scrapeTile(tileBbox, selectedTypes, i);
+
+                    if (res.success) {
+                        success = true;
+                        finalStatus = res.data.length > 0 ? 'success' : 'empty';
+
+                        // Add results
+                        res.data.forEach(item => {
+                            if (!uniqueResults.has(item.id)) {
+                                uniqueResults.set(item.id, item);
+                            }
+                        });
+                        setResults(Array.from(uniqueResults.values()));
+
+                    } else if (res.status === 429 || res.status === 504) {
+                        // Rate limit or timeout -> Retry loop continues
+                        console.warn(`Tile ${i}: ${res.error}. Retrying...`);
+                    } else {
+                        // Other error -> Break retry loop
+                        console.error(`Tile ${i}: Fatal Error ${res.status}`);
+                        break;
+                    }
+                } catch (e) {
+                    console.error("Network/Client Error", e);
+                    // Network error -> Retry loop continues
+                }
+            }
+
+            // Update Final Status
+            setTileStatuses(prev => {
+                const n = [...prev];
+                n[i] = finalStatus;
+                return n;
+            });
+
+            if (!success) setErrorCount(prev => prev + 1);
+            setProcessedTilesCount(prev => prev + 1);
+
+            // Polite delay between successful requests
+            await wait(1500);
         }
 
         if (stopRef.current) {
@@ -286,7 +344,11 @@ export default function DataScraperPage() {
                             <Progress value={progressPercent} className="h-2 bg-indigo-200" />
                             <div className="flex justify-between text-[10px] text-indigo-600 font-medium">
                                 <span>{processedTilesCount} / {gridTiles.length} Tiles</span>
-                                <span>{results.length} Found</span>
+                                {errorCount > 0 && <span className="text-red-500">{errorCount} Failed</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5 justify-center pt-2">
+                                <Loader2 className="h-3 w-3 animate-spin text-indigo-400" />
+                                <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Processing Grid...</span>
                             </div>
                         </div>
                     )}
@@ -316,7 +378,7 @@ export default function DataScraperPage() {
                         onCenterChange={handleCenterChange}
                         results={results}
                         gridTiles={gridTiles}
-                        processedCount={processedTilesCount}
+                        tileStatuses={tileStatuses}
                     />
                 </div>
 

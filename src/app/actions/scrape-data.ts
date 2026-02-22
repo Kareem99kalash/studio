@@ -17,6 +17,14 @@ export interface ScrapedBusiness {
   details?: Record<string, any>;
 }
 
+export interface ScrapeTileResult {
+    success: boolean;
+    data: ScrapedBusiness[];
+    error?: string;
+    status?: number;
+    tileIndex?: number;
+}
+
 // --- CONSTANTS ---
 const OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter';
 
@@ -28,24 +36,18 @@ function buildOverpassQuery(bbox: number[], types: string[]): string {
 
   let queryParts = '';
 
-  // If user selects "generic", we want to search for *everything* that looks like a business.
-  // We can look for named nodes/ways with *any* of the major business keys.
   const hasGeneric = types.includes('generic');
 
   if (hasGeneric) {
-      // Broad Search: Any Node/Way/Relation with a NAME + one of these primary keys
+      // Broad Search: Union of major keys
       const broadKeys = ['amenity', 'shop', 'office', 'craft', 'tourism', 'leisure', 'club'];
 
-      // We construct a query that unions these possibilities.
-      // nwr = node, way, relation
       broadKeys.forEach(key => {
           queryParts += `nwr["${key}"](${bboxStr});\n`;
       });
 
       // Also catch anything with a name that is a building (often malls or major POIs are just named buildings)
-      // queryParts += `nwr["building"]["name"](${bboxStr});\n`;
-      // ^ This might be too broad (houses), let's stick to commercial markers if possible,
-      // or just assume if it has a name and is a building=commercial/retail.
+      // Assuming if it has a name and is a building=commercial/retail.
       queryParts += `nwr["building"="commercial"]["name"](${bboxStr});\n`;
       queryParts += `nwr["building"="retail"]["name"](${bboxStr});\n`;
       queryParts += `nwr["landuse"="retail"]["name"](${bboxStr});\n`;
@@ -82,11 +84,14 @@ export async function generateScrapeGrid(lat: number, lng: number, radiusMeters:
         const circle = turf.circle(centerPoint, radiusMeters, { steps: 64, units: 'meters' });
         const bbox = turf.bbox(circle);
 
-        // Adjust grid size
+        // SMALLER TILE SIZE for higher granularity & lower timeout risk
+        // < 2km -> 0.25km (250m) tiles
+        // 2km - 10km -> 1km tiles
+        // > 10km -> 2.5km tiles
         let cellSideKm = 1;
-        if (radiusMeters < 2000) cellSideKm = 0.5;
-        else if (radiusMeters > 10000) cellSideKm = 5;
-        else cellSideKm = 2;
+        if (radiusMeters < 2000) cellSideKm = 0.25;
+        else if (radiusMeters > 10000) cellSideKm = 2.5;
+        else cellSideKm = 1;
 
         const grid = turf.squareGrid(bbox, cellSideKm, { units: 'kilometers' });
         const relevantCells = grid.features.filter(cell => !turf.booleanDisjoint(cell, circle));
@@ -105,7 +110,7 @@ export async function generateScrapeGrid(lat: number, lng: number, radiusMeters:
 }
 
 // --- ACTION 2: Scrape Single Tile ---
-export async function scrapeTile(bbox: number[], types: string[]): Promise<ScrapedBusiness[]> {
+export async function scrapeTile(bbox: number[], types: string[], tileIndex: number): Promise<ScrapeTileResult> {
     const query = buildOverpassQuery(bbox, types);
 
     try {
@@ -120,16 +125,22 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
         });
 
         if (!response.ok) {
+            // Specific Error Handling
             if (response.status === 429) {
-                console.warn("Overpass Rate Limit Hit");
-                throw new Error("RATE_LIMIT");
+                console.warn(`Tile ${tileIndex}: Rate Limit (429)`);
+                return { success: false, data: [], error: "Rate Limit Exceeded", status: 429, tileIndex };
             }
-            return [];
+            if (response.status === 504) {
+                 console.warn(`Tile ${tileIndex}: Gateway Timeout (504)`);
+                 return { success: false, data: [], error: "Gateway Timeout", status: 504, tileIndex };
+            }
+             console.error(`Tile ${tileIndex}: HTTP Error ${response.status}`);
+            return { success: false, data: [], error: `HTTP Error ${response.status}`, status: response.status, tileIndex };
         }
 
         const data = await response.json();
 
-        return (data.elements || []).map((el: any) => {
+        const results = (data.elements || []).map((el: any) => {
             const tags = el.tags || {};
 
             let itemLat = el.lat;
@@ -147,7 +158,6 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
             if (address === ',') address = '';
 
             // Improved Type Detection
-            // We iterate through common keys to find the most specific "type" label
             const typeKeys = ['amenity', 'shop', 'office', 'craft', 'tourism', 'leisure', 'club', 'man_made', 'building'];
             let type = 'business';
             for (const key of typeKeys) {
@@ -162,7 +172,7 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
                 name: tags.name || `Unnamed ${type.split('=')[1] || 'Business'}`,
                 lat: itemLat,
                 lng: itemLng,
-                type: type, // Now returns "key=value" format for better filtering later if needed
+                type: type,
                 address: address || undefined,
                 phone: tags.phone || tags['contact:phone'],
                 website: tags.website || tags['contact:website'] || tags['url'] || tags['facebook'] || tags['instagram'],
@@ -179,8 +189,10 @@ export async function scrapeTile(bbox: number[], types: string[]): Promise<Scrap
             };
         });
 
-    } catch (error) {
-        console.error("Tile Scrape Error", error);
-        return [];
+        return { success: true, data: results, status: 200, tileIndex };
+
+    } catch (error: any) {
+        console.error(`Tile ${tileIndex}: Unexpected Error`, error);
+        return { success: false, data: [], error: error.message || "Unknown Error", status: 500, tileIndex };
     }
 }

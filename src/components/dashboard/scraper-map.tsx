@@ -19,13 +19,16 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Tile Status
+export type TileStatus = 'pending' | 'loading' | 'success' | 'empty' | 'error' | 'retrying';
+
 interface ScraperMapProps {
   center: [number, number];
   radius: number; // meters
   onCenterChange: (lat: number, lng: number) => void;
   results: ScrapedBusiness[];
   gridTiles: number[][]; // [minLon, minLat, maxLon, maxLat]
-  processedCount: number;
+  tileStatuses?: TileStatus[];
 }
 
 function LocationMarker({ position, onDragEnd }: { position: [number, number], onDragEnd: (lat: number, lng: number) => void }) {
@@ -79,7 +82,7 @@ function MapUpdater({ center }: { center: [number, number] }) {
     return null;
 }
 
-export default function ScraperMap({ center, radius, onCenterChange, results, gridTiles, processedCount }: ScraperMapProps) {
+export default function ScraperMap({ center, radius, onCenterChange, results, gridTiles, tileStatuses }: ScraperMapProps) {
 
   const [activeBusiness, setActiveBusiness] = useState<ScrapedBusiness | null>(null);
 
@@ -88,14 +91,35 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
   // Leaflet Bounds: [[minLat, minLon], [maxLat, maxLon]]
   const tileRects = useMemo(() => {
     return gridTiles.map((bbox, idx) => {
-        const isProcessed = idx < processedCount;
+        const status = tileStatuses ? tileStatuses[idx] : 'pending';
+        let color = '#94a3b8'; // Pending (Gray)
+        let fillOpacity = 0.05;
+
+        if (status === 'loading') {
+            color = '#3b82f6'; // Blue
+            fillOpacity = 0.3;
+        } else if (status === 'success') {
+            color = '#22c55e'; // Green
+            fillOpacity = 0.15;
+        } else if (status === 'empty') {
+            color = '#86efac'; // Light Green
+            fillOpacity = 0.05;
+        } else if (status === 'error') {
+            color = '#ef4444'; // Red
+            fillOpacity = 0.3;
+        } else if (status === 'retrying') {
+            color = '#eab308'; // Yellow
+            fillOpacity = 0.3;
+        }
+
         return {
             bounds: [[bbox[1], bbox[0]], [bbox[3], bbox[2]]] as L.LatLngBoundsExpression,
-            color: isProcessed ? '#22c55e' : '#94a3b8',
-            fillOpacity: isProcessed ? 0.2 : 0.05
+            color,
+            fillOpacity,
+            status
         };
     });
-  }, [gridTiles, processedCount]);
+  }, [gridTiles, tileStatuses]);
 
   return (
     <div className="h-full w-full relative z-0">
@@ -116,7 +140,7 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
         <Circle
             center={center}
             radius={radius}
-            pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 0.1, dashArray: '5, 5' }}
+            pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 0.05, dashArray: '5, 5' }}
         />
 
         {/* Center Marker */}
@@ -128,7 +152,10 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
                 key={i}
                 bounds={tile.bounds}
                 pathOptions={{ color: tile.color, weight: 1, fillOpacity: tile.fillOpacity }}
-            />
+            >
+                {/* Optional: Add Popup for debug info on tile click */}
+                {/* <Popup>Tile {i}: {tile.status}</Popup> */}
+            </Rectangle>
         ))}
 
         {/* Results Markers */}
@@ -163,14 +190,12 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
 
       {/* Legend / Overlay Info */}
       <div className="absolute bottom-4 left-4 z-[1000] bg-white/90 p-2 rounded-lg shadow-md border text-xs space-y-1 backdrop-blur-sm">
-         <div className="font-bold flex items-center gap-2"><MapPin className="h-3 w-3 text-red-500"/> Search Center</div>
-         <div>Drag pin or click map to move.</div>
-         <div className="flex items-center gap-2 mt-2">
-             <div className="w-3 h-3 bg-green-500/20 border border-green-500 rounded-sm"></div> Processed Tile
-         </div>
-         <div className="flex items-center gap-2">
-             <div className="w-3 h-3 bg-slate-400/10 border border-slate-400 rounded-sm"></div> Pending Tile
-         </div>
+         <div className="font-bold flex items-center gap-2 mb-1"><MapPin className="h-3 w-3 text-red-500"/> Search Center</div>
+         <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-500/20 border border-green-500 rounded-sm"></div> Data Found</div>
+         <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-200/20 border border-green-300 rounded-sm"></div> Scraped (Empty)</div>
+         <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-500/30 border border-blue-500 rounded-sm"></div> Scanning...</div>
+         <div className="flex items-center gap-2"><div className="w-3 h-3 bg-yellow-500/30 border border-yellow-500 rounded-sm"></div> Retrying (Limit)</div>
+         <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-500/30 border border-red-500 rounded-sm"></div> Failed</div>
       </div>
     </div>
   );
