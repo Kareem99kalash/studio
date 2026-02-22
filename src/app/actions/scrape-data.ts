@@ -120,7 +120,14 @@ export async function generateScrapeGrid(
                 // Defensive Cleaning
                 const cleanWkt = polygonWkt.replace(/^"|"$/g, '').trim();
                 const parsed = parse(cleanWkt);
-                geometry = parsed;
+
+                // Fix: terraformer-wkt-parser returns an object with a bbox() function
+                // which confuses turf.bbox(). We must convert it to a plain GeoJSON object.
+                geometry = {
+                    type: parsed.type,
+                    coordinates: parsed.coordinates
+                };
+
                 if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') {
                     throw new Error("WKT must be a Polygon or MultiPolygon");
                 }
