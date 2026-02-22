@@ -45,6 +45,7 @@ import {
 
 import { useToast } from '@/hooks/use-toast';
 import { generateScrapeGrid, scrapeTile, splitTile, ScrapedBusiness, ScrapeTileResult } from '@/app/actions/scrape-data';
+import Papa from 'papaparse';
 
 // Dynamically import Map with no SSR
 const ScraperMap = dynamic(() => import('@/components/dashboard/scraper-map'), {
@@ -442,19 +443,39 @@ export default function DataScraperPage() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-          const text = event.target?.result as string;
-          // Simple heuristic: if it contains "POLYGON", treat as WKT
-          // If CSV, try to find a WKT column? For now, assume raw text or simple content
-          if (text.includes('POLYGON') || text.includes('MULTIPOLYGON')) {
-              setPolygonWkt(text.trim());
-              toast({ title: "Loaded", description: "Polygon loaded from file." });
-          } else {
-              toast({ variant: "destructive", title: "Invalid File", description: "Could not find WKT Polygon data." });
-          }
-      };
-      reader.readAsText(file);
+
+      Papa.parse(file, {
+          complete: (result) => {
+              if (result.data && result.data.length > 0) {
+                  // Look for column named 'WKT' or 'wkt'
+                  const headers = result.meta.fields || [];
+                  const wktIndex = headers.findIndex(h => h.toLowerCase() === 'wkt');
+
+                  let foundWkt = '';
+
+                  if (wktIndex !== -1 && result.data[0]) {
+                      // Use the first row's WKT
+                      const row = result.data[0] as any;
+                      foundWkt = row[headers[wktIndex]];
+                  } else {
+                      // Fallback: Check if first column looks like WKT
+                      const firstRow = result.data[0] as string[];
+                      if (Array.isArray(firstRow) && firstRow[0] && firstRow[0].includes('POLYGON')) {
+                          foundWkt = firstRow[0];
+                      }
+                  }
+
+                  if (foundWkt && (foundWkt.includes('POLYGON') || foundWkt.includes('MULTIPOLYGON'))) {
+                      setPolygonWkt(foundWkt.trim());
+                      toast({ title: "Loaded", description: "Polygon loaded from CSV." });
+                  } else {
+                      toast({ variant: "destructive", title: "Invalid CSV", description: "Could not find 'WKT' column or valid polygon data." });
+                  }
+              }
+          },
+          header: true, // Attempt to parse headers
+          skipEmptyLines: true
+      });
   };
 
   return (
@@ -527,7 +548,7 @@ export default function DataScraperPage() {
                                             disabled={isScraping}
                                         />
                                     </div>
-                                    <p className="text-[9px] text-slate-400">Supports Raw WKT or file containing WKT string.</p>
+                                    <p className="text-[9px] text-slate-400">Supports CSV (WKT column) or Raw Text.</p>
                                 </div>
                             </TabsContent>
                         </Tabs>
@@ -598,6 +619,7 @@ export default function DataScraperPage() {
                         gridTiles={tileStates.map(t => t.bbox)}
                         tileStatuses={tileStates.map(t => t.status)}
                         highlightedBusinessId={highlightedBusinessId}
+                        polygonWkt={mode === 'polygon' ? polygonWkt : undefined}
                     />
                 </div>
                 <div className="flex-[2] bg-white flex flex-col min-h-0">

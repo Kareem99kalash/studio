@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrapedBusiness } from '@/app/actions/scrape-data';
 import { MapPin } from 'lucide-react';
+import { parse } from 'terraformer-wkt-parser';
 
 // Fix Leaflet Icon
 if (typeof window !== 'undefined') {
@@ -30,6 +31,7 @@ interface ScraperMapProps {
   gridTiles: number[][]; // [minLon, minLat, maxLon, maxLat]
   tileStatuses?: TileStatus[];
   highlightedBusinessId?: string | null;
+  polygonWkt?: string;
 }
 
 function LocationMarker({ position, onDragEnd }: { position: [number, number], onDragEnd: (lat: number, lng: number) => void }) {
@@ -74,7 +76,7 @@ function LocationMarker({ position, onDragEnd }: { position: [number, number], o
 }
 
 // Component to handle map view updates
-function MapUpdater({ center, highlightedBusiness, results }: { center: [number, number], highlightedBusiness: string | null | undefined, results: ScrapedBusiness[] }) {
+function MapUpdater({ center, highlightedBusiness, results, polygonWkt }: { center: [number, number], highlightedBusiness: string | null | undefined, results: ScrapedBusiness[], polygonWkt?: string }) {
     const map = useMap();
 
     // Auto-pan to highlighted business
@@ -87,10 +89,26 @@ function MapUpdater({ center, highlightedBusiness, results }: { center: [number,
         }
     }, [highlightedBusiness, results, map]);
 
+    // Fit bounds to Polygon WKT when loaded
+    useEffect(() => {
+        if (polygonWkt) {
+            try {
+                const geojson: any = parse(polygonWkt);
+                const layer = L.geoJSON(geojson);
+                const bounds = layer.getBounds();
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+            } catch (e) {
+                console.error("Failed to fit bounds to WKT", e);
+            }
+        }
+    }, [polygonWkt, map]);
+
     return null;
 }
 
-export default function ScraperMap({ center, radius, onCenterChange, results, gridTiles, tileStatuses, highlightedBusinessId }: ScraperMapProps) {
+export default function ScraperMap({ center, radius, onCenterChange, results, gridTiles, tileStatuses, highlightedBusinessId, polygonWkt }: ScraperMapProps) {
 
   const [activeBusiness, setActiveBusiness] = useState<ScrapedBusiness | null>(null);
 
@@ -129,6 +147,27 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
     });
   }, [gridTiles, tileStatuses]);
 
+  // Parse WKT for display
+  const polygonPositions = useMemo(() => {
+      if (!polygonWkt) return null;
+      try {
+          const geojson: any = parse(polygonWkt);
+          if (geojson.type === 'Polygon') {
+              // Swap [lon, lat] to [lat, lon] for Leaflet
+              return geojson.coordinates[0].map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
+          }
+          if (geojson.type === 'MultiPolygon') {
+              // Just take the first polygon for simplicity or handle multiples (Leaflet Polygon handles multiples if passed correctly, but simple array is for single)
+              // For robustness, let's just stick to rendering simple polygons or let user know
+              return geojson.coordinates[0][0].map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
+          }
+          return null;
+      } catch (e) {
+          console.error("WKT Parse Error for Display", e);
+          return null;
+      }
+  }, [polygonWkt]);
+
   return (
     <div className="h-full w-full relative z-0">
       <MapContainer
@@ -142,16 +181,26 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
 
-        <MapUpdater center={center} highlightedBusiness={highlightedBusinessId} results={results} />
+        <MapUpdater center={center} highlightedBusiness={highlightedBusinessId} results={results} polygonWkt={polygonWkt} />
 
-        {/* Search Radius */}
-        <Circle
-            center={center}
-            radius={radius}
-            pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 0.05, dashArray: '5, 5' }}
-        />
+        {/* Search Radius (Only if no polygon) */}
+        {!polygonWkt && (
+            <Circle
+                center={center}
+                radius={radius}
+                pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 0.05, dashArray: '5, 5' }}
+            />
+        )}
 
-        {/* Center Marker */}
+        {/* Polygon Display */}
+        {polygonPositions && (
+            <Polygon
+                positions={polygonPositions}
+                pathOptions={{ color: 'purple', fillColor: 'purple', fillOpacity: 0.1, weight: 2 }}
+            />
+        )}
+
+        {/* Center Marker (Only if no polygon, or maybe always?) */}
         <LocationMarker position={center} onDragEnd={onCenterChange} />
 
         {/* Grid Tiles Visualization */}
@@ -200,6 +249,7 @@ export default function ScraperMap({ center, radius, onCenterChange, results, gr
       {/* Legend / Overlay Info */}
       <div className="absolute bottom-4 left-4 z-[1000] bg-white/90 p-2 rounded-lg shadow-md border text-xs space-y-1 backdrop-blur-sm">
          <div className="font-bold flex items-center gap-2 mb-1"><MapPin className="h-3 w-3 text-red-500"/> Search Center</div>
+         {polygonWkt && <div className="font-bold flex items-center gap-2 mb-1 text-purple-600"><span className="h-3 w-3 border-2 border-purple-600"></span> Custom Polygon</div>}
          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-500/20 border border-green-500 rounded-sm"></div> Data Found</div>
          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-200/20 border border-green-300 rounded-sm"></div> Scraped (Empty)</div>
          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-500/30 border border-blue-500 rounded-sm"></div> Scanning...</div>

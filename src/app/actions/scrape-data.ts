@@ -117,10 +117,10 @@ export async function generateScrapeGrid(
         // MODE 1: POLYGON WKT
         if (polygonWkt) {
             try {
-                const parsed = parse(polygonWkt);
-                // Convert Terraformer GeoJSON to Turf GeoJSON (they are compatible mostly)
+                // Defensive Cleaning
+                const cleanWkt = polygonWkt.replace(/^"|"$/g, '').trim();
+                const parsed = parse(cleanWkt);
                 geometry = parsed;
-                // Ensure it's a polygon or multipolygon
                 if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') {
                     throw new Error("WKT must be a Polygon or MultiPolygon");
                 }
@@ -140,11 +140,7 @@ export async function generateScrapeGrid(
             areaSqMeters = Math.PI * (radiusMeters)**2;
         }
 
-        // OPTIMISTIC TILING STRATEGY:
-        // Use area size to determine initial granularity
-        // Area in sq meters -> sq km
         const areaSqKm = areaSqMeters / 1_000_000;
-
         let cellSideKm = 2; // Default 2km
 
         if (areaSqKm < 10) cellSideKm = 1;
@@ -161,7 +157,7 @@ export async function generateScrapeGrid(
             tiles: relevantCells.map(cell => turf.bbox(cell)),
             totalAreaKm2: areaSqKm.toFixed(2),
             estimatedTiles: relevantCells.length,
-            bounds: bbox // Return bounds to fit map view
+            bounds: bbox
         };
 
     } catch (e) {
@@ -238,7 +234,6 @@ export async function scrapeTile(bbox: number[], types: string[], tileIndex: num
         console.error(`Tile ${tileIndex}: Exhausted Mirrors. Error:`, error);
 
         const status = error.status || 500;
-        // Split if Timeout (504), Bad Request (400 - often memory limit), or generic timeout message
         const shouldSplit = status === 504 || status === 400 || (status === 0 && error.message?.includes('timeout'));
 
         return {
