@@ -3,9 +3,23 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { logger } from '@/lib/logger';
 
-// Ensure the secret is converted to a Uint8Array for the 'jose' library
-const secretString = process.env.JWT_SECRET || 'fallback_secret_for_build_only';
-const SECRET_KEY = new TextEncoder().encode(secretString);
+// 🔐 JWT SECRET HANDLING
+// In production, we MUST have a real JWT_SECRET set.
+// Fallback is only allowed for local development or during the build process.
+const secretString = process.env.JWT_SECRET;
+
+if (!secretString) {
+  if (process.env.NODE_ENV === 'production') {
+    // Critical failure if secret is missing in production
+    throw new Error('FATAL: JWT_SECRET environment variable is not set. The application cannot securely sign tokens in production.');
+  } else {
+    // In development/build, we log a warning but allow the fallback
+    console.warn('⚠️ WARNING: JWT_SECRET is missing. Using an insecure fallback secret for development/build.');
+  }
+}
+
+const finalSecret = secretString || 'fallback_secret_for_build_only';
+const SECRET_KEY = new TextEncoder().encode(finalSecret);
 
 const ACCESS_TOKEN_EXP = '15m'; 
 const REFRESH_TOKEN_EXP = '7d';
