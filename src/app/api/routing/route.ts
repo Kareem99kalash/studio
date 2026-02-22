@@ -29,7 +29,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
-    // 2. Security Check: Validate Engine URL (SSRF Protection)
+    // 2. Security Check: Validate coordinates format (Path Traversal Protection)
+    // OSRM expects: "lng,lat;lng,lat;..."
+    const coordRegex = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?(;-?\d+(\.\d+)?,-?\d+(\.\d+)?)*$/;
+    if (typeof coordinates !== 'string' || !coordRegex.test(coordinates)) {
+        return NextResponse.json({ error: 'Invalid coordinates format' }, { status: 400 });
+    }
+
+    // 3. Security Check: Validate Engine URL (SSRF Protection)
     // Only allow connections to known, safe domains
     const ALLOWED_DOMAINS = [
       'router.project-osrm.org',
@@ -48,9 +55,10 @@ export async function POST(req: NextRequest) {
        return NextResponse.json({ error: 'Unauthorized routing engine' }, { status: 403 });
     }
 
-    // 3. Construct the Request to the Real Engine
+    // 4. Construct the Request to the Real Engine
+    // Use urlObj.origin to prevent injection of malicious path segments or fragments from engineUrl
     // "sources=0" means the first coordinate is the start, others are destinations
-    const targetUrl = `${engineUrl}/table/v1/driving/${coordinates}?sources=0&annotations=distance`;
+    const targetUrl = `${urlObj.origin}/table/v1/driving/${coordinates}?sources=0&annotations=distance`;
 
     const fetchOptions: RequestInit = {
        method: 'GET',
@@ -59,9 +67,9 @@ export async function POST(req: NextRequest) {
        }
     };
 
-    // 4. Securely Inject the Token (Server-Side Only)
+    // 5. Securely Inject the Token (Server-Side Only)
     // We ONLY send the token if the target is your private Hugging Face space
-    if (engineUrl.includes('hf.space')) {
+    if (urlObj.hostname.includes('hf.space')) {
         const token = process.env.HF_TOKEN; // Read from server env
         
         if (!token) {
@@ -76,7 +84,7 @@ export async function POST(req: NextRequest) {
         };
     }
 
-    // 5. Execute Request
+    // 6. Execute Request
     const response = await fetch(targetUrl, fetchOptions);
     
     if (!response.ok) {
