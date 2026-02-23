@@ -3,8 +3,9 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Link from "next/link";
-import { doc, onSnapshot, collection, query, where } from 'firebase/firestore'; 
-import { db } from '@/firebase'; 
+import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { db, auth as firebaseAuth } from '@/firebase';
+import { signInWithCustomToken } from 'firebase/auth';
 import { logoutAction } from '@/app/actions/auth';
 import { 
   LayoutDashboard, 
@@ -64,36 +65,50 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // --- 1. AUTHENTICATION & IDENTITY SYNC ---
   useEffect(() => {
     const syncSession = async () => {
       try {
-        // Fetch identity from secure HTTP-only cookies
         const res = await fetch('/api/auth/me');
-        
+
         if (!res.ok) {
           throw new Error("Unauthorized");
         }
 
         const sessionData = await res.json();
+
+        if (sessionData.customToken) {
+          const currentFbUser = firebaseAuth.currentUser;
+          if (!currentFbUser || currentFbUser.uid !== sessionData.user.uid) {
+            try {
+              await signInWithCustomToken(firebaseAuth, sessionData.customToken);
+            } catch (authErr) {
+              logger.error("Auth", "Firebase Client SDK sync failed", authErr);
+            }
+          }
+        }
+
         setUser(sessionData.user);
 
-        // 🟢 Setup real-time Firestore sync based on the ID from the cookie
         const userRef = doc(db, 'users', sessionData.user.uid);
-        const unsub = onSnapshot(userRef, (docSnap) => {
-          if (!docSnap.exists()) {
-            handleLogout(); // Kill session if user is deleted from DB
-          } else {
-            const freshData = docSnap.data();
-            setUser((prev: any) => ({ ...prev, ...freshData }));
+        const unsub = onSnapshot(
+          userRef,
+          (docSnap) => {
+            if (!docSnap.exists()) {
+              handleLogout();
+            } else {
+              setUser((prev: any) => ({ ...prev, ...docSnap.data() }));
+            }
+          },
+          (err) => {
+            logger.error("Auth", "User snapshot listener error", err);
           }
-        });
+        );
 
         setLoading(false);
         return () => unsub();
       } catch (e) {
         logger.error("Auth", "Identity verification failed", e);
-        window.location.href = '/'; 
+        window.location.href = '/';
       }
     };
 
