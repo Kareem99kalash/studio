@@ -14,25 +14,28 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // New isAdmin: Checks the 'role' field on the user document itself.
-    // This aligns with the new UI which writes role='admin' to /users/{uid}.
+    // Fetches the user document once and caches it for the rule evaluation.
+    // This avoids multiple get() calls (which can hit Firestore rules limits).
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function isAdmin() {
       return isSignedIn() &&
         (
-          // Check legacy roles_admin collection (backward compatibility)
           exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid)) ||
-          // Check role field on user document
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+          getUserData().role == 'admin'
         );
     }
 
-    // Permission Check Helper
-    // Checks if the user has a specific permission in their 'permissions' map
+    // Single-get version: reads user doc once, checks admin role OR specific permission.
     function hasPermission(permissionKey) {
+      let userData = getUserData();
       return isSignedIn() &&
         (
-          isAdmin() ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[permissionKey] == true
+          userData.role == 'admin' ||
+          exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid)) ||
+          userData.permissions[permissionKey] == true
         );
     }
 
@@ -41,37 +44,24 @@ service cloud.firestore {
     //-------------------------------------------------------------------------
 
     match /users/{userId} {
-      // Allow reading own profile
       allow get: if isOwner(userId) || hasPermission('view_user_management');
-
-      // Allow listing users if you have user management permission
       allow list: if hasPermission('view_user_management');
-
-      // Creation: Only admins or users with 'create_users' permission
-      // Note: Strict validation of *what* they can create is handled in UI/App logic,
-      // but ideally should be enforced here too.
-      // For now, we trust the 'create_users' permission to allow writing to this collection.
-      allow create: if isAdmin() || hasPermission('create_users');
-
-      // Update: Self update (limited) OR Admin OR 'edit_users' permission
+      allow create: if hasPermission('create_users');
       allow update: if (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'permissions']))
-                    || isAdmin()
                     || hasPermission('edit_users');
-
-      // Delete: Admin OR 'delete_users' permission
-      allow delete: if isAdmin() || hasPermission('delete_users');
+      allow delete: if hasPermission('delete_users');
     }
 
     // Permission Presets
     match /permission_presets/{presetId} {
-      allow read: if isSignedIn(); // Anyone logged in can read presets to use them
-      allow create, update, delete: if isAdmin() || hasPermission('manage_presets');
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasPermission('manage_presets');
     }
 
     // Geographic Groups (Agent Groups)
     match /agent_groups/{groupId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin() || hasPermission('manage_groups');
+      allow create, update, delete: if hasPermission('manage_groups');
     }
 
     //-------------------------------------------------------------------------
@@ -79,47 +69,35 @@ service cloud.firestore {
     //-------------------------------------------------------------------------
 
     match /cities/{cityId} {
-      // Viewing cities requires 'view_cities' permission (or admin)
-      // Note: The UI filters by groupId, but security rules enforces the base permission.
-      // Ideally we would also check groupId here, but `list` rules can't filter results easily without query constraints matching exactly.
-      // For performant row-level security on lists, we often rely on query validation.
-      allow get, list: if true; // Public read for now to ensure dashboard works, or restrict to hasPermission('view_cities')
-
-      allow create: if isAdmin() || hasPermission('create_cities');
-      allow update: if isAdmin() || hasPermission('edit_cities') || hasPermission('manage_thresholds'); // thresholds editing is an update to city
-      allow delete: if isAdmin() || hasPermission('delete_cities');
+      allow get, list: if true;
+      allow create: if hasPermission('create_cities');
+      allow update: if hasPermission('edit_cities') || hasPermission('manage_thresholds');
+      allow delete: if hasPermission('delete_cities');
     }
 
-    // Store Locations
     match /storeLocations/{storeLocationId} {
       allow get, list: if true;
-      allow create, update, delete: if isAdmin() || hasPermission('manage_distribution_hubs');
+      allow create, update, delete: if hasPermission('manage_distribution_hubs');
     }
 
-    // Analysis Results
-    // Note: Assuming these are stored under storeLocations or top level?
-    // The previous rules had them nested.
     match /storeLocations/{storeLocationId}/analysisResults/{analysisResultId} {
-      allow read: if isSignedIn(); // Allow authenticated users to see results
-      allow write: if isAdmin() || hasPermission('run_analysis');
+      allow read: if isSignedIn();
+      allow write: if hasPermission('run_analysis');
     }
 
-    // System Audit Logs
     match /audit_logs/{logId} {
-      allow create: if isSignedIn(); // Anyone can write a log
-      allow read: if isAdmin() || hasPermission('view_audit_logs');
-      allow delete: if isAdmin(); // Only super admins should delete logs
-      allow update: if false; // Logs are immutable
+      allow create: if isSignedIn();
+      allow read: if hasPermission('view_audit_logs');
+      allow delete: if isAdmin();
+      allow update: if false;
     }
 
-    // Tickets
     match /tickets/{ticketId} {
-      allow read: if isAdmin() || hasPermission('view_tickets');
-      allow create: if isAdmin() || hasPermission('create_tickets');
-      allow update, delete: if isAdmin() || hasPermission('manage_tickets');
+      allow read: if hasPermission('view_tickets');
+      allow create: if hasPermission('create_tickets');
+      allow update, delete: if hasPermission('manage_tickets');
     }
-    
-    // Legacy support (optional, can be removed if roles_admin is deprecated)
+
     match /roles_admin/{userId} {
       allow read, write: if isAdmin();
     }
