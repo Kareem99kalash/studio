@@ -25,9 +25,10 @@ export async function verifyAdminPrivileges(requesterId: string) {
 
     const userData = userSnap.data();
 
-    // 3. Check Role
-    if (userData.role !== 'admin' && userData.role !== 'super_admin') {
-      logger.warn('Security', `Blocked non-admin action by: ${requesterId}`);
+    // 3. Check Role (Case-Insensitive)
+    const role = userData.role?.toLowerCase() || '';
+    if (role !== 'admin' && role !== 'super_admin') {
+      logger.warn('Security', `Blocked non-admin action by: ${requesterId} (Role: ${userData.role})`);
       throw new Error("Forbidden: You do not have admin privileges.");
     }
 

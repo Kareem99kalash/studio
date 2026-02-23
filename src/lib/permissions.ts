@@ -76,7 +76,7 @@ export type PermissionKey = typeof ALL_PERMISSIONS_LIST[number];
 // If user is admin, they have ALL permissions.
 export const hasPermission = (user: any, permission: string): boolean => {
   if (!user) return false;
-  if (user.role === 'admin') return true;
+  if (user.role?.toLowerCase() === 'admin') return true;
   return user.permissions?.[permission] === true;
 };
 
