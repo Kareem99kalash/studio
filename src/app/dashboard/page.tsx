@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore'; 
+import { collection, getDocs, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -137,11 +137,23 @@ export default function DashboardPage() {
      return () => { unsub(); clearTimeout(safetyTimer); };
   }, []);
 
-  useEffect(() => { if (!isCheckingStatus) fetchCities(); }, [isCheckingStatus]);
+  useEffect(() => { if (!isCheckingStatus && user) fetchCities(); }, [isCheckingStatus, user]);
 
   const fetchCities = async () => {
     try {
-      const snap = await getDocs(collection(db, 'cities'));
+      let citiesQuery;
+
+      // 🔒 AGENT GROUP FILTERING LOGIC
+      // If admin, fetch all.
+      // If user has a groupId, fetch only cities assigned to that group.
+      // If user has NO groupId, fetch all (as per requirement: "if someone is unassigned to a group then they can see all cities").
+      if (user.role === 'admin' || !user.groupId) {
+          citiesQuery = collection(db, 'cities');
+      } else {
+          citiesQuery = query(collection(db, 'cities'), where('groupId', '==', user.groupId));
+      }
+
+      const snap = await getDocs(citiesQuery);
       const cityList = snap.docs.map(d => {
           const data = d.data();
           let subZones = data.subZones || [];
