@@ -75,9 +75,23 @@ export async function loginAction(formData: FormData) {
         );
 
         if (!verifyResponse.ok) {
-            const errorData = await verifyResponse.json();
-            logger.warn('Auth', `Login failed for ${username}: ${errorData.error?.message}`);
-            return { success: false, message: 'Invalid credentials' };
+            // DESYNC RECOVERY: If Auth failed, check if the password matches the legacy Firestore store.
+            // This happens if a user changed their password via the old UI (which only updated Firestore).
+            if (userData?.password === password) {
+                logger.warn('Security', `Password desync detected for ${username}. Syncing Auth with Firestore.`);
+
+                // Update Auth to match the correct password
+                await adminAuth.updateUser(username, {
+                    password: password,
+                    emailVerified: true
+                });
+
+                // Proceed as authenticated since we validated against the source of truth (Firestore)
+            } else {
+                const errorData = await verifyResponse.json();
+                logger.warn('Auth', `Login failed for ${username}: ${errorData.error?.message}`);
+                return { success: false, message: 'Invalid credentials' };
+            }
         }
     }
 
