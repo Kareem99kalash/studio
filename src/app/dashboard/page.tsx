@@ -147,7 +147,9 @@ export default function DashboardPage() {
       // If admin, fetch all.
       // If user has a groupId, fetch only cities assigned to that group.
       // If user has NO groupId, fetch all (as per requirement: "if someone is unassigned to a group then they can see all cities").
-      if (user.role === 'admin' || !user.groupId) {
+      const userRole = user.role?.toLowerCase();
+
+      if (userRole === 'admin' || userRole === 'super_admin' || !user.groupId) {
           citiesQuery = collection(db, 'cities');
       } else {
           citiesQuery = query(collection(db, 'cities'), where('groupId', '==', user.groupId));
