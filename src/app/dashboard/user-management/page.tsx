@@ -6,14 +6,13 @@ import {
   collection, 
   getDocs, 
   doc, 
-  setDoc,
-  updateDoc, 
-  deleteDoc, 
+  deleteDoc,
   addDoc,
   query, 
   orderBy, 
   where
 } from 'firebase/firestore';
+import { createSystemUser, updateSystemUser, deleteSystemUser } from '@/app/actions/user-management';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -331,19 +330,27 @@ export default function UserManagementPage() {
 
     try {
       const cleanUsername = newUsername.toLowerCase().trim();
-      const userRef = doc(db, 'users', cleanUsername);
+
+      const payload = {
+        username: cleanUsername,
+        password: newPassword,
+        role: createRole,
+        permissions: createRole === 'admin' ? {} : createPermissions,
+        groupId: createGroup || null
+      };
+
+      const result = await createSystemUser(payload, currentUser?.username || 'unknown');
+
+      if (!result.success) {
+          throw new Error(result.message);
+      }
 
       const newUser = {
-        username: cleanUsername,
-        password: newPassword, 
-        role: createRole, 
-        permissions: createRole === 'admin' ? {} : createPermissions,
-        groupId: createGroup || null,
+        ...payload,
         createdAt: new Date().toISOString(),
         createdBy: currentUser?.username
       };
 
-      await setDoc(userRef, newUser);
       await logActivity('Create User', `Created user ${cleanUsername} with role ${createRole}`);
 
       setUsers([...users, newUser]);
@@ -371,12 +378,16 @@ export default function UserManagementPage() {
 
     if (!confirm(`Delete ${targetUser.username}?`)) return;
     try {
-      await deleteDoc(doc(db, 'users', targetUser.username));
+      const result = await deleteSystemUser(targetUser.username, currentUser?.username || 'unknown');
+      if (!result.success) {
+          throw new Error(result.message);
+      }
+
       setUsers(users.filter(u => u.username !== targetUser.username));
       await logActivity('Delete User', `Deleted user account: ${targetUser.username}`);
       toast({ title: "Deleted" });
-    } catch (error) {
-      toast({ variant: "destructive", title: "Error" });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
     }
   };
 
@@ -403,8 +414,6 @@ export default function UserManagementPage() {
     setIsSaving(true);
 
     try {
-      const userRef = doc(db, 'users', editingUser.username);
-
       const updates: any = {
         role: editRole,
         groupId: editGroup || null,
@@ -418,7 +427,12 @@ export default function UserManagementPage() {
           }
       }
 
-      await updateDoc(userRef, updates);
+      const result = await updateSystemUser(editingUser.username, updates, currentUser?.username || 'unknown');
+
+      if (!result.success) {
+          throw new Error(result.message);
+      }
+
       await logActivity('Update User', `Updated profile for ${editingUser.username}. Role: ${editRole}`);
 
       setUsers(users.map(u => 
@@ -428,9 +442,9 @@ export default function UserManagementPage() {
       toast({ title: "Profile Updated", description: `Changes saved for ${editingUser.username}` });
       setEditModalOpen(false);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast({ variant: "destructive", title: "Save Failed", description: "Could not update user." });
+      toast({ variant: "destructive", title: "Save Failed", description: error.message || "Could not update user." });
     } finally {
       setIsSaving(false);
     }
