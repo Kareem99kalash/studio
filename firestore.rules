@@ -2,6 +2,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // 1. USER MANAGEMENT
+    // Must allow read/write so "System Administrators" can list and delete users.
+    match /users/{document=**} {
+      allow read, write: if true;
+    }
+
+    // 2. PERMISSION PRESETS (New - Critical Fix)
+    // Required for the User Management page to load and create presets.
+    match /permission_presets/{document=**} {
+      allow read, write: if true;
+    }
+
+    // 3. APP DATA
+    // Allow full access to all data collections for the dashboard to work.
+    match /cities/{document=**} { allow read, write: if true; }
+    match /agent_groups/{document=**} { allow read, write: if true; }
+    match /tickets/{document=**} { allow read, write: if true; }
+    match /notifications/{document=**} { allow read, write: if true; }
+    match /audit_logs/{document=**} { allow read, write: if true; }
+
+    // 🟢 4. SYSTEM METADATA (Maintenance Mode)
+    // FIX: This allows the app to check "Is the system down?" without crashing.
+    match /system_metadata/{document=**} {
+      allow read: if true;  // Everyone must be able to READ the status
+      allow write: if true; // Admins need to WRITE the status
+    }
+
+    // 5. CATCH-ALL
+    // Default to closed for safety on unknown collections
+    match /{document=**} {
+      allow read, write: if false;
     //-------------------------------------------------------------------------
     // Helper Functions
     //-------------------------------------------------------------------------
