@@ -1,5 +1,4 @@
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 import { logger } from '@/lib/logger';
 
 /**
@@ -13,12 +12,12 @@ export async function verifyAdminPrivileges(requesterId: string) {
   }
 
   try {
-    // 1. Fetch the user's latest data directly from Firestore
-    const userRef = doc(db, 'users', requesterId);
-    const userSnap = await getDoc(userRef);
+    // 1. Fetch the user's latest data directly from Firestore (using Admin SDK)
+    const userRef = adminDb.collection('users').doc(requesterId);
+    const userSnap = await userRef.get();
 
     // 2. Check existence
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       logger.warn('Security', `Blocked action from non-existent user: ${requesterId}`);
       throw new Error("Unauthorized: Identity verification failed.");
     }
@@ -26,9 +25,9 @@ export async function verifyAdminPrivileges(requesterId: string) {
     const userData = userSnap.data();
 
     // 3. Check Role (Case-Insensitive)
-    const role = userData.role?.toLowerCase() || '';
+    const role = userData?.role?.toLowerCase() || '';
     if (role !== 'admin' && role !== 'super_admin') {
-      logger.warn('Security', `Blocked non-admin action by: ${requesterId} (Role: ${userData.role})`);
+      logger.warn('Security', `Blocked non-admin action by: ${requesterId} (Role: ${userData?.role})`);
       throw new Error("Forbidden: You do not have admin privileges.");
     }
 
