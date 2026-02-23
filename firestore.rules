@@ -33,6 +33,104 @@ service cloud.firestore {
     // Default to closed for safety on unknown collections
     match /{document=**} {
       allow read, write: if false;
+    //-------------------------------------------------------------------------
+    // Helper Functions
+    //-------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Fetches the user document once and caches it for the rule evaluation.
+    // This avoids multiple get() calls (which can hit Firestore rules limits).
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        (
+          exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid)) ||
+          getUserData().role == 'admin'
+        );
+    }
+
+    // Single-get version: reads user doc once, checks admin role OR specific permission.
+    function hasPermission(permissionKey) {
+      let userData = getUserData();
+      return isSignedIn() &&
+        (
+          userData.role == 'admin' ||
+          exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid)) ||
+          userData.permissions[permissionKey] == true
+        );
+    }
+
+    //-------------------------------------------------------------------------
+    // User Data
+    //-------------------------------------------------------------------------
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || hasPermission('view_user_management');
+      allow list: if hasPermission('view_user_management');
+      allow create: if hasPermission('create_users');
+      allow update: if (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'permissions']))
+                    || hasPermission('edit_users');
+      allow delete: if hasPermission('delete_users');
+    }
+
+    // Permission Presets
+    match /permission_presets/{presetId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasPermission('manage_presets');
+    }
+
+    // Geographic Groups (Agent Groups)
+    match /agent_groups/{groupId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasPermission('manage_groups');
+    }
+
+    //-------------------------------------------------------------------------
+    // City & Geographical Data
+    //-------------------------------------------------------------------------
+
+    match /cities/{cityId} {
+      allow get, list: if true;
+      allow create: if hasPermission('create_cities');
+      allow update: if hasPermission('edit_cities') || hasPermission('manage_thresholds');
+      allow delete: if hasPermission('delete_cities');
+    }
+
+    match /storeLocations/{storeLocationId} {
+      allow get, list: if true;
+      allow create, update, delete: if hasPermission('manage_distribution_hubs');
+    }
+
+    match /storeLocations/{storeLocationId}/analysisResults/{analysisResultId} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('run_analysis');
+    }
+
+    match /audit_logs/{logId} {
+      allow create: if isSignedIn();
+      allow read: if hasPermission('view_audit_logs');
+      allow delete: if isAdmin();
+      allow update: if false;
+    }
+
+    match /tickets/{ticketId} {
+      allow read: if hasPermission('view_tickets');
+      allow create: if hasPermission('create_tickets');
+      allow update, delete: if hasPermission('manage_tickets');
+    }
+
+    match /roles_admin/{userId} {
+      allow read, write: if isAdmin();
     }
   }
 }
