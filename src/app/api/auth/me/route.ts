@@ -6,10 +6,10 @@ import { adminDb, adminAuth } from '@/lib/firebase-admin'; // Use Admin SDK for 
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    
+
     // Check for refresh token (the 7-day session token)
     const refreshToken = cookieStore.get('session_refresh')?.value;
-    
+
     if (!refreshToken) {
       return NextResponse.json(
         { error: 'Not authenticated' },
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     // Decrypt and verify the token
     const session = await decrypt(refreshToken);
-    
+
     if (!session || !session.uid || typeof session.uid !== 'string') {
       return NextResponse.json(
         { error: 'Invalid session' },
@@ -32,16 +32,18 @@ export async function GET(request: NextRequest) {
     // We trust the cookie for identity (uid), but we should fetch roles/permissions from DB.
     let userPermissions = session.permissions || {};
     let userRole = session.role;
+    let userGroupId = session.groupId || null;
 
     try {
-        const userDoc = await adminDb.collection('users').doc(session.uid as string).get();
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-            userRole = userData?.role || userRole;
-            userPermissions = userData?.permissions || userPermissions;
-        }
+      const userDoc = await adminDb.collection('users').doc(session.uid as string).get();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        userRole = userData?.role || userRole;
+        userPermissions = userData?.permissions || userPermissions;
+        userGroupId = userData?.groupId ?? userGroupId;
+      }
     } catch (dbError) {
-        console.warn("[API /auth/me] Failed to fetch fresh permissions from Firestore, using session cache.", dbError);
+      console.warn("[API /auth/me] Failed to fetch fresh permissions from Firestore, using session cache.", dbError);
     }
 
     // Generate custom token for client-side SDK auth
@@ -54,14 +56,14 @@ export async function GET(request: NextRequest) {
       console.error("Failed to generate custom token in /api/auth/me:", e);
     }
 
-    // Return user data with fresh permissions
+    // Return user data with fresh permissions and groupId
     return NextResponse.json({
       user: {
         uid: session.uid,
         username: session.uid,
         role: userRole,
         permissions: userPermissions,
-        groupId: session.groupId // If group ID is in session, pass it. If not, maybe fetch it too.
+        groupId: userGroupId
       },
       customToken
     });

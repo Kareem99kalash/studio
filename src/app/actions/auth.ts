@@ -88,6 +88,7 @@ export async function loginAction(formData: FormData) {
       uid: username,
       role: userData?.role,
       permissions: userData?.permissions || {},
+      groupId: userData?.groupId || null,
       jti: tokenId
     };
 
