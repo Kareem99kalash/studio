@@ -1,5 +1,4 @@
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 import { logger } from '@/lib/logger';
 
 /**
@@ -13,12 +12,11 @@ export async function verifyAdminPrivileges(requesterId: string) {
   }
 
   try {
-    // 1. Fetch the user's latest data directly from Firestore
-    const userRef = doc(db, 'users', requesterId);
-    const userSnap = await getDoc(userRef);
+    // 1. Fetch the user's latest data directly from Firestore (Admin SDK)
+    const userSnap = await adminDb.collection('users').doc(requesterId).get();
 
     // 2. Check existence
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       logger.warn('Security', `Blocked action from non-existent user: ${requesterId}`);
       throw new Error("Unauthorized: Identity verification failed.");
     }
@@ -26,7 +24,7 @@ export async function verifyAdminPrivileges(requesterId: string) {
     const userData = userSnap.data();
 
     // 3. Check Role
-    if (userData.role !== 'admin' && userData.role !== 'super_admin') {
+    if (userData?.role !== 'admin' && userData?.role !== 'super_admin') {
       logger.warn('Security', `Blocked non-admin action by: ${requesterId}`);
       throw new Error("Forbidden: You do not have admin privileges.");
     }
@@ -36,9 +34,13 @@ export async function verifyAdminPrivileges(requesterId: string) {
   } catch (error) {
     // Log the actual system error internally, but throw a generic message to the client
     if (error instanceof Error && error.message.includes('Forbidden')) {
-        throw error; // Re-throw permission errors
+      throw error; // Re-throw permission errors
+    }
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      throw error; // Re-throw auth errors
     }
     console.error("Auth Check Failed:", error);
     throw new Error("Authorization check failed due to a system error.");
   }
 }
+
