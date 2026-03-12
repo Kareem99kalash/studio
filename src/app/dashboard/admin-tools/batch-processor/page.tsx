@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save, FileSpreadsheet, AlertCircle, Layers, Scale, HelpCircle } from 'lucide-react';
+import { Loader2, Download, UploadCloud, Play, Map as MapIcon, Table as TableIcon, Edit, Sparkles, Search, Save, FileSpreadsheet, AlertCircle, Layers, Scale, HelpCircle, FileDown, ChevronDown } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -169,6 +169,7 @@ export default function BatchCoveragePage() {
   const [summaryMode, setSummaryMode] = useState<'polygon' | 'store'>('polygon');
   const [reassignDialogData, setReassignDialogData] = useState<{polyId: string, parentId: string, polyName: string} | null>(null);
   const [pendingReassignStore, setPendingReassignStore] = useState<string>("");
+  const [showGuide, setShowGuide] = useState(false);
 
   // --- 1. FILE UPLOAD ---
   const handleFile = (file: File, type: 'stores' | 'polygons_primary' | 'polygons_secondary') => {
@@ -691,6 +692,155 @@ export default function BatchCoveragePage() {
             </CardContent>
         </Card>
       </div>
+
+      {/* CSV TEMPLATE GUIDE */}
+      <Card className="border border-border overflow-hidden">
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-muted/50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="bg-purple-100 dark:bg-purple-950 p-1.5 rounded-lg">
+              <FileSpreadsheet className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <span className="font-bold text-sm text-foreground">CSV Template Guide</span>
+              <span className="text-muted-foreground text-xs ml-2">How to format your files</span>
+            </div>
+          </div>
+          <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${showGuide ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showGuide && (
+          <div className="px-5 pb-5 space-y-6 border-t border-border pt-5 animate-in fade-in slide-in-from-top-2 duration-200">
+            {/* STORES TEMPLATE */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-none shadow-none font-bold text-[10px] uppercase tracking-wider">Step 1</Badge>
+                  <h4 className="font-bold text-sm text-foreground">Stores CSV</h4>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[10px] gap-1.5 font-bold"
+                  onClick={() => {
+                    const csv = 'lat,lng,id,name,parentId,parentName\n36.1901,44.0091,S001,Main Branch,G01,Downtown Group\n36.2050,44.0120,S002,West Branch,G01,Downtown Group\n36.1750,43.9800,S003,South Branch,G02,Suburbs Group';
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'stores_template.csv';
+                    link.click();
+                  }}
+                >
+                  <FileDown className="h-3 w-3" /> Download Template
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Each row is a store/branch location. <strong className="text-foreground">lat</strong> and <strong className="text-foreground">lng</strong> are required. Use <strong className="text-foreground">parentId</strong> to group branches under a parent company.
+              </p>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">lat <span className="text-red-500">*</span></TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">lng <span className="text-red-500">*</span></TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">id</TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">name</TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">parentId</TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">parentName</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow className="hover:bg-muted/30">
+                      <TableCell className="font-mono text-xs py-2">36.1901</TableCell>
+                      <TableCell className="font-mono text-xs py-2">44.0091</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">S001</TableCell>
+                      <TableCell className="text-xs py-2">Main Branch</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">G01</TableCell>
+                      <TableCell className="text-xs py-2 text-muted-foreground">Downtown Group</TableCell>
+                    </TableRow>
+                    <TableRow className="hover:bg-muted/30">
+                      <TableCell className="font-mono text-xs py-2">36.2050</TableCell>
+                      <TableCell className="font-mono text-xs py-2">44.0120</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">S002</TableCell>
+                      <TableCell className="text-xs py-2">West Branch</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">G01</TableCell>
+                      <TableCell className="text-xs py-2 text-muted-foreground">Downtown Group</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            {/* ZONES TEMPLATE */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 border-none shadow-none font-bold text-[10px] uppercase tracking-wider">Step 2</Badge>
+                  <h4 className="font-bold text-sm text-foreground">Zones CSV (Primary / Secondary)</h4>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[10px] gap-1.5 font-bold"
+                  onClick={() => {
+                    const csv = 'wkt,id,name,demand\n"POLYGON ((44.0 36.19, 44.01 36.19, 44.01 36.20, 44.0 36.20, 44.0 36.19))",Z001,Zone Alpha,150\n"POLYGON ((44.02 36.18, 44.03 36.18, 44.03 36.19, 44.02 36.19, 44.02 36.18))",Z002,Zone Beta,85';
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'zones_template.csv';
+                    link.click();
+                  }}
+                >
+                  <FileDown className="h-3 w-3" /> Download Template
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Each row is a zone polygon. <strong className="text-foreground">wkt</strong> (Well-Known Text geometry) is required. <strong className="text-foreground">demand</strong> is optional and used for weighted load-balancing when Smart Balance is enabled.
+              </p>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">wkt <span className="text-red-500">*</span></TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">id</TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">name</TableHead>
+                      <TableHead className="text-[10px] font-bold uppercase tracking-wider h-8">demand</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow className="hover:bg-muted/30">
+                      <TableCell className="font-mono text-[10px] py-2 max-w-[300px] truncate">POLYGON ((44.0 36.19, 44.01 36.19, ...))</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">Z001</TableCell>
+                      <TableCell className="text-xs py-2">Zone Alpha</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">150</TableCell>
+                    </TableRow>
+                    <TableRow className="hover:bg-muted/30">
+                      <TableCell className="font-mono text-[10px] py-2 max-w-[300px] truncate">POLYGON ((44.02 36.18, 44.03 36.18, ...))</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">Z002</TableCell>
+                      <TableCell className="text-xs py-2">Zone Beta</TableCell>
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">85</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            {/* TIPS */}
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+              <h5 className="font-bold text-xs text-foreground flex items-center gap-1.5"><AlertCircle className="h-3.5 w-3.5 text-amber-500" /> Tips</h5>
+              <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
+                <li>Column names are <strong className="text-foreground">flexible</strong> — the wizard will auto-detect common names, or you can map them manually.</li>
+                <li>WKT coordinates should be in <strong className="text-foreground">longitude latitude</strong> order (e.g. <code className="bg-muted px-1 rounded text-[10px]">44.01 36.19</code>).</li>
+                <li>If your CSV has different headers (e.g. <code className="bg-muted px-1 rounded text-[10px]">latitude</code> instead of <code className="bg-muted px-1 rounded text-[10px]">lat</code>), the column mapping wizard will let you match them.</li>
+                <li><strong className="text-foreground">parentId</strong> groups branches together — polygons are analyzed per parent group.</li>
+                <li>The <strong className="text-foreground">demand</strong> column supports raw numbers or percentages (e.g. <code className="bg-muted px-1 rounded text-[10px]">150</code> or <code className="bg-muted px-1 rounded text-[10px]">25%</code>).</li>
+              </ul>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* COLUMN MAPPING WIZARD */}
       <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
