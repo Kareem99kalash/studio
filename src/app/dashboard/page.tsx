@@ -331,8 +331,15 @@ export default function DashboardPage() {
                         const polyZone = f.properties.zoneGroup || f.properties.zoneName;
                         const zoneConfig = f.properties.zoneRules;
                         let activeRule = { green: 2, yellow: 5 };
-                        if (storeRule) { activeRule = storeRule; }
-                        else if (zoneConfig.internal && zoneConfig.external) {
+                        if (storeRule) {
+                            // storeRule has { name, internal, external } shape — pick the right sub-rule
+                            if (storeRule.internal && storeRule.external) {
+                                activeRule = (storeHomeZone === polyZone) ? storeRule.internal : storeRule.external;
+                            } else {
+                                // fallback: flat { green, yellow } shape
+                                activeRule = storeRule;
+                            }
+                        } else if (zoneConfig.internal && zoneConfig.external) {
                             if (storeHomeZone === polyZone) { activeRule = zoneConfig.internal; }
                             else {
                                 const distToBorder = getMinDistToZone(storeObj.lat, storeObj.lng, polyZone, allPolygons);
