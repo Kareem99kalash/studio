@@ -121,13 +121,13 @@ export default function BroadcastPage() {
           <Bell className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             Broadcast Center
             <Link href="/dashboard/documentation#broadcast">
-              <HelpCircle className="h-4 w-4 text-slate-300 hover:text-indigo-600 transition-colors cursor-help" />
+              <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-indigo-600 transition-colors cursor-help" />
             </Link>
           </h1>
-          <p className="text-slate-500 text-sm">Push system-wide alerts to user dashboards.</p>
+          <p className="text-muted-foreground text-sm">Push system-wide alerts to user dashboards.</p>
         </div>
       </div>
 
@@ -141,7 +141,7 @@ export default function BroadcastPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase">Target Audience</label>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">Target Audience</label>
               <Select value={target} onValueChange={setTarget}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -155,7 +155,7 @@ export default function BroadcastPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase">Type</label>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">Type</label>
               <div className="flex gap-2">
                 <Button 
                   variant={type === 'info' ? 'default' : 'outline'} 
@@ -175,12 +175,12 @@ export default function BroadcastPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase">Title</label>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">Title</label>
               <Input placeholder="System Update..." value={title} onChange={e => setTitle(e.target.value)} />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase">Message Body</label>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">Message Body</label>
               <Textarea 
                 placeholder="Type message here..." 
                 className="min-h-[100px]"
@@ -198,26 +198,26 @@ export default function BroadcastPage() {
         {/* HISTORY */}
         <Card className="lg:col-span-2 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><History className="h-5 w-5 text-slate-400" /> Recent Broadcasts</CardTitle>
+            <CardTitle className="flex items-center gap-2"><History className="h-5 w-5 text-muted-foreground" /> Recent Broadcasts</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {history.length === 0 ? (
-                <p className="text-center text-slate-400 italic py-8">No messages sent recently.</p>
+                <p className="text-center text-muted-foreground italic py-8">No messages sent recently.</p>
               ) : (
                 history.map((item) => (
-                  <div key={item.id} className="flex items-start gap-4 p-4 border rounded-lg bg-slate-50/50 hover:bg-white transition-all">
+                  <div key={item.id} className="flex items-start gap-4 p-4 border rounded-lg bg-muted/50 hover:bg-card transition-all">
                     <div className={`p-2 rounded-full shrink-0 ${item.type === 'alert' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                       {item.type === 'alert' ? <AlertTriangle className="h-5 w-5" /> : <Info className="h-5 w-5" />}
                     </div>
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-bold text-slate-800">{item.title}</h4>
-                        <span className="text-[10px] text-slate-400 font-mono">{new Date(item.createdAt).toLocaleDateString()}</span>
+                        <h4 className="font-bold text-foreground">{item.title}</h4>
+                        <span className="text-[10px] text-muted-foreground font-mono">{new Date(item.createdAt).toLocaleDateString()}</span>
                       </div>
-                      <p className="text-sm text-slate-600 mb-2">{item.message}</p>
+                      <p className="text-sm text-muted-foreground mb-2">{item.message}</p>
                       <div className="flex gap-2">
-                        <Badge variant="outline" className="bg-white text-[10px] uppercase tracking-wide text-slate-500">
+                        <Badge variant="outline" className="bg-card text-[10px] uppercase tracking-wide text-muted-foreground">
                             Role: {item.broadcastGroup || 'Specific User'}
                         </Badge>
                       </div>

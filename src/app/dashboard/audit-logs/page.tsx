@@ -183,8 +183,8 @@ export default function AuditLogsPage() {
             <ShieldAlert className="h-12 w-12 text-red-600" />
         </div>
         <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold text-slate-800">Access Restricted</h2>
-            <p className="text-slate-500 max-w-md">
+            <h2 className="text-2xl font-bold text-foreground">Access Restricted</h2>
+            <p className="text-muted-foreground max-w-md">
                 Your account ({user?.username}) does not have permission to view system audit logs. 
             </p>
         </div>
@@ -197,18 +197,18 @@ export default function AuditLogsPage() {
 
   // --- MAIN UI ---
   return (
-    <div className="p-8 space-y-8 bg-slate-50/30 min-h-screen max-w-7xl mx-auto">
+    <div className="p-8 space-y-8 bg-muted/30 min-h-screen max-w-7xl mx-auto">
       
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3 tracking-tight">
+            <h1 className="text-3xl font-bold text-foreground flex items-center gap-3 tracking-tight">
                 <History className="h-8 w-8 text-primary" /> System Activity
                 <Link href="/dashboard/documentation#compliance">
-                   <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+                   <HelpCircle className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors cursor-help" />
                 </Link>
             </h1>
-            <p className="text-slate-500 text-sm">Comprehensive log of all administrative actions.</p>
+            <p className="text-muted-foreground text-sm">Comprehensive log of all administrative actions.</p>
         </div>
         
         {/* FILTERS & ACTIONS */}
@@ -227,20 +227,20 @@ export default function AuditLogsPage() {
             )}
 
             <div className="relative">
-                <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
                     type="date"
-                    className="pl-9 w-[160px] bg-white text-xs font-bold uppercase text-slate-600 h-10"
+                    className="pl-9 w-[160px] bg-card text-xs font-bold uppercase text-muted-foreground h-10"
                     value={dateFilter}
                     onChange={(e) => { setDateFilter(e.target.value); setSelectedIds(new Set()); }}
                 />
             </div>
 
             <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
                     placeholder="Search logs..." 
-                    className="pl-9 w-[200px] bg-white h-10" 
+                    className="pl-9 w-[200px] bg-card h-10" 
                     value={searchTerm}
                     onChange={(e) => { setSearchTerm(e.target.value); setSelectedIds(new Set()); }}
                 />
@@ -255,12 +255,12 @@ export default function AuditLogsPage() {
       </div>
 
       {/* LOGS TABLE */}
-      <Card className="border-slate-200 shadow-sm overflow-hidden">
+      <Card className="border-border shadow-sm overflow-hidden">
         <CardContent className="p-0">
             <div className="overflow-x-auto">
             <Table>
                 <TableHeader>
-                    <TableRow className="bg-slate-50/50">
+                    <TableRow className="bg-muted/50">
                         {/* Checkbox Column (Admin Only) */}
                         {isAdmin && (
                             <TableHead className="w-[50px] text-center">
@@ -280,7 +280,7 @@ export default function AuditLogsPage() {
                 <TableBody>
                     {filteredLogs.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center text-slate-400">
+                            <TableCell colSpan={isAdmin ? 6 : 5} className="h-32 text-center text-muted-foreground">
                                 <div className="flex flex-col items-center gap-2">
                                     <Search className="h-8 w-8 opacity-20" />
                                     <span>No activity found matching filters.</span>
@@ -291,7 +291,7 @@ export default function AuditLogsPage() {
                         filteredLogs.map((log) => (
                             <TableRow 
                                 key={log.id} 
-                                className={`group hover:bg-slate-50 transition-colors ${selectedIds.has(log.id) ? 'bg-primary/5' : ''}`}
+                                className={`group hover:bg-muted transition-colors ${selectedIds.has(log.id) ? 'bg-primary/5' : ''}`}
                             >
                                 {/* Checkbox Cell */}
                                 {isAdmin && (
@@ -303,7 +303,7 @@ export default function AuditLogsPage() {
                                     </TableCell>
                                 )}
 
-                                <TableCell className="font-mono text-xs text-slate-500 whitespace-nowrap">
+                                <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                                     <div className="flex items-center gap-2">
                                         {new Date(log.timestamp).toLocaleString([], { 
                                             year: 'numeric', month: 'short', day: '2-digit', 
@@ -316,15 +316,15 @@ export default function AuditLogsPage() {
                                         <div className="h-7 w-7 rounded-lg bg-primary/5 flex items-center justify-center text-[10px] font-bold text-primary uppercase border border-primary/10">
                                             {log.user?.[0] || '?'}
                                         </div>
-                                        <span className="text-sm font-semibold text-slate-700">{log.user || 'System'}</span>
+                                        <span className="text-sm font-semibold text-foreground">{log.user || 'System'}</span>
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide bg-white whitespace-nowrap">
+                                    <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide bg-card whitespace-nowrap">
                                         {log.action || 'Unknown'}
                                     </Badge>
                                 </TableCell>
-                                <TableCell className="text-xs text-slate-600 max-w-md truncate" title={log.details}>
+                                <TableCell className="text-xs text-muted-foreground max-w-md truncate" title={log.details}>
                                     {log.details || '-'}
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -341,7 +341,7 @@ export default function AuditLogsPage() {
         </CardContent>
       </Card>
       
-      <div className="text-right text-xs text-slate-400">
+      <div className="text-right text-xs text-muted-foreground">
           Showing {filteredLogs.length} records
       </div>
     </div>

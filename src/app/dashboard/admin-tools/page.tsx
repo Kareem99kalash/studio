@@ -112,7 +112,7 @@ export default function AdminUtilitiesPage() {
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-slate-50/30">
+      <div className="h-screen w-full flex items-center justify-center bg-muted/30">
         <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
       </div>
     );
@@ -124,8 +124,8 @@ export default function AdminUtilitiesPage() {
       <div className="h-[80vh] w-full flex items-center justify-center">
         <div className="text-center space-y-4">
           <ShieldAlert className="h-16 w-16 text-red-500 mx-auto" />
-          <h2 className="text-2xl font-bold text-slate-800">Restricted Area</h2>
-          <p className="text-slate-500">You do not have permission to access Admin Utilities.</p>
+          <h2 className="text-2xl font-bold text-foreground">Restricted Area</h2>
+          <p className="text-muted-foreground">You do not have permission to access Admin Utilities.</p>
           <Button variant="outline" onClick={() => router.push('/dashboard')}>Return to Dashboard</Button>
         </div>
       </div>
@@ -133,7 +133,7 @@ export default function AdminUtilitiesPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto min-h-screen bg-slate-50">
+    <div className="p-8 max-w-7xl mx-auto min-h-screen bg-muted">
       
       {/* --- SERVER STATUS MONITORS --- */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
@@ -147,14 +147,14 @@ export default function AdminUtilitiesPage() {
                 <Wrench className="h-6 w-6 text-white" />
             </div>
             <div>
-                <h1 className="text-2xl font-black text-slate-900 tracking-tight">Utilities & Tools</h1>
-                <p className="text-slate-500 text-sm font-medium">Advanced territory management suite.</p>
+                <h1 className="text-2xl font-black text-foreground tracking-tight">Utilities & Tools</h1>
+                <p className="text-muted-foreground text-sm font-medium">Advanced territory management suite.</p>
             </div>
         </div>
         
         {/* Helper badge */}
         <div className="mt-4 inline-flex items-center gap-2">
-           <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider shadow-sm">
+           <Badge variant="outline" className="bg-card text-muted-foreground border-border rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider shadow-sm">
              Role: {user.role || 'User'}
            </Badge>
         </div>
@@ -168,26 +168,26 @@ export default function AdminUtilitiesPage() {
 
           return (
             <Link href={tool.href} key={idx} className="block group">
-              <Card className="h-full p-8 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500 border-slate-100 hover:border-primary/20 relative overflow-hidden bg-white rounded-3xl group-hover:-translate-y-1">
+              <Card className="h-full p-8 hover:shadow-2xl hover:shadow-black/5 transition-all duration-500 border-border hover:border-primary/20 relative overflow-hidden bg-card rounded-3xl group-hover:-translate-y-1">
                 
                 <div className={`w-14 h-14 ${tool.bg} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm`}>
                   <tool.icon className={`h-7 w-7 ${tool.color}`} />
                 </div>
                 
-                <h3 className="font-bold text-xl text-slate-900 mb-3 tracking-tight group-hover:text-primary transition-colors">
+                <h3 className="font-bold text-xl text-foreground mb-3 tracking-tight group-hover:text-primary transition-colors">
                   {tool.title}
                 </h3>
-                <p className="text-sm text-slate-500 leading-relaxed mb-6 font-medium">
+                <p className="text-sm text-muted-foreground leading-relaxed mb-6 font-medium">
                   {tool.description}
                 </p>
 
-                <div className="flex items-center text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300 group-hover:text-primary transition-colors mt-auto">
+                <div className="flex items-center text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground group-hover:text-primary transition-colors mt-auto">
                   Launch Application <ChevronRight className="h-3.5 w-3.5 ml-1.5 group-hover:translate-x-1 transition-transform" />
                 </div>
 
                 {tool.locked && (
-                    <div className="absolute top-4 right-4 bg-slate-100 p-1.5 rounded-lg" title="Feature Locked">
-                        <Lock className="h-3.5 w-3.5 text-slate-400" />
+                    <div className="absolute top-4 right-4 bg-muted p-1.5 rounded-lg" title="Feature Locked">
+                        <Lock className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
                 )}
               </Card>

@@ -128,19 +128,19 @@ export function NotificationBell({ user }: { user: any }) {
         </Button>
       </PopoverTrigger>
       
-      <PopoverContent align="end" className="w-80 p-0 shadow-xl border-slate-200 bg-white">
+      <PopoverContent align="end" className="w-80 p-0 shadow-xl border-border bg-card">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-          <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
+          <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
             Notifications 
-            {unreadCount > 0 && <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-indigo-100 text-indigo-700">{unreadCount}</Badge>}
+            {unreadCount > 0 && <Badge variant="secondary" className="h-5 px-1.5 text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">{unreadCount}</Badge>}
           </h4>
           
           {unreadCount > 0 && (
             <Button 
               variant="ghost" 
               size="sm" 
-              className="h-6 text-[10px] text-slate-500 hover:text-red-600 hover:bg-red-50 px-2"
+              className="h-6 text-[10px] text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 px-2"
               onClick={handleClearAll}
               disabled={isClearing}
             >
@@ -152,24 +152,24 @@ export function NotificationBell({ user }: { user: any }) {
         {/* List */}
         <ScrollArea className="h-[300px]">
           {notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 py-12">
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground py-12">
               <Bell className="h-8 w-8 opacity-20" />
               <p className="text-xs font-medium">No new notifications</p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-border">
               {notifications.map((note) => (
-                <div key={note.id} className="p-4 hover:bg-slate-50 transition-colors relative group">
+                <div key={note.id} className="p-4 hover:bg-muted/50 transition-colors relative group">
                   <div className="flex gap-3 items-start">
                     <div className="mt-0.5 shrink-0">{getIcon(note.type)}</div>
                     <div className="space-y-1 pr-4">
-                      <p className="text-sm font-medium text-slate-800 leading-tight">
+                      <p className="text-sm font-medium text-foreground leading-tight">
                         {note.title}
                       </p>
-                      <p className="text-xs text-slate-500 leading-snug">
+                      <p className="text-xs text-muted-foreground leading-snug">
                         {note.message}
                       </p>
-                      <p className="text-[10px] text-slate-400 pt-1">
+                      <p className="text-[10px] text-muted-foreground/70 pt-1">
                         {note.createdAt ? new Date(note.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now'}
                       </p>
                     </div>
@@ -179,7 +179,7 @@ export function NotificationBell({ user }: { user: any }) {
                   <Button 
                     variant="ghost" 
                     size="icon" 
-                    className="absolute top-2 right-2 h-6 w-6 text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => handleDismiss(note.id)}
                   >
                     <X className="h-3 w-3" />

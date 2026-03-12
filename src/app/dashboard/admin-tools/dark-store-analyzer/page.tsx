@@ -382,17 +382,17 @@ export default function DarkStoreAnalyzerPage() {
   return (
     <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
         {/* TOP BAR */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center shrink-0">
+        <div className="bg-card p-4 rounded-xl shadow-sm border flex justify-between items-center shrink-0">
             <div>
                 <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                         <ShoppingBasket className="h-6 w-6 text-purple-600"/> Dark Store Analyzer
                     </h1>
-                    <Link href="/dashboard/documentation#darkstore-analyzer" className="text-slate-300 hover:text-primary transition-colors" title="View Documentation">
+                    <Link href="/dashboard/documentation#darkstore-analyzer" className="text-muted-foreground hover:text-primary transition-colors" title="View Documentation">
                         <HelpCircle className="h-5 w-5" />
                     </Link>
                 </div>
-                <p className="text-xs text-slate-500">Weighted Capacity & Order Volume Analysis</p>
+                <p className="text-xs text-muted-foreground">Weighted Capacity & Order Volume Analysis</p>
             </div>
             
             <div className="flex items-center gap-4">
@@ -416,7 +416,7 @@ export default function DarkStoreAnalyzerPage() {
 
                 <div className="flex flex-col items-end">
                     <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="outline" className="h-6 bg-slate-50">Region</Badge>
+                        <Badge variant="outline" className="h-6 bg-muted">Region</Badge>
                         <Select value={region} onValueChange={setRegion}>
                             <SelectTrigger className="h-8 w-32"><SelectValue/></SelectTrigger>
                             <SelectContent className="z-[9999]">
@@ -426,8 +426,8 @@ export default function DarkStoreAnalyzerPage() {
                         </Select>
                     </div>
                     <div className="flex gap-2">
-                        <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border">
-                            <span className="text-[10px] font-bold uppercase text-slate-400">Dist (km)</span>
+                        <div className="flex items-center gap-1 bg-muted px-2 py-1 rounded border">
+                            <span className="text-[10px] font-bold uppercase text-muted-foreground">Dist (km)</span>
                             <Input className="h-6 w-16 text-xs" type="number" value={distThreshold} onChange={e=>setDistThreshold(Number(e.target.value))}/>
                         </div>
                         {useTime && (
@@ -463,7 +463,7 @@ export default function DarkStoreAnalyzerPage() {
             {/* LEFT SIDEBAR */}
             <div className="col-span-3 space-y-4 overflow-y-auto pr-1">
                 {/* STORE MANAGEMENT CARD */}
-                <Card className="border-dashed border-2 bg-slate-50/50">
+                <Card className="border-dashed border-2 bg-muted/50">
                     <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
                         <CardTitle className="text-sm">1. Manage Stores</CardTitle>
                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => document.getElementById('store-upload')?.click()}>
@@ -473,29 +473,29 @@ export default function DarkStoreAnalyzerPage() {
                     </CardHeader>
                     <CardContent>
                         {stores.length === 0 ? (
-                            <div className="text-center py-4 text-xs text-slate-400 italic">No stores uploaded yet.</div>
+                            <div className="text-center py-4 text-xs text-muted-foreground italic">No stores uploaded yet.</div>
                         ) : (
                             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                                 {stores.map(store => (
-                                    <div key={store.id} className={`flex items-center justify-between p-2 rounded-md bg-white border ${store.active === false ? 'opacity-50 border-slate-100' : 'border-slate-200 shadow-sm'}`}>
+                                    <div key={store.id} className={`flex items-center justify-between p-2 rounded-md bg-card border ${store.active === false ? 'opacity-50 border-border' : 'border-border shadow-sm'}`}>
                                         <div className="flex items-center gap-2 overflow-hidden">
                                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: store.color }}></div>
                                             <div className="flex flex-col truncate">
-                                                <span className={`text-xs font-bold truncate ${store.active === false ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{store.name}</span>
-                                                <span className="text-[9px] text-slate-400">Cap: {store.weight || 1}</span>
+                                                <span className={`text-xs font-bold truncate ${store.active === false ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{store.name}</span>
+                                                <span className="text-[9px] text-muted-foreground">Cap: {store.weight || 1}</span>
                                             </div>
                                         </div>
                                         <div className="flex gap-1">
                                             <Button 
                                                 variant="ghost" 
                                                 size="sm" 
-                                                className={`h-6 w-6 p-0 hover:bg-slate-100 ${store.active === false ? 'text-slate-400' : 'text-purple-600'}`}
+                                                className={`h-6 w-6 p-0 hover:bg-muted ${store.active === false ? 'text-muted-foreground' : 'text-purple-600'}`}
                                                 onClick={() => toggleStoreActive(store.id)}
                                                 title={store.active === false ? "Enable Store" : "Disable (Simulate Offline)"}
                                             >
                                                 {store.active === false ? <EyeOff className="h-3 w-3"/> : <Eye className="h-3 w-3"/>}
                                             </Button>
-                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-red-50 text-slate-300 hover:text-red-500" onClick={() => deleteStore(store.id)}>
+                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-red-50 text-muted-foreground hover:text-red-500" onClick={() => deleteStore(store.id)}>
                                                 <Trash2 className="h-3 w-3"/>
                                             </Button>
                                         </div>
@@ -506,11 +506,11 @@ export default function DarkStoreAnalyzerPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="border-dashed border-2 bg-slate-50/50">
+                <Card className="border-dashed border-2 bg-muted/50">
                     <CardHeader className="py-3"><CardTitle className="text-sm">2. Upload Zones</CardTitle></CardHeader>
                     <CardContent>
                         <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-500">{polygons.length} Total</span>
+                            <span className="text-xs text-muted-foreground">{polygons.length} Total</span>
                             <Button variant="outline" size="sm" className="h-7 text-xs relative overflow-hidden">
                                 <UploadCloud className="h-3 w-3 mr-1"/> Add Group
                                 <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons')} />
@@ -521,14 +521,14 @@ export default function DarkStoreAnalyzerPage() {
 
                 {/* STORE LOAD SUMMARY */}
                 {analysisDone && (
-                    <Card className="bg-white shadow-md border-t-4 border-t-blue-500">
+                    <Card className="bg-card shadow-md border-t-4 border-t-blue-500">
                         <CardHeader className="py-3 bg-blue-50/50 border-b border-blue-100">
                             <CardTitle className="text-sm flex items-center gap-2"><Scale className="h-4 w-4 text-blue-600"/> Weighted Load Balance</CardTitle>
                         </CardHeader>
                         <CardContent className="p-0 overflow-hidden">
                             <div className="max-h-[300px] overflow-y-auto">
                                 <table className="w-full text-[10px]">
-                                    <thead className="bg-slate-50 border-b text-slate-500">
+                                    <thead className="bg-muted border-b text-muted-foreground">
                                         <tr>
                                             <th className="p-2 text-left">Store</th>
                                             <th className="p-2 text-center">Zones</th>
@@ -537,10 +537,10 @@ export default function DarkStoreAnalyzerPage() {
                                     </thead>
                                     <tbody className="divide-y">
                                         {storeStats.map((s: any, i: number) => (
-                                            <tr key={i} className="hover:bg-slate-50">
-                                                <td className="p-2 font-bold" style={{color: s.color}}>{s.name} <span className="text-slate-300 font-normal">({s.cap})</span></td>
+                                            <tr key={i} className="hover:bg-muted">
+                                                <td className="p-2 font-bold" style={{color: s.color}}>{s.name} <span className="text-muted-foreground font-normal">({s.cap})</span></td>
                                                 <td className="p-2 text-center">{s.count}</td>
-                                                <td className="p-2 text-right font-mono font-bold text-slate-700">{s.demand.toFixed(1)}%</td>
+                                                <td className="p-2 text-right font-mono font-bold text-foreground">{s.demand.toFixed(1)}%</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -552,7 +552,7 @@ export default function DarkStoreAnalyzerPage() {
             </div>
 
             {/* RIGHT: MAP */}
-            <div className="col-span-9 h-full rounded-xl overflow-hidden border-2 border-slate-200 shadow-inner relative">
+            <div className="col-span-9 h-full rounded-xl overflow-hidden border-2 border-border shadow-inner relative">
                 <MapContainer center={[36.19, 44.01]} zoom={12} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     <Pane name="polygons" style={{ zIndex: 400 }}>
@@ -588,16 +588,16 @@ export default function DarkStoreAnalyzerPage() {
                                                     res.status === 'dead' ? (
                                                         <div className="flex items-center gap-2 text-red-600 font-bold text-xs"><AlertTriangle className="h-3 w-3"/> Dead Zone</div>
                                                     ) : (
-                                                        <div className="bg-slate-50 p-2 rounded border" style={{borderLeft: `4px solid ${res.store.color}`}}>
-                                                            <div className="text-[10px] uppercase font-bold text-slate-400">Assigned To</div>
-                                                            <div className="font-bold text-slate-800">{res.store.name}</div>
+                                                        <div className="bg-muted p-2 rounded border" style={{borderLeft: `4px solid ${res.store.color}`}}>
+                                                            <div className="text-[10px] uppercase font-bold text-muted-foreground">Assigned To</div>
+                                                            <div className="font-bold text-foreground">{res.store.name}</div>
                                                             <div className="flex gap-2 mt-1 text-xs">
                                                                 <span className="bg-blue-100 text-blue-700 px-1 rounded">{res.dist.toFixed(2)} km</span>
                                                                 {res.store.weight && <span className="bg-orange-100 text-orange-700 px-1 rounded">Wt: {res.store.weight}</span>}
                                                             </div>
                                                         </div>
                                                     )
-                                                ) : <span className="text-xs italic text-slate-400">Not analyzed</span>}
+                                                ) : <span className="text-xs italic text-muted-foreground">Not analyzed</span>}
                                             </div>
                                         </Popup>
                                     </GeoJSON>
@@ -636,7 +636,7 @@ export default function DarkStoreAnalyzerPage() {
                                         <strong>{s.name}</strong>
                                         {s.active === false && <span className="ml-2 text-red-500 font-bold text-xs">(OFFLINE)</span>}
                                         <br/>
-                                        <span className="text-xs text-slate-500">Weight: {s.weight || 1}</span>
+                                        <span className="text-xs text-muted-foreground">Weight: {s.weight || 1}</span>
                                     </Popup>
                                 </Marker>
                             );
@@ -655,14 +655,14 @@ export default function DarkStoreAnalyzerPage() {
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     {wizardType === 'polygons' && (
-                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-2">
-                            <Label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Zone Group Name</Label>
-                            <Input placeholder="e.g. North City" value={zoneGroupName} onChange={e => setZoneGroupName(e.target.value)} className="bg-white" />
+                        <div className="bg-muted p-3 rounded-lg border border-border mb-2">
+                            <Label className="text-xs font-bold uppercase text-muted-foreground mb-1 block">Zone Group Name</Label>
+                            <Input placeholder="e.g. North City" value={zoneGroupName} onChange={e => setZoneGroupName(e.target.value)} className="bg-card" />
                         </div>
                     )}
                     {REQUIRED_FIELDS[wizardType].map(f => (
                         <div key={f.key} className="grid grid-cols-4 items-center gap-4">
-                            <Label className="text-right text-xs font-bold uppercase text-slate-500">{f.label}</Label>
+                            <Label className="text-right text-xs font-bold uppercase text-muted-foreground">{f.label}</Label>
                             <Select onValueChange={v => setColumnMapping(p => ({...p, [f.key]: v}))}>
                                 <SelectTrigger className="col-span-3 h-8"><SelectValue placeholder="Select..."/></SelectTrigger>
                                 <SelectContent className="z-[9999]">{wizardHeaders.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>

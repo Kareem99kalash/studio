@@ -15,9 +15,9 @@ const StudioMap = dynamic(
   { 
     ssr: false,
     loading: () => (
-      <div className="h-full w-full bg-slate-50 flex flex-col items-center justify-center">
+      <div className="h-full w-full bg-muted flex flex-col items-center justify-center">
         <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full mb-4" />
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading GIS Engine...</p>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Loading GIS Engine...</p>
       </div>
     )
   }
@@ -58,7 +58,7 @@ export default function GeoStudioPro() {
   };
 
   return (
-    <div className="h-[calc(100vh-100px)] flex flex-col space-y-4 p-2 bg-slate-50">
+    <div className="h-[calc(100vh-100px)] flex flex-col space-y-4 p-2 bg-muted">
       {/* 🚀 HEADER: Removed the dead 'AI Toggle' button */}
       <div className="flex items-center justify-between bg-slate-950 p-4 rounded-[2rem] text-white shadow-2xl border border-white/5">
         <div className="flex items-center gap-4">
@@ -69,17 +69,17 @@ export default function GeoStudioPro() {
             <h1 className="text-xl font-black uppercase tracking-tighter leading-none flex items-center gap-2">
                Architect Studio
                <Link href="/dashboard/documentation#map-architect">
-                  <HelpCircle className="h-4 w-4 text-slate-600 hover:text-white transition-colors cursor-help" />
+                  <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-white transition-colors cursor-help" />
                </Link>
             </h1>
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mt-1">Spatial Intelligence v3.0</p>
+            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em] mt-1">Spatial Intelligence v3.0</p>
           </div>
         </div>
 
         {/* Only the Export action remains here. Drawing controls are now ON THE MAP. */}
         <Button 
           onClick={exportCSV} 
-          className="bg-white text-slate-900 hover:bg-slate-200 font-black px-10 h-11 rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95"
+          className="bg-card text-foreground hover:bg-slate-200 font-black px-10 h-11 rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95"
           disabled={activeGeoJSON.features.length === 0}
         >
           <Download className="h-4 w-4 mr-2" /> Download WKT
@@ -88,37 +88,37 @@ export default function GeoStudioPro() {
 
       <div className="flex-1 grid grid-cols-12 gap-4 overflow-hidden">
         {/* 📊 LIVE INSPECTOR: Updated to match new 'AI_ASSISTED' tags */}
-        <Card className="col-span-3 border-none shadow-xl rounded-[2rem] flex flex-col bg-white overflow-hidden">
-          <CardHeader className="bg-slate-50 border-b py-5 flex flex-row items-center justify-between">
+        <Card className="col-span-3 border-none shadow-xl rounded-[2rem] flex flex-col bg-card overflow-hidden">
+          <CardHeader className="bg-muted border-b py-5 flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
-                <Layers className="h-4 w-4 text-slate-400" />
-                <CardTitle className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Workspace</CardTitle>
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em]">Workspace</CardTitle>
             </div>
             <Badge className="bg-slate-900 text-[10px] font-black rounded-lg">{activeGeoJSON.features.length}</Badge>
           </CardHeader>
           <CardContent className="p-0 flex-1 overflow-auto scrollbar-hide">
             {activeGeoJSON.features.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2">
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                     <FileCode className="h-12 w-12 opacity-20" />
                     <p className="text-[10px] font-black uppercase tracking-widest">No Polygons</p>
                 </div>
             ) : (
                 activeGeoJSON.features.map((f: any, i: number) => (
-                    <div key={i} className="p-5 border-b hover:bg-slate-50/50 transition-all cursor-default group">
+                    <div key={i} className="p-5 border-b hover:bg-muted/50 transition-all cursor-default group">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{f.properties.name}</span>
+                        <span className="text-[11px] font-black text-foreground uppercase tracking-tight">{f.properties.name}</span>
                         {/* Dynamic Badges based on the new Engine modes */}
                         <Badge 
                            className={`text-[8px] font-black border-none rounded-md px-2 py-0.5 ${
                              f.properties.mode === 'AI_ASSISTED' ? 'bg-purple-100 text-purple-600' : 
-                             f.properties.mode === 'MANUAL' ? 'bg-slate-100 text-slate-400' :
+                             f.properties.mode === 'MANUAL' ? 'bg-muted text-muted-foreground' :
                              'bg-blue-100 text-blue-600'
                            }`}
                         >
                           {f.properties.mode}
                         </Badge>
                       </div>
-                      <div className="text-[9px] font-mono text-slate-400 truncate bg-slate-100 p-2 rounded-lg border border-slate-200 group-hover:border-purple-200 group-hover:bg-purple-50/30 transition-colors">
+                      <div className="text-[9px] font-mono text-muted-foreground truncate bg-muted p-2 rounded-lg border border-border group-hover:border-purple-200 group-hover:bg-purple-50/30 transition-colors">
                         {toWKT(f.geometry)}
                       </div>
                     </div>
@@ -128,7 +128,7 @@ export default function GeoStudioPro() {
         </Card>
 
         {/* 🗺️ MAP CONTAINER */}
-        <div className="col-span-9 rounded-[3rem] border-[10px] border-white bg-white overflow-hidden shadow-2xl relative ring-1 ring-slate-200">
+        <div className="col-span-9 rounded-[3rem] border-[10px] border-white bg-card overflow-hidden shadow-2xl relative ring-1 ring-slate-200">
           {/* Note: We no longer pass aiEnabled prop */}
           <StudioMap geojson={activeGeoJSON} onChange={setActiveGeoJSON} />
         </div>

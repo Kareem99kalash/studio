@@ -76,7 +76,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
 
   // 🟢 2. Handle Session Loading State (Optional: Show a spinner or just disable admin features)
   if (sessionLoading) {
-     return <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-slate-400" /></div>;
+     return <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-muted-foreground" /></div>;
   }
 
   // 🟢 3. Determine Admin Status
@@ -236,19 +236,19 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
 
               {/* ⚙️ CITY SETTINGS (ADMIN ONLY) */}
               {isAdmin && (
-                <div className="bg-slate-50 p-3 rounded-md border border-slate-200 space-y-3">
-                    <div className="flex items-center gap-2 text-slate-800">
+                <div className="bg-muted p-3 rounded-md border border-border space-y-3">
+                    <div className="flex items-center gap-2 text-foreground">
                         <Settings2 className="h-4 w-4" />
                         <span className="text-xs font-bold uppercase tracking-wider">Distance Rules (KM)</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                             <label className="text-[10px] uppercase font-semibold text-green-700">Green Radius (km)</label>
-                            <Input type="number" step="0.1" value={greenLimit} onChange={(e) => setGreenLimit(e.target.value)} className="h-8 text-xs bg-white" />
+                            <Input type="number" step="0.1" value={greenLimit} onChange={(e) => setGreenLimit(e.target.value)} className="h-8 text-xs bg-card" />
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] uppercase font-semibold text-amber-600">Yellow Radius (km)</label>
-                            <Input type="number" step="0.1" value={yellowLimit} onChange={(e) => setYellowLimit(e.target.value)} className="h-8 text-xs bg-white" />
+                            <Input type="number" step="0.1" value={yellowLimit} onChange={(e) => setYellowLimit(e.target.value)} className="h-8 text-xs bg-card" />
                         </div>
                     </div>
                     <Button type="button" variant="outline" size="sm" onClick={handleUpdateSettings} disabled={isSavingSettings || !selectedCityId} className="w-full h-7 text-xs">
@@ -263,7 +263,7 @@ export function AnalysisPanel({ cities, isLoadingCities, onAnalyze, isLoading, o
               <div className="space-y-4">
                 <FormLabel>Store Locations</FormLabel>
                 {fields.map((field, index) => (
-                  <Card key={field.id} className="p-3 bg-muted/30 border border-slate-200">
+                  <Card key={field.id} className="p-3 bg-muted/30 border border-border">
                     <div className="grid grid-cols-1 gap-3">
                       <FormField control={form.control} name={`stores.${index}.name`} render={({ field }) => (
                         <FormItem className="space-y-1"><FormLabel className="text-[10px] uppercase text-muted-foreground">Name</FormLabel><FormControl><Input {...field} className="h-8" /></FormControl></FormItem>

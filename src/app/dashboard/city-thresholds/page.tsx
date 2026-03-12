@@ -103,7 +103,7 @@ export default function CityThresholdsPage() {
             <ShieldAlert className="h-12 w-12 text-red-500" />
             <div className="text-center">
                 <h2 className="text-xl font-bold">Access Restricted</h2>
-                <p className="text-slate-500">You do not have permission to view city thresholds.</p>
+                <p className="text-muted-foreground">You do not have permission to view city thresholds.</p>
             </div>
             <Button variant="outline" onClick={() => router.push('/dashboard')}>Return</Button>
         </div>
@@ -182,16 +182,16 @@ export default function CityThresholdsPage() {
   };
 
   return (
-    <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
+    <div className="p-8 space-y-8 bg-muted/30 min-h-full max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
                Coverage Thresholds
                <Link href="/dashboard/documentation#operational">
-                  <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+                  <HelpCircle className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors cursor-help" />
                </Link>
             </h1>
-            <p className="text-sm text-slate-500 mt-1">Manage Internal, External, and Border-Specific limits.</p>
+            <p className="text-sm text-muted-foreground mt-1">Manage Internal, External, and Border-Specific limits.</p>
         </div>
         {!canManage && (
           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 pr-3">
@@ -200,14 +200,14 @@ export default function CityThresholdsPage() {
         )}
       </div>
 
-      <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100">
-        <CardHeader className="bg-white border-b border-slate-50">
+      <Card className="border-t-4 border-t-primary shadow-xl shadow-black/5 rounded-2xl overflow-hidden border-border">
+        <CardHeader className="bg-card border-b border-border">
           <CardTitle className="text-xl">City Configuration</CardTitle>
           <CardDescription>Adjust limits for specific sub-zones.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="bg-muted">
               <TableRow>
                 <TableHead className="pl-6 w-[200px]">City Name</TableHead>
                 <TableHead>Active Zones</TableHead>
@@ -217,17 +217,17 @@ export default function CityThresholdsPage() {
             <TableBody>
               {cities.map(city => (
                 <React.Fragment key={city.id}>
-                  <TableRow className={expandedCityId === city.id ? "bg-slate-50 border-b-0" : ""}>
-                    <TableCell className="font-bold pl-6 text-slate-700">{city.name}</TableCell>
+                  <TableRow className={expandedCityId === city.id ? "bg-muted border-b-0" : ""}>
+                    <TableCell className="font-bold pl-6 text-foreground">{city.name}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                           {city.subZones?.map((z: any) => (
-                              <Badge key={z.name} variant="outline" className="bg-white border-slate-300 text-slate-600">{z.name}</Badge>
+                              <Badge key={z.name} variant="outline" className="bg-card border-slate-300 text-muted-foreground">{z.name}</Badge>
                           )) || <Badge variant="outline">Default</Badge>}
                       </div>
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button variant={expandedCityId === city.id ? "secondary" : "ghost"} size="sm" onClick={() => toggleCity(city)} className={`${expandedCityId === city.id ? "bg-primary/10 text-primary" : "text-slate-500"} rounded-xl font-bold uppercase text-[10px] tracking-widest`}>
+                      <Button variant={expandedCityId === city.id ? "secondary" : "ghost"} size="sm" onClick={() => toggleCity(city)} className={`${expandedCityId === city.id ? "bg-primary/10 text-primary" : "text-muted-foreground"} rounded-xl font-bold uppercase text-[10px] tracking-widest`}>
                           {expandedCityId === city.id ? "Close" : "Manage Rules"}
                           {expandedCityId === city.id ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
                       </Button>
@@ -235,12 +235,12 @@ export default function CityThresholdsPage() {
                   </TableRow>
 
                   {expandedCityId === city.id && (
-                    <TableRow className="bg-slate-50 hover:bg-slate-50">
+                    <TableRow className="bg-muted hover:bg-muted">
                       <TableCell colSpan={3} className="p-4 pt-0">
-                        <div className="ml-6 p-8 bg-white rounded-2xl border border-slate-100 shadow-inner space-y-8">
+                        <div className="ml-6 p-8 bg-card rounded-2xl border border-border shadow-inner space-y-8">
                            
-                           <div className="flex items-center justify-between mb-4 border-b border-slate-50 pb-4">
-                               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                           <div className="flex items-center justify-between mb-4 border-b border-border pb-4">
+                               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                                    <Layers className="h-4 w-4 text-primary" /> Geographic Zone Limits
                                </h3>
                                {canManage && (
@@ -260,10 +260,10 @@ export default function CityThresholdsPage() {
                                    };
                                    
                                    return (
-                                        <div key={z.name} className="border rounded-lg p-4 bg-slate-50 space-y-4">
-                                             <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                                                  <div className="font-black text-sm text-slate-800 uppercase">{z.name}</div>
-                                                  <Badge className="text-[10px] bg-slate-200 text-slate-600 hover:bg-slate-200">Zone Configuration</Badge>
+                                        <div key={z.name} className="border rounded-lg p-4 bg-muted space-y-4">
+                                             <div className="flex items-center gap-2 border-b border-border pb-2">
+                                                  <div className="font-black text-sm text-foreground uppercase">{z.name}</div>
+                                                  <Badge className="text-[10px] bg-slate-200 text-muted-foreground hover:bg-slate-200">Zone Configuration</Badge>
                                              </div>
                                              
                                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -275,12 +275,12 @@ export default function CityThresholdsPage() {
                                                        </div>
                                                        <div className="flex gap-2">
                                                             <div className="relative w-full">
-                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
-                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-white border-emerald-200" value={rules.internal?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, green: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-muted-foreground font-bold">G</span>
+                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-card border-emerald-200" value={rules.internal?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, green: Number(e.target.value)}} }))} disabled={!canManage} />
                                                             </div>
                                                             <div className="relative w-full">
-                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
-                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-white border-emerald-200" value={rules.internal?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-muted-foreground font-bold">Y</span>
+                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-card border-emerald-200" value={rules.internal?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], internal: {...p[z.name].internal, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
                                                             </div>
                                                        </div>
                                                   </div>
@@ -293,12 +293,12 @@ export default function CityThresholdsPage() {
                                                        </div>
                                                        <div className="flex gap-2">
                                                             <div className="relative w-full">
-                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
-                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-white border-amber-200" value={rules.external?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, green: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-muted-foreground font-bold">G</span>
+                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-card border-amber-200" value={rules.external?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, green: Number(e.target.value)}} }))} disabled={!canManage} />
                                                             </div>
                                                             <div className="relative w-full">
-                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
-                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-white border-amber-200" value={rules.external?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-muted-foreground font-bold">Y</span>
+                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-card border-amber-200" value={rules.external?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], external: {...p[z.name].external, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
                                                             </div>
                                                        </div>
                                                   </div>
@@ -325,12 +325,12 @@ export default function CityThresholdsPage() {
 
                                                        <div className="flex gap-2">
                                                             <div className="relative w-full">
-                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">G</span>
-                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-white border-rose-200 text-rose-700 font-bold" value={rules.border?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], border: {...p[z.name].border, green: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-muted-foreground font-bold">G</span>
+                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-card border-rose-200 text-rose-700 font-bold" value={rules.border?.green} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], border: {...p[z.name].border, green: Number(e.target.value)}} }))} disabled={!canManage} />
                                                             </div>
                                                             <div className="relative w-full">
-                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-slate-400 font-bold">Y</span>
-                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-white border-rose-200 text-rose-700 font-bold" value={rules.border?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], border: {...p[z.name].border, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
+                                                                 <span className="absolute left-2 top-1.5 text-[9px] text-muted-foreground font-bold">Y</span>
+                                                                 <Input type="number" className="h-8 text-xs pl-5 bg-card border-rose-200 text-rose-700 font-bold" value={rules.border?.yellow} onChange={e => setEditZoneRules(p => ({...p, [z.name]: {...p[z.name], border: {...p[z.name].border, yellow: Number(e.target.value)}} }))} disabled={!canManage} />
                                                             </div>
                                                        </div>
                                                   </div>
@@ -340,23 +340,23 @@ export default function CityThresholdsPage() {
                                })}
                            </div>
 
-                           <div className="h-px bg-slate-100 my-4"></div>
+                           <div className="h-px bg-muted my-4"></div>
 
                            {/* STORE CATEGORY OVERRIDES */}
-                           <div className="pt-4 border-t border-slate-50">
+                           <div className="pt-4 border-t border-border">
                                <div className="flex items-center gap-3 mb-6">
                                    <Store className="h-5 w-5 text-primary" />
-                                   <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Hub Category Overrides</h3>
+                                   <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Hub Category Overrides</h3>
                                </div>
                                
                                <div className="space-y-3">
                                    {(city.subThresholds || []).map((cat: any, i: number) => (
-                                        <div key={i} className="flex items-center justify-between p-3 px-5 bg-slate-50/50 border border-slate-100 rounded-2xl text-xs group hover:bg-white hover:shadow-lg hover:shadow-slate-200/50 transition-all">
+                                        <div key={i} className="flex items-center justify-between p-3 px-5 bg-muted/50 border border-border rounded-2xl text-xs group hover:bg-card hover:shadow-lg hover:shadow-black/5 transition-all">
                                              <div className="flex items-center gap-4">
                                                   <Badge className="bg-primary text-white font-bold uppercase tracking-widest text-[9px] rounded-md px-3">{cat.name}</Badge>
-                                                  <div className="flex gap-4 text-slate-500">
-                                                       <span>Internal: <b className="text-slate-800">{cat.internal?.green}/{cat.internal?.yellow}</b></span>
-                                                       <span>External: <b className="text-slate-800">{cat.external?.green}/{cat.external?.yellow}</b></span>
+                                                  <div className="flex gap-4 text-muted-foreground">
+                                                       <span>Internal: <b className="text-foreground">{cat.internal?.green}/{cat.internal?.yellow}</b></span>
+                                                       <span>External: <b className="text-foreground">{cat.external?.green}/{cat.external?.yellow}</b></span>
                                                   </div>
                                              </div>
                                              {canManage && <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400" onClick={() => handleDeleteCategoryRule(city, cat.name)}><Trash2 className="h-3 w-3"/></Button>}
@@ -364,18 +364,18 @@ export default function CityThresholdsPage() {
                                    ))}
                                    
                                    {canManage && (
-                                        <div className="flex items-end gap-2 mt-2 bg-slate-50 p-2 rounded border border-dashed border-slate-300">
+                                        <div className="flex items-end gap-2 mt-2 bg-muted p-2 rounded border border-dashed border-slate-300">
                                              <div className="flex-1">
-                                                 <span className="text-[9px] font-bold uppercase text-slate-400">Category Name</span>
-                                                 <Input className="h-7 text-xs bg-white" placeholder="e.g. Retail" value={newRuleName} onChange={e=>setNewRuleName(e.target.value)} />
+                                                 <span className="text-[9px] font-bold uppercase text-muted-foreground">Category Name</span>
+                                                 <Input className="h-7 text-xs bg-card" placeholder="e.g. Retail" value={newRuleName} onChange={e=>setNewRuleName(e.target.value)} />
                                              </div>
                                              <div className="w-20">
                                                  <span className="text-[9px] font-bold uppercase text-green-600">In (G)</span>
-                                                 <Input type="number" className="h-7 text-xs bg-white" value={newRuleInternal.green} onChange={e=>setNewRuleInternal({...newRuleInternal, green: Number(e.target.value)})} />
+                                                 <Input type="number" className="h-7 text-xs bg-card" value={newRuleInternal.green} onChange={e=>setNewRuleInternal({...newRuleInternal, green: Number(e.target.value)})} />
                                              </div>
                                              <div className="w-20">
                                                  <span className="text-[9px] font-bold uppercase text-yellow-600">In (Y)</span>
-                                                 <Input type="number" className="h-7 text-xs bg-white rounded-lg border-slate-200" value={newRuleInternal.yellow} onChange={e=>setNewRuleInternal({...newRuleInternal, yellow: Number(e.target.value)})} />
+                                                 <Input type="number" className="h-7 text-xs bg-card rounded-lg border-border" value={newRuleInternal.yellow} onChange={e=>setNewRuleInternal({...newRuleInternal, yellow: Number(e.target.value)})} />
                                              </div>
                                              <Button size="sm" className="h-8 bg-primary hover:bg-primary/90 rounded-xl px-5 font-bold uppercase text-[9px] tracking-widest shadow-lg shadow-primary/20" onClick={() => handleAddCategoryRule(city)}><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Protocol</Button>
                                         </div>

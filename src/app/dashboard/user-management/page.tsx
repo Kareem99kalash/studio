@@ -461,10 +461,10 @@ export default function UserManagementPage() {
     <div className="p-8 space-y-8 relative max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-900 tracking-tight">
+          <h1 className="text-3xl font-bold flex items-center gap-3 text-foreground tracking-tight">
             <Shield className="text-primary" /> User & Access Control
           </h1>
-          <Link href="/dashboard/documentation#access-control" className="text-slate-300 hover:text-primary transition-colors" title="View Documentation">
+          <Link href="/dashboard/documentation#access-control" className="text-muted-foreground hover:text-primary transition-colors" title="View Documentation">
             <HelpCircle className="h-6 w-6" />
           </Link>
         </div>
@@ -475,7 +475,7 @@ export default function UserManagementPage() {
         {/* LEFT COLUMN: QUICK ADD USER (WIZARD) */}
         {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.CREATE_USERS) && (
         <div className="xl:col-span-1 space-y-8">
-          <Card className="border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden min-h-[450px] flex flex-col">
+          <Card className="border-t-4 border-t-primary shadow-xl shadow-black/5 rounded-2xl overflow-hidden min-h-[450px] flex flex-col">
             <CardHeader className="pb-3">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">User Wizard</CardTitle>
@@ -500,13 +500,13 @@ export default function UserManagementPage() {
                 {/* STEP 1: IDENTITY */}
                 {wizardStep === 1 && (
                   <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
-                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div className="space-y-2 bg-muted p-4 rounded-xl border border-border">
                         <div className="space-y-1">
-                          <label htmlFor="new-username" className="text-[10px] font-bold text-slate-500 uppercase">Username</label>
-                          <Input id="new-username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-10 bg-white rounded-lg" />
+                          <label htmlFor="new-username" className="text-[10px] font-bold text-muted-foreground uppercase">Username</label>
+                          <Input id="new-username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. jdoe" required className="h-10 bg-card rounded-lg" />
                         </div>
                         <div className="space-y-1 relative">
-                          <label htmlFor="new-password" className="text-[10px] font-bold text-slate-500 uppercase">Initial Password</label>
+                          <label htmlFor="new-password" className="text-[10px] font-bold text-muted-foreground uppercase">Initial Password</label>
                           <div className="relative">
                             <Input
                                 id="new-password"
@@ -515,12 +515,12 @@ export default function UserManagementPage() {
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 placeholder="••••••"
                                 required
-                                className="h-10 bg-white pr-10 rounded-lg"
+                                className="h-10 bg-card pr-10 rounded-lg"
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                                className="absolute right-3 top-2.5 text-muted-foreground hover:text-muted-foreground"
                                 aria-label={showPassword ? "Hide password" : "Show password"}
                             >
                                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -536,30 +536,30 @@ export default function UserManagementPage() {
                   <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                     <div className="space-y-3">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Region Assignment</label>
-                        <select className="w-full p-2 h-10 border rounded-lg bg-white text-sm focus:ring-2 focus:ring-primary outline-none" value={createGroup} onChange={(e) => setCreateGroup(e.target.value)}>
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Region Assignment</label>
+                        <select className="w-full p-2 h-10 border rounded-lg bg-card text-sm focus:ring-2 focus:ring-primary outline-none" value={createGroup} onChange={(e) => setCreateGroup(e.target.value)}>
                           <option value="">-- Global / None --</option>
                           {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       </div>
 
                       <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">System Role</label>
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">System Role</label>
                           <div className="grid grid-cols-2 gap-2">
                              <div
                                 onClick={() => setCreateRole('user')}
-                                className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-2 transition-all ${createRole === 'user' ? 'bg-primary/5 border-primary text-primary' : 'bg-white border-slate-200 hover:border-slate-300'}`}
+                                className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-2 transition-all ${createRole === 'user' ? 'bg-primary/5 border-primary text-primary' : 'bg-card border-border hover:border-slate-300'}`}
                              >
                                 <div className="font-bold text-xs">Standard User</div>
-                                <div className="text-[9px] text-center text-slate-400">Customizable access</div>
+                                <div className="text-[9px] text-center text-muted-foreground">Customizable access</div>
                              </div>
 
                              <div
                                 onClick={() => canCreateAdmin() && setCreateRole('admin')}
-                                className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-2 transition-all ${createRole === 'admin' ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200'} ${!canCreateAdmin() ? 'opacity-50 cursor-not-allowed' : 'hover:border-slate-300'}`}
+                                className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-2 transition-all ${createRole === 'admin' ? 'bg-slate-900 border-slate-900 text-white' : 'bg-card border-border'} ${!canCreateAdmin() ? 'opacity-50 cursor-not-allowed' : 'hover:border-slate-300'}`}
                              >
                                 <div className="font-bold text-xs flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Administrator</div>
-                                <div className="text-[9px] text-center text-slate-400">Full Access</div>
+                                <div className="text-[9px] text-center text-muted-foreground">Full Access</div>
                              </div>
                           </div>
                       </div>
@@ -572,21 +572,21 @@ export default function UserManagementPage() {
                    <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                     <div className="flex items-center gap-2 mb-2">
                          <Select value={selectedPreset} onValueChange={applyPreset}>
-                            <SelectTrigger className="h-8 text-xs bg-white border-slate-200"><SelectValue placeholder="Load a Preset..." /></SelectTrigger>
+                            <SelectTrigger className="h-8 text-xs bg-card border-border"><SelectValue placeholder="Load a Preset..." /></SelectTrigger>
                             <SelectContent>
                                 {presets.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                             </SelectContent>
                          </Select>
                     </div>
 
-                    <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50">
+                    <div className="border border-border rounded-2xl p-4 bg-muted/50">
                         <div className="flex items-center justify-between mb-4">
-                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Access Controls</span>
+                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Access Controls</span>
                         </div>
                         <div className="space-y-4 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                             {PERMISSION_GROUPS_UI.map((group) => (
                                 <div key={group.category} className="mb-4 last:mb-0">
-                                    <h5 className="text-[10px] font-bold text-slate-900 uppercase mb-2 border-b border-slate-200 pb-1">
+                                    <h5 className="text-[10px] font-bold text-foreground uppercase mb-2 border-b border-border pb-1">
                                       {group.category}
                                     </h5>
                                     <div className="grid grid-cols-1 gap-1.5 pl-2">
@@ -603,7 +603,7 @@ export default function UserManagementPage() {
                                                     />
                                                     <label
                                                         htmlFor={`create-${perm.id}`}
-                                                        className={`text-[10px] font-medium cursor-pointer ${allowed ? 'text-slate-600' : 'text-slate-300 line-through'}`}
+                                                        className={`text-[10px] font-medium cursor-pointer ${allowed ? 'text-muted-foreground' : 'text-muted-foreground line-through'}`}
                                                     >
                                                         {perm.label}
                                                     </label>
@@ -627,22 +627,22 @@ export default function UserManagementPage() {
                              <Shield className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Final Clearance</p>
+                             <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Final Clearance</p>
                              <p className="font-bold text-lg">{newUsername}</p>
                           </div>
                        </div>
 
                        <div className="space-y-2 pt-2 border-t border-white/5">
                           <div className="flex justify-between text-xs">
-                             <span className="text-slate-500">Group:</span>
+                             <span className="text-muted-foreground">Group:</span>
                              <span className="font-bold">{createGroup ? getGroupName(createGroup) : "Global Access"}</span>
                           </div>
                           <div className="flex justify-between text-xs">
-                             <span className="text-slate-500">Role:</span>
+                             <span className="text-muted-foreground">Role:</span>
                              <span className="font-bold uppercase text-primary">{createRole}</span>
                           </div>
                           <div className="flex justify-between text-xs pt-1">
-                             <span className="text-slate-500">Permissions:</span>
+                             <span className="text-muted-foreground">Permissions:</span>
                              <span className="font-bold">{createRole === 'admin' ? "Full Administrator" : `${Object.values(createPermissions).filter(Boolean).length} Active Protocol(s)`}</span>
                           </div>
                        </div>
@@ -653,7 +653,7 @@ export default function UserManagementPage() {
 
               <div className="flex gap-2 pt-6">
                 {wizardStep > 1 && (
-                  <Button type="button" variant="outline" onClick={prevStep} className="flex-1 h-11 rounded-xl font-bold border-slate-200">
+                  <Button type="button" variant="outline" onClick={prevStep} className="flex-1 h-11 rounded-xl font-bold border-border">
                     Back
                   </Button>
                 )}
@@ -682,12 +682,12 @@ export default function UserManagementPage() {
           </Card>
 
           {/* GROUPS & PRESETS TABS */}
-          <Card className="border-t-4 border-t-slate-400 shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden min-h-[300px]">
+          <Card className="border-t-4 border-t-slate-400 shadow-xl shadow-black/5 rounded-2xl overflow-hidden min-h-[300px]">
             <CardContent className="p-0">
                 <Tabs defaultValue="groups" className="w-full">
-                    <TabsList className="w-full grid grid-cols-2 rounded-none p-0 h-12 bg-slate-50 border-b border-slate-100">
-                        <TabsTrigger value="groups" className="rounded-none h-full data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Groups</TabsTrigger>
-                        <TabsTrigger value="presets" className="rounded-none h-full data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Permission Presets</TabsTrigger>
+                    <TabsList className="w-full grid grid-cols-2 rounded-none p-0 h-12 bg-muted border-b border-border">
+                        <TabsTrigger value="groups" className="rounded-none h-full data-[state=active]:bg-card data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Groups</TabsTrigger>
+                        <TabsTrigger value="presets" className="rounded-none h-full data-[state=active]:bg-card data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary">Permission Presets</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="groups" className="p-4 space-y-4">
@@ -697,10 +697,10 @@ export default function UserManagementPage() {
                         </div>
                         <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                             {groups.map(g => (
-                                <div key={g.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
-                                    <span className="font-bold text-slate-600">{g.name}</span>
+                                <div key={g.id} className="flex justify-between items-center p-2 px-4 bg-muted/50 rounded-xl border border-border text-xs">
+                                    <span className="font-bold text-muted-foreground">{g.name}</span>
                                     {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_GROUPS) && (
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeleteGroup(g.id)} aria-label={`Delete group ${g.name}`}><Trash2 className="h-3.5 w-3.5" /></Button>
                                     )}
                                 </div>
                             ))}
@@ -710,10 +710,10 @@ export default function UserManagementPage() {
                     <TabsContent value="presets" className="p-4 space-y-4">
                         <div className="flex flex-col gap-2">
                             <Input placeholder="New Preset Name" value={newPresetName} onChange={(e) => setNewPresetName(e.target.value)} className="h-9 text-xs rounded-xl" />
-                            <div className="max-h-[150px] overflow-y-auto border rounded-xl p-2 bg-slate-50 custom-scrollbar">
+                            <div className="max-h-[150px] overflow-y-auto border rounded-xl p-2 bg-muted custom-scrollbar">
                                 {PERMISSION_GROUPS_UI.map(group => (
                                     <div key={group.category} className="mb-2">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">{group.category}</p>
+                                        <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">{group.category}</p>
                                         <div className="grid grid-cols-1 gap-1">
                                             {group.permissions.map(perm => (
                                                 <div key={perm.id} className="flex items-center gap-2">
@@ -723,7 +723,7 @@ export default function UserManagementPage() {
                                                         onCheckedChange={() => togglePermission(perm.id, presetPermissions, setPresetPermissions)}
                                                         className="h-3 w-3"
                                                     />
-                                                    <label htmlFor={`preset-${perm.id}`} className="text-[10px] text-slate-600 cursor-pointer">{perm.label}</label>
+                                                    <label htmlFor={`preset-${perm.id}`} className="text-[10px] text-muted-foreground cursor-pointer">{perm.label}</label>
                                                 </div>
                                             ))}
                                         </div>
@@ -734,10 +734,10 @@ export default function UserManagementPage() {
                         </div>
                         <div className="space-y-1 max-h-40 overflow-y-auto pr-1 border-t pt-2">
                             {presets.map(p => (
-                                <div key={p.id} className="flex justify-between items-center p-2 px-4 bg-slate-50/50 rounded-xl border border-slate-100 text-xs">
-                                    <span className="font-bold text-slate-600">{p.name}</span>
+                                <div key={p.id} className="flex justify-between items-center p-2 px-4 bg-muted/50 rounded-xl border border-border text-xs">
+                                    <span className="font-bold text-muted-foreground">{p.name}</span>
                                     {hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.MANAGE_PRESETS) && (
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeletePreset(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-red-500 hover:bg-red-50 rounded-lg" onClick={() => handleDeletePreset(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                     )}
                                 </div>
                             ))}
@@ -750,12 +750,12 @@ export default function UserManagementPage() {
         )}
 
         {/* RIGHT COLUMN: USER LIST */}
-        <Card className={`${hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.CREATE_USERS) ? 'xl:col-span-2' : 'xl:col-span-3'} shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100 h-fit`}>
-          <CardHeader className="bg-white border-b border-slate-50"><CardTitle className="text-lg">System Users</CardTitle></CardHeader>
+        <Card className={`${hasPermission(currentUser, PERMISSIONS.USER_MANAGEMENT.CREATE_USERS) ? 'xl:col-span-2' : 'xl:col-span-3'} shadow-xl shadow-black/5 rounded-2xl overflow-hidden border-border h-fit`}>
+          <CardHeader className="bg-card border-b border-border"><CardTitle className="text-lg">System Users</CardTitle></CardHeader>
           <CardContent className="p-0">
             <div className="overflow-hidden">
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-[0.1em]">
+                <thead className="bg-muted/50 text-muted-foreground font-bold text-[10px] uppercase tracking-[0.1em]">
                   <tr><th className="px-6 py-4">Identity</th><th className="px-6 py-4">Role / Group</th><th className="px-6 py-4">Clearance</th><th className="px-6 py-4 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -764,8 +764,8 @@ export default function UserManagementPage() {
                     const isTargetAdmin = user.role === 'admin' || user.role === 'super_admin';
                     
                     return (
-                        <tr key={user.username} className={`transition-colors ${canEdit ? 'hover:bg-slate-50/50' : 'bg-slate-50/20 opacity-80'}`}>
-                        <td className="px-6 py-5 font-bold text-slate-700">
+                        <tr key={user.username} className={`transition-colors ${canEdit ? 'hover:bg-muted/50' : 'bg-slate-50/20 opacity-80'}`}>
+                        <td className="px-6 py-5 font-bold text-foreground">
                             <div className="flex items-center gap-2">
                                 {user.username} 
                                 {user.username === currentUser?.username && <Badge variant="secondary" className="text-[8px] bg-primary/5 text-primary border-none">YOU</Badge>}
@@ -773,26 +773,26 @@ export default function UserManagementPage() {
                         </td>
                         <td className="px-6 py-5">
                             <div className="flex flex-col gap-1.5">
-                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-600 border-slate-200 rounded-md font-bold text-[9px] uppercase tracking-wide">{getGroupName(user.groupId)}</Badge>
-                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{user.role}</span>
+                                <Badge variant="outline" className="w-fit bg-muted text-muted-foreground border-border rounded-md font-bold text-[9px] uppercase tracking-wide">{getGroupName(user.groupId)}</Badge>
+                                <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">{user.role}</span>
                             </div>
                         </td>
                         <td className="px-6 py-5">
                             {user.role === 'admin' ? <Badge className="bg-primary/5 text-primary border-none hover:bg-primary/10 rounded-full px-3 py-0.5 font-bold text-[9px] uppercase tracking-wider"><ShieldCheck className="h-3 w-3 mr-1.5" /> Full Access</Badge> : (
-                            <div className="flex flex-wrap gap-1.5 max-w-md">{user.permissions && Object.entries(user.permissions).filter(([, v]) => v).length > 0 ? Object.entries(user.permissions).filter(([, v]) => v).slice(0, 4).map(([k]) => (<span key={k} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md text-[9px] font-bold uppercase border border-slate-200/50">{k.replace(/_/g, ' ')}</span>)) : <span className="text-xs text-slate-300 italic">No access clearance</span>}{user.permissions && Object.values(user.permissions).filter(v => v).length > 4 && <span className="text-[9px] text-slate-300 self-center">...</span>}</div>
+                            <div className="flex flex-wrap gap-1.5 max-w-md">{user.permissions && Object.entries(user.permissions).filter(([, v]) => v).length > 0 ? Object.entries(user.permissions).filter(([, v]) => v).slice(0, 4).map(([k]) => (<span key={k} className="px-2 py-0.5 bg-muted text-muted-foreground rounded-md text-[9px] font-bold uppercase border border-border/50">{k.replace(/_/g, ' ')}</span>)) : <span className="text-xs text-muted-foreground italic">No access clearance</span>}{user.permissions && Object.values(user.permissions).filter(v => v).length > 4 && <span className="text-[9px] text-muted-foreground self-center">...</span>}</div>
                             )}
                         </td>
                         <td className="px-6 py-5 text-right">
                             <div className="flex items-center justify-end gap-1">
                             {!canEdit ? (
                                 <div title={isTargetAdmin ? "Managed via System Configuration" : "Clearance Restricted"}>
-                                    <Lock className="h-4 w-4 text-slate-200 cursor-not-allowed" />
+                                    <Lock className="h-4 w-4 text-muted-foreground cursor-not-allowed" />
                                 </div>
                             ) : (
                                 <>
-                                <Button variant="ghost" size="icon" onClick={() => openEditModal(user)} className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg" aria-label={`Edit user ${user.username}`}><Pencil className="h-3.5 w-3.5" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => openEditModal(user)} className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg" aria-label={`Edit user ${user.username}`}><Pencil className="h-3.5 w-3.5" /></Button>
                                 {canDeleteUser(user) && (
-                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(user)} className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg" aria-label={`Delete user ${user.username}`}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(user)} className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg" aria-label={`Delete user ${user.username}`}><Trash2 className="h-3.5 w-3.5" /></Button>
                                 )}
                                 </>
                             )}
@@ -812,13 +812,13 @@ export default function UserManagementPage() {
       {editModalOpen && editingUser && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
            <Card className="w-full max-w-2xl shadow-2xl border-0 max-h-[90vh] flex flex-col">
-              <CardHeader className="bg-slate-50 border-b border-slate-100 shrink-0">
+              <CardHeader className="bg-muted border-b border-border shrink-0">
                  <div className="flex justify-between items-start">
                     <div>
                         <CardTitle className="text-lg">Access Control</CardTitle>
-                        <CardDescription>Advanced settings for <span className="font-bold text-slate-900">{editingUser.username}</span></CardDescription>
+                        <CardDescription>Advanced settings for <span className="font-bold text-foreground">{editingUser.username}</span></CardDescription>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400" onClick={() => setEditModalOpen(false)} aria-label="Close modal"><X className="h-5 w-5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setEditModalOpen(false)} aria-label="Close modal"><X className="h-5 w-5" /></Button>
                  </div>
               </CardHeader>
               
@@ -836,7 +836,7 @@ export default function UserManagementPage() {
                       <TabsContent value="general" className="space-y-4 mt-0">
                           {canChangePassword(editingUser) && (
                               <div className="space-y-1">
-                                 <label htmlFor="edit-password" className="text-xs font-bold text-slate-500 uppercase">Change Password</label>
+                                 <label htmlFor="edit-password" className="text-xs font-bold text-muted-foreground uppercase">Change Password</label>
                                  <Input
                                    id="edit-password"
                                    type="password"
@@ -851,17 +851,17 @@ export default function UserManagementPage() {
 
                           <div className="grid grid-cols-2 gap-4">
                              <div className="space-y-1">
-                                <label htmlFor="edit-group" className="text-xs font-bold text-slate-500 uppercase">Assigned Group</label>
-                                <select id="edit-group" className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm" value={editGroup} onChange={(e) => setEditGroup(e.target.value)}>
+                                <label htmlFor="edit-group" className="text-xs font-bold text-muted-foreground uppercase">Assigned Group</label>
+                                <select id="edit-group" className="w-full h-10 px-3 rounded-md border border-border text-sm" value={editGroup} onChange={(e) => setEditGroup(e.target.value)}>
                                    <option value="">-- Global / None --</option>
                                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                                 </select>
                              </div>
                              <div className="space-y-1">
-                                <label htmlFor="edit-role" className="text-xs font-bold text-slate-500 uppercase">Role Level</label>
+                                <label htmlFor="edit-role" className="text-xs font-bold text-muted-foreground uppercase">Role Level</label>
                                 <select
                                     id="edit-role"
-                                    className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm"
+                                    className="w-full h-10 px-3 rounded-md border border-border text-sm"
                                     value={editRole}
                                     onChange={(e) => setEditRole(e.target.value as 'admin' | 'user')}
                                     disabled={!canCreateAdmin() && editingUser.role === 'admin'}
@@ -876,8 +876,8 @@ export default function UserManagementPage() {
                        <TabsContent value="permissions" className="mt-0">
                           <div className="space-y-5">
                              {PERMISSION_GROUPS_UI.map((group) => (
-                               <div key={group.category} className="space-y-2 border-b border-slate-100 pb-3 last:border-0">
-                                 <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">{group.category}</h4>
+                               <div key={group.category} className="space-y-2 border-b border-border pb-3 last:border-0">
+                                 <h4 className="text-xs font-bold text-foreground flex items-center gap-2">{group.category}</h4>
                                  <div className="grid grid-cols-2 gap-3 pl-2">
                                    {group.permissions.map((perm) => {
                                      const allowed = canAssignPermission(perm.id);
@@ -891,7 +891,7 @@ export default function UserManagementPage() {
                                            />
                                            <label
                                                 htmlFor={`edit-${perm.id}`}
-                                                className={`text-sm font-medium leading-none cursor-pointer ${allowed ? 'text-slate-600' : 'text-slate-300 line-through'}`}
+                                                className={`text-sm font-medium leading-none cursor-pointer ${allowed ? 'text-muted-foreground' : 'text-muted-foreground line-through'}`}
                                            >
                                                 {perm.label}
                                            </label>
@@ -907,7 +907,7 @@ export default function UserManagementPage() {
                  </Tabs>
               </CardContent>
 
-              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0 rounded-b-2xl">
+              <div className="p-6 border-t border-border bg-muted/50 flex justify-end gap-3 shrink-0 rounded-b-2xl">
                  <Button type="button" variant="outline" className="rounded-xl px-6" onClick={() => setEditModalOpen(false)}>Cancel</Button>
                  <Button type="submit" className="bg-primary hover:bg-primary/90 min-w-[140px] rounded-xl shadow-lg shadow-primary/20" disabled={isSaving}>
                     {isSaving ? (

@@ -69,15 +69,15 @@ export default function TicketsPage() {
   // --- 🛡️ RESTRICTED ACCESS UI ---
   if (user && !user.permissions?.view_tickets && user.role !== 'admin' && user.role !== 'manager') {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-slate-50 p-6">
+      <div className="h-full w-full flex items-center justify-center bg-muted p-6">
         <Card className="max-w-md w-full text-center shadow-lg border-t-4 border-t-red-500">
           <CardContent className="pt-10 pb-10 space-y-4">
             <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
               <ShieldAlert className="h-8 w-8 text-red-600" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-xl font-bold text-slate-900">Access Restricted</h2>
-              <p className="text-sm text-slate-500">
+              <h2 className="text-xl font-bold text-foreground">Access Restricted</h2>
+              <p className="text-sm text-muted-foreground">
                 You do not have permission to view tickets. Contact your administrator.
               </p>
             </div>
@@ -162,21 +162,21 @@ export default function TicketsPage() {
   );
 
   return (
-    <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
+    <div className="p-8 space-y-8 bg-muted/30 min-h-full max-w-7xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
                Support Tickets
                <Link href="/dashboard/documentation#operational">
-                  <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+                  <HelpCircle className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors cursor-help" />
                </Link>
             </h1>
-            <p className="text-sm text-slate-500 mt-1">Submit zone additions or system requests.</p>
+            <p className="text-sm text-muted-foreground mt-1">Submit zone additions or system requests.</p>
         </div>
         <div className="flex gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search ID..." className="pl-8 w-48 bg-white" value={search} onChange={e => setSearch(e.target.value)} />
+            <Input placeholder="Search ID..." className="pl-8 w-48 bg-card" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           
           {canCreate && (
@@ -187,10 +187,10 @@ export default function TicketsPage() {
         </div>
       </div>
 
-      <Card className="shadow-xl shadow-slate-200/50 border-slate-100 rounded-2xl overflow-hidden">
+      <Card className="shadow-xl shadow-black/5 border-border rounded-2xl overflow-hidden">
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-slate-50/50">
+            <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead>Ticket ID</TableHead>
                 <TableHead>Title</TableHead>
@@ -201,7 +201,7 @@ export default function TicketsPage() {
             </TableHeader>
             <TableBody>
               {filteredTickets.map(t => (
-                <TableRow key={t.id} className="hover:bg-slate-50/50">
+                <TableRow key={t.id} className="hover:bg-muted/50">
                   <TableCell className="font-mono font-bold text-xs">{t.ticketId}</TableCell>
                   <TableCell>
                     <div className="font-medium">{t.title}</div>
@@ -212,7 +212,7 @@ export default function TicketsPage() {
                         <div className="flex items-center gap-2 text-[10px] text-primary font-bold uppercase tracking-wider bg-primary/5 px-2 py-1 rounded-md border border-primary/10 w-fit">
                             <FileSpreadsheet className="size-3" /> {t.attachedFileName}
                         </div>
-                    ) : <span className="text-[10px] text-slate-300">None</span>}
+                    ) : <span className="text-[10px] text-muted-foreground">None</span>}
                   </TableCell>
                   <TableCell>
                     <Badge className={t.status === 'New' ? 'bg-blue-500' : t.status === 'Pending' ? 'bg-amber-500' : 'bg-green-500'}>
@@ -259,15 +259,15 @@ export default function TicketsPage() {
       {isCreating && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
           <Card className="w-full max-w-lg shadow-2xl border-t-4 border-t-primary rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100"><CardTitle className="text-xl">Create New Ticket</CardTitle></CardHeader>
+            <CardHeader className="bg-muted/50 border-b border-border"><CardTitle className="text-xl">Create New Ticket</CardTitle></CardHeader>
             <CardContent className="p-8">
               <form onSubmit={handleCreateTicket} className="space-y-6">
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Ticket Subject</label>
-                    <Input className="h-12 rounded-xl bg-slate-50/50" placeholder="e.g. Add 15 new zones to Erbil" value={newTicketTitle} onChange={(e) => setNewTicketTitle(e.target.value)} required />
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Ticket Subject</label>
+                    <Input className="h-12 rounded-xl bg-muted/50" placeholder="e.g. Add 15 new zones to Erbil" value={newTicketTitle} onChange={(e) => setNewTicketTitle(e.target.value)} required />
                 </div>
                 <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Category</label>
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Category</label>
                     <Select value={newTicketType} onValueChange={setNewTicketType}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -277,14 +277,14 @@ export default function TicketsPage() {
                     </Select>
                 </div>
                 <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Description</label>
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Description</label>
                     <Textarea value={newTicketDesc} onChange={(e) => setNewTicketDesc(e.target.value)} required />
                 </div>
                 <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Attachment</label>
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Attachment</label>
                     <Input type="file" accept=".csv" onChange={handleFileChange} className="text-xs" />
                 </div>
-                <div className="flex gap-3 pt-6 border-t border-slate-50">
+                <div className="flex gap-3 pt-6 border-t border-border">
                   <Button type="submit" className="flex-1 h-12 bg-primary hover:bg-primary/90 rounded-xl font-bold shadow-lg shadow-primary/20">Submit Ticket</Button>
                   <Button type="button" variant="outline" className="h-12 rounded-xl px-8" onClick={() => setIsCreating(false)}>Cancel</Button>
                 </div>

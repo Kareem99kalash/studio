@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,17 +17,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      {/* 1. suppressHydrationWarning: Fixes browser extension errors.
-        2. min-h-screen: Ensures the background covers the full page.
-        3. antialiased: Makes fonts look sharper (standard for dashboards).
-      */}
+    <html lang="en" suppressHydrationWarning>
       <body 
         className={`${inter.className} min-h-screen bg-background antialiased`} 
         suppressHydrationWarning={true}
       >
-        {children}
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem={false}
+          disableTransitionOnChange={false}
+        >
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

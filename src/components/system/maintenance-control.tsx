@@ -55,7 +55,7 @@ export function MaintenanceControl() {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50" title="Emergency Maintenance Control">
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-50" title="Emergency Maintenance Control">
             <ShieldAlert className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -70,10 +70,10 @@ export function MaintenanceControl() {
         </DialogHeader>
 
         <div className="grid gap-6 py-4">
-          <div className="flex items-center justify-between space-x-2 border p-4 rounded-lg bg-slate-50">
+          <div className="flex items-center justify-between space-x-2 border p-4 rounded-lg bg-muted">
             <div className="flex flex-col space-y-1">
-               <Label htmlFor="m-mode" className="font-bold text-slate-700">Maintenance Mode</Label>
-               <span className="text-xs text-slate-500">{isActive ? 'Currently Active' : 'Currently Inactive'}</span>
+               <Label htmlFor="m-mode" className="font-bold text-foreground">Maintenance Mode</Label>
+               <span className="text-xs text-muted-foreground">{isActive ? 'Currently Active' : 'Currently Inactive'}</span>
             </div>
             <Switch 
                 id="m-mode" 
@@ -84,13 +84,13 @@ export function MaintenanceControl() {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase text-slate-500">Public Reason (Message)</Label>
+            <Label className="text-xs font-bold uppercase text-muted-foreground">Public Reason (Message)</Label>
             <Input 
                 value={message} 
                 onChange={(e) => setMessage(e.target.value)} 
                 placeholder="e.g. Updating Routing Engine..."
                 disabled={!isActive}
-                className="bg-white"
+                className="bg-card"
             />
           </div>
 

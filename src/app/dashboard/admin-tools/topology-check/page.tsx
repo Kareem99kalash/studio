@@ -190,19 +190,19 @@ export default function TopologyCheckPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-card p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <Layers className="h-6 w-6 text-purple-600"/> Topology Architect
                 <Link href="/dashboard/documentation#topology-architect">
-                    <HelpCircle className="h-4 w-4 text-slate-300 hover:text-purple-600 transition-colors cursor-help" />
+                    <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-purple-600 transition-colors cursor-help" />
                 </Link>
             </h1>
-            <p className="text-slate-500 text-xs">Integrity Checker & Map Comparator</p>
+            <p className="text-muted-foreground text-xs">Integrity Checker & Map Comparator</p>
         </div>
-        <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-lg border">
+        <div className="flex items-center gap-3 bg-muted p-2 rounded-lg border">
             <Switch checked={compareMode} onCheckedChange={setCompareMode} id="mode-switch" />
-            <Label htmlFor="mode-switch" className="flex items-center gap-2 cursor-pointer font-bold text-sm text-slate-700">
+            <Label htmlFor="mode-switch" className="flex items-center gap-2 cursor-pointer font-bold text-sm text-foreground">
                 <GitCompare className="h-4 w-4" /> Compare Mode
             </Label>
         </div>
@@ -214,7 +214,7 @@ export default function TopologyCheckPage() {
             <CardContent className="p-4 space-y-6">
                 
                 <div className="space-y-2">
-                    <Label className="text-xs font-bold text-slate-400 uppercase">
+                    <Label className="text-xs font-bold text-muted-foreground uppercase">
                         {compareMode ? "Base Map (Layer A)" : "Upload Map Data"}
                     </Label>
                     <div className="border-dashed border-2 p-4 rounded-lg bg-blue-50/50 hover:bg-blue-50 transition relative text-center">
@@ -235,7 +235,7 @@ export default function TopologyCheckPage() {
 
                 {compareMode && (
                     <div className="space-y-2 pt-4 border-t">
-                        <Label className="text-xs font-bold text-slate-400 uppercase">Comparison Map (Layer B)</Label>
+                        <Label className="text-xs font-bold text-muted-foreground uppercase">Comparison Map (Layer B)</Label>
                         <div className="border-dashed border-2 p-4 rounded-lg bg-orange-50/50 hover:bg-orange-50 transition relative text-center">
                             <UploadCloud className="h-6 w-6 mx-auto text-orange-400 mb-1" />
                             <span className="text-xs font-bold text-orange-700">Select CSV</span>
@@ -291,7 +291,7 @@ export default function TopologyCheckPage() {
                 {/* 🗺️ MAP TAB */}
                 <TabsContent value="map">
                     <Card className="border-0 shadow-none">
-                        <div className="h-[650px] rounded-xl overflow-hidden border-2 border-slate-300 relative shadow-inner bg-slate-100">
+                        <div className="h-[650px] rounded-xl overflow-hidden border-2 border-slate-300 relative shadow-inner bg-muted">
                             {dataA.length > 0 ? (
                                 <MapContainer bounds={mapBounds || [[36.1, 43.9], [36.3, 44.1]]} style={{ height: '100%', width: '100%' }}>
                                     <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
@@ -351,15 +351,15 @@ export default function TopologyCheckPage() {
 
                                 </MapContainer>
                             ) : (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                                     <MapIcon className="h-16 w-16 mb-4 opacity-20" />
                                     <p>Upload a map to visualize</p>
                                 </div>
                             )}
                             
                             {/* Legend */}
-                            <div className="absolute bottom-6 right-6 bg-white p-4 rounded-lg shadow-xl z-[1000] text-xs space-y-2 border border-slate-200">
-                                <div className="font-bold text-slate-800 mb-1 border-b pb-1">Legend</div>
+                            <div className="absolute bottom-6 right-6 bg-card p-4 rounded-lg shadow-xl z-[1000] text-xs space-y-2 border border-border">
+                                <div className="font-bold text-foreground mb-1 border-b pb-1">Legend</div>
                                 <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-100 border-2 border-blue-500 rounded-sm"></div> Reference (A)</div>
                                 {compareMode && <div className="flex items-center gap-2"><div className="w-3 h-3 bg-orange-100 border-2 border-orange-500 border-dashed rounded-sm"></div> Comparison (B)</div>}
                                 <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600 border-2 border-yellow-400 rounded-sm"></div> Overlap (Conflict)</div>
@@ -389,17 +389,17 @@ export default function TopologyCheckPage() {
                                                     <TableCell className="font-medium">{inv.name}</TableCell>
                                                     <TableCell>Self-intersecting points</TableCell>
                                                     <TableCell>
-                                                        <Button size="sm" variant="ghost" onClick={() => focusOnIssue(inv.center)}><ZoomIn className="h-4 w-4 text-slate-600" /></Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => focusOnIssue(inv.center)}><ZoomIn className="h-4 w-4 text-muted-foreground" /></Button>
                                                     </TableCell>
                                                 </TableRow>
                                             ))}
                                             {overlaps.map((o, i) => (
                                                 <TableRow key={o.id} className="bg-red-50 hover:bg-red-100 border-b border-red-100">
                                                     <TableCell><Badge className="bg-red-600 hover:bg-red-700">Overlap</Badge></TableCell>
-                                                    <TableCell className="font-medium text-slate-800">{o.p1} <br/><span className="text-[10px] text-slate-500">vs</span><br/> {o.p2}</TableCell>
+                                                    <TableCell className="font-medium text-foreground">{o.p1} <br/><span className="text-[10px] text-muted-foreground">vs</span><br/> {o.p2}</TableCell>
                                                     <TableCell className="font-mono text-xs">{o.area} m²</TableCell>
                                                     <TableCell>
-                                                        <Button size="sm" variant="outline" className="bg-white border-red-200 text-red-700 hover:bg-red-50" onClick={() => focusOnIssue(o.center)}>
+                                                        <Button size="sm" variant="outline" className="bg-card border-red-200 text-red-700 hover:bg-red-50" onClick={() => focusOnIssue(o.center)}>
                                                             <ZoomIn className="h-4 w-4 mr-2" /> Inspect
                                                         </Button>
                                                     </TableCell>

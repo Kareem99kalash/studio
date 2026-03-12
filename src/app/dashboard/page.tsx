@@ -26,7 +26,7 @@ import { MaintenanceControl } from '@/components/system/maintenance-control';
 const MapView = dynamic(() => import('@/components/dashboard/map-view').then(m => m.MapView), {
     ssr: false,
     loading: () => (
-        <div className="h-full w-full bg-white flex flex-col items-center justify-center gap-4">
+        <div className="h-full w-full bg-background flex flex-col items-center justify-center gap-4">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em] animate-pulse">Rendering Spatial Data</span>
         </div>
@@ -431,9 +431,9 @@ export default function DashboardPage() {
 
     if (isCheckingStatus || loading) {
         return (
-            <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
+            <div className="h-screen w-full flex flex-col items-center justify-center bg-background gap-4">
                 <Loader2 className="animate-spin h-10 w-10 text-primary/30" />
-                <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">Loading Workspace</p>
+                <p className="text-muted-foreground font-bold uppercase tracking-[0.2em] text-[10px] animate-pulse">Loading Workspace</p>
             </div>
         );
     }
@@ -442,62 +442,62 @@ export default function DashboardPage() {
     if (isMaintenance && !isAdmin) return <MaintenanceScreen message={maintenanceMsg} />;
 
     return (
-        <div className="h-screen flex flex-col bg-slate-50/30 overflow-hidden font-body relative">
+        <div className="h-screen flex flex-col bg-background overflow-hidden font-body relative">
             {isMaintenance && isAdmin && <div className="bg-primary text-white text-[10px] font-bold text-center py-1.5 border-b border-primary/20 uppercase tracking-wider">Maintenance Mode Active</div>}
 
-            <header className="h-16 bg-white border-b border-slate-100 px-6 flex items-center justify-between shrink-0 z-40 relative">
+            <header className="h-16 bg-card border-b border-border px-6 flex items-center justify-between shrink-0 z-40 relative">
                 <div className="flex items-center gap-3">
-                    <div className="bg-primary p-2 rounded-xl shadow-lg shadow-primary/20"><Radar className="text-white h-5 w-5" /></div>
+                    <div className="bg-primary p-2 rounded-xl shadow-lg shadow-primary/20"><Radar className="text-primary-foreground h-5 w-5" /></div>
                     <div>
                         <h1 className="font-bold text-lg tracking-tight text-primary leading-none">Operations Hub</h1>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Coverage Analysis System</p>
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">Coverage Analysis System</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
                     {isAdmin && <MaintenanceControl />}
                     {analyzing && <div className="flex items-center gap-2 text-primary bg-primary/5 px-3 py-1.5 rounded-full border border-primary/10"><Loader2 className="h-3 w-3 animate-spin" /><span className="text-[9px] font-bold uppercase tracking-wider">Analyzing Grid</span></div>}
-                    {analysisData && !analyzing && <Badge variant="outline" className="border-emerald-100 bg-emerald-50 text-emerald-600 gap-1.5 py-1.5 px-3 shadow-none rounded-full"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> <span className="text-[9px] font-bold uppercase tracking-wider">Ready</span></Badge>}
+                    {analysisData && !analyzing && <Badge variant="outline" className="border-emerald-100 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 gap-1.5 py-1.5 px-3 shadow-none rounded-full"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> <span className="text-[9px] font-bold uppercase tracking-wider">Ready</span></Badge>}
                 </div>
             </header>
 
             <div className="flex-1 flex overflow-hidden">
-                <div className="w-[360px] bg-white border-r border-slate-100 flex flex-col shrink-0 overflow-hidden z-20 shadow-sm">
-                    <div className="p-5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Settings2 className="h-3.5 w-3.5" /> Configuration</span></div>
+                <div className="w-[360px] bg-card border-r border-border flex flex-col shrink-0 overflow-hidden z-20 shadow-sm">
+                    <div className="p-5 border-b border-border flex justify-between items-center bg-muted/50"><span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2"><Settings2 className="h-3.5 w-3.5" /> Configuration</span></div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
                         <div className="space-y-3">
-                            <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapIcon className="h-3.5 w-3.5 text-primary/50" /> Regional Territory</Label>
+                            <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2"><MapIcon className="h-3.5 w-3.5 text-primary/50" /> Regional Territory</Label>
                             <Select onValueChange={(val) => handleCityChange(val)} value={selectedCity?.id} disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.SELECT_REGION)}>
-                                <SelectTrigger className="h-11 border-slate-100 bg-slate-50/50 hover:border-primary/20 transition-all text-xs font-bold rounded-xl shadow-none"><SelectValue placeholder={hasPermission(user, PERMISSIONS.DASHBOARD.SELECT_REGION) ? "Select Territory" : "Locked"} /></SelectTrigger>
-                                <SelectContent className="rounded-xl border-slate-100 shadow-2xl">{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-semibold text-xs py-2.5">{c.name}</SelectItem>)}</SelectContent>
+                                <SelectTrigger className="h-11 border-border bg-muted/50 hover:border-primary/20 transition-all text-xs font-bold rounded-xl shadow-none"><SelectValue placeholder={hasPermission(user, PERMISSIONS.DASHBOARD.SELECT_REGION) ? "Select Territory" : "Locked"} /></SelectTrigger>
+                                <SelectContent className="rounded-xl border-border shadow-2xl">{cities.map(c => <SelectItem key={c.id} value={c.id} className="font-semibold text-xs py-2.5">{c.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Store className="h-3.5 w-3.5 text-primary/50" /> Distribution Hubs</Label>
-                                <Button variant="ghost" size="sm" onClick={addStore} disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.MANAGE_HUBS)} className="h-8 text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary hover:text-white rounded-lg uppercase tracking-wide transition-all"><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Node</Button>
+                            <div className="flex items-center justify-between border-b border-border pb-3">
+                                <Label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2"><Store className="h-3.5 w-3.5 text-primary/50" /> Distribution Hubs</Label>
+                                <Button variant="ghost" size="sm" onClick={addStore} disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.MANAGE_HUBS)} className="h-8 text-[10px] font-bold text-primary bg-primary/5 hover:bg-primary hover:text-primary-foreground rounded-lg uppercase tracking-wide transition-all"><Plus className="h-3.5 w-3.5 mr-1.5" /> Add Node</Button>
                             </div>
 
                             {hasPermission(user, PERMISSIONS.DASHBOARD.MANAGE_HUBS) ? (
                                 <div className="space-y-3 min-h-[100px]">
                                     {stores.map((store, idx) => (
-                                        <div key={store.id} className="relative group bg-slate-50/50 rounded-2xl border p-4 shadow-none border-slate-100 hover:border-primary/20 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
+                                        <div key={store.id} className="relative group bg-muted/50 rounded-2xl border p-4 shadow-none border-border hover:border-primary/20 transition-all hover:bg-card hover:shadow-lg hover:shadow-black/5">
                                             <div className="space-y-3">
                                                 <div className="flex justify-between items-start">
                                                     <div className="flex items-center gap-2 w-full">
                                                         <div className="h-5 w-5 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">{idx + 1}</div>
-                                                        <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-slate-700 focus-visible:ring-0 placeholder:text-slate-300 w-full tracking-tight" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
+                                                        <Input className="h-6 p-0 border-none shadow-none text-xs font-bold text-foreground focus-visible:ring-0 placeholder:text-muted-foreground w-full tracking-tight" value={store.name} onChange={e => updateStoreName(store.id, e.target.value)} />
                                                     </div>
-                                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg -mr-1" onClick={() => removeStore(store.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg -mr-1" onClick={() => removeStore(store.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                                 </div>
-                                                <div className="bg-white rounded-xl px-3 py-1.5 flex items-center gap-2 border border-slate-50 shadow-sm">
-                                                    <code className="text-[8px] text-slate-300 font-bold uppercase tracking-widest shrink-0">LOC:</code>
-                                                    <Input className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-slate-600 focus-visible:ring-0 w-full" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} placeholder="Lat, Lng" />
+                                                <div className="bg-card rounded-xl px-3 py-1.5 flex items-center gap-2 border border-border shadow-sm">
+                                                    <code className="text-[8px] text-muted-foreground font-bold uppercase tracking-widest shrink-0">LOC:</code>
+                                                    <Input className="h-4 p-0 bg-transparent border-none shadow-none text-[10px] font-mono text-muted-foreground focus-visible:ring-0 w-full" value={store.coordinates} onChange={e => updateStoreCoordinates(store.id, e.target.value)} placeholder="Lat, Lng" />
                                                 </div>
-                                                <div className="pt-3 border-t border-slate-100/50">
+                                                <div className="pt-3 border-t border-border">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest whitespace-nowrap">Protocol:</span>
+                                                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">Protocol:</span>
                                                         <Select value={store.category || 'default'} onValueChange={(val) => updateStoreCategory(store.id, val)}>
-                                                            <SelectTrigger className="h-7 w-full text-[9px] font-bold border-slate-100 bg-white rounded-lg shadow-none"><SelectValue /></SelectTrigger>
+                                                            <SelectTrigger className="h-7 w-full text-[9px] font-bold border-border bg-card rounded-lg shadow-none"><SelectValue /></SelectTrigger>
                                                             <SelectContent className="rounded-xl">
                                                                 <SelectItem value="default" className="text-[10px] font-semibold">Standard Settings</SelectItem>
                                                                 {availableRules.map((c, i) => (<SelectItem key={i} value={c.name} className="text-[10px] font-semibold">{c.name} ({c.green}km)</SelectItem>))}
@@ -510,8 +510,8 @@ export default function DashboardPage() {
                                     ))}
                                 </div>
                             ) : (
-                                <div className="min-h-[100px] flex items-center justify-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                                <div className="min-h-[100px] flex items-center justify-center border border-dashed border-border rounded-2xl bg-muted/50">
+                                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                         <Lock className="h-5 w-5 opacity-50" />
                                         <span className="text-[10px] font-bold uppercase tracking-widest">Hub Management Locked</span>
                                     </div>
@@ -519,40 +519,40 @@ export default function DashboardPage() {
                             )}
                         </div>
                     </div>
-                    <div className="p-6 border-t border-slate-50 bg-white">
-                        <Button className="w-full h-12 rounded-2xl bg-primary text-white font-bold uppercase tracking-widest text-[10px] hover:bg-primary/90 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity || !hasPermission(user, PERMISSIONS.DASHBOARD.RUN_ANALYSIS)}>
+                    <div className="p-6 border-t border-border bg-card">
+                        <Button className="w-full h-12 rounded-2xl bg-primary text-primary-foreground font-bold uppercase tracking-widest text-[10px] hover:bg-primary/90 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group" onClick={handleAnalyze} disabled={analyzing || !selectedCity || !hasPermission(user, PERMISSIONS.DASHBOARD.RUN_ANALYSIS)}>
                             <div className="flex items-center gap-3 relative z-10">
-                                {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-white" /> : <Zap className="h-4 w-4 text-white group-hover:scale-110 transition-transform" />}
+                                {analyzing ? <Loader2 className="animate-spin h-4 w-4 text-primary-foreground" /> : <Zap className="h-4 w-4 text-primary-foreground group-hover:scale-110 transition-transform" />}
                                 <span>{analyzing ? "Processing Matrix..." : "Start Coverage Analysis"}</span>
                             </div>
                         </Button>
                     </div>
                 </div>
 
-                <div className="flex-1 bg-white overflow-hidden flex flex-col relative z-10">
+                <div className="flex-1 bg-card overflow-hidden flex flex-col relative z-10">
                     {!selectedCity ? (
-                        <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50/30 gap-6">
-                            <div className="h-24 w-24 bg-white rounded-3xl flex items-center justify-center shadow-sm relative border border-slate-100">
-                                <MapIcon className="h-8 w-8 text-slate-200" />
+                        <div className="h-full w-full flex flex-col items-center justify-center bg-muted/30 gap-6">
+                            <div className="h-24 w-24 bg-card rounded-3xl flex items-center justify-center shadow-sm relative border border-border">
+                                <MapIcon className="h-8 w-8 text-muted-foreground/30" />
                             </div>
-                            <p className="font-bold uppercase tracking-widest text-[10px] text-slate-300">Select a region to begin</p>
+                            <p className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground">Select a region to begin</p>
                         </div>
                     ) : (
                         <Tabs defaultValue="map" className="h-full flex flex-col">
-                            <div className="h-14 border-b border-slate-100 flex items-center justify-between px-6 bg-white shrink-0">
+                            <div className="h-14 border-b border-border flex items-center justify-between px-6 bg-card shrink-0">
                                 <div className="flex items-center gap-4">
-                                    <span className="text-[9px] font-bold uppercase text-slate-300 tracking-widest">View Mode:</span>
-                                    <TabsList className="bg-slate-100 p-1 h-9 rounded-xl w-[280px]">
-                                        <TabsTrigger value="map" disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_MAP)} className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><MapIcon className="h-3.5 w-3.5 mr-2" /> Geo-Map</TabsTrigger>
-                                        <TabsTrigger value="table" disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_DATA_GRID)} className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><TableIcon className="h-3.5 w-3.5 mr-2" /> Data-Grid</TabsTrigger>
+                                    <span className="text-[9px] font-bold uppercase text-muted-foreground tracking-widest">View Mode:</span>
+                                    <TabsList className="bg-muted p-1 h-9 rounded-xl w-[280px]">
+                                        <TabsTrigger value="map" disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_MAP)} className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><MapIcon className="h-3.5 w-3.5 mr-2" /> Geo-Map</TabsTrigger>
+                                        <TabsTrigger value="table" disabled={!hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_DATA_GRID)} className="flex-1 rounded-lg text-[9px] font-bold uppercase tracking-wider data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm h-7 transition-all"><TableIcon className="h-3.5 w-3.5 mr-2" /> Data-Grid</TabsTrigger>
                                     </TabsList>
                                 </div>
-                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full border border-slate-100">
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-full border border-border">
                                     <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{selectedCity.name}</span>
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{selectedCity.name}</span>
                                 </div>
                             </div>
-                            <div className="flex-1 relative bg-slate-50/50">
+                            <div className="flex-1 relative bg-muted/50">
                                 <TabsContent value="map" className="absolute inset-0 m-0 p-0 h-full w-full border-none">
                                     {hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_MAP) ? (
                                         getDisplayPolygons().features.length > 0 ? (
@@ -567,53 +567,53 @@ export default function DashboardPage() {
                                                 isLoading={analyzing}
                                             />
                                         ) : (
-                                            <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
-                                                <AlertTriangle className="h-12 w-12 mb-4 text-slate-100" />
-                                                <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Spatial Data Unavailable</p>
-                                                <p className="text-[10px] text-slate-300 mt-2 text-center max-w-[240px]">Please upload region geometry in the administration tools.</p>
+                                            <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground p-10 bg-card">
+                                                <AlertTriangle className="h-12 w-12 mb-4 text-muted-foreground/30" />
+                                                <p className="font-bold text-muted-foreground uppercase tracking-widest text-xs">Spatial Data Unavailable</p>
+                                                <p className="text-[10px] text-muted-foreground mt-2 text-center max-w-[240px]">Please upload region geometry in the administration tools.</p>
                                             </div>
                                         )
                                     ) : (
-                                        <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
-                                            <Lock className="h-12 w-12 mb-4 text-slate-100" />
-                                            <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Access Restricted</p>
+                                        <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground p-10 bg-card">
+                                            <Lock className="h-12 w-12 mb-4 text-muted-foreground/30" />
+                                            <p className="font-bold text-muted-foreground uppercase tracking-widest text-xs">Access Restricted</p>
                                         </div>
                                     )}
                                 </TabsContent>
                                 <TabsContent value="table" className="absolute inset-0 m-0 p-0 overflow-auto scrollbar-hide">
                                     {hasPermission(user, PERMISSIONS.DASHBOARD.VIEW_DATA_GRID) ? (
                                         <div className="p-8 max-w-5xl mx-auto">
-                                            <Card className="border border-slate-100 shadow-xl shadow-slate-200/50 rounded-3xl overflow-hidden bg-white">
-                                                <div className="p-6 border-b border-slate-50 bg-white flex justify-between items-center sticky top-0 z-10">
+                                            <Card className="border border-border shadow-xl shadow-black/5 rounded-3xl overflow-hidden bg-card">
+                                                <div className="p-6 border-b border-border bg-card flex justify-between items-center sticky top-0 z-10">
                                                     <div>
-                                                        <h3 className="font-bold text-lg text-slate-900 tracking-tight">Assignment Matrix</h3>
-                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Optimization Results</p>
+                                                        <h3 className="font-bold text-lg text-foreground tracking-tight">Assignment Matrix</h3>
+                                                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">Optimization Results</p>
                                                     </div>
                                                     {analysisData?.assignments && hasPermission(user, PERMISSIONS.DASHBOARD.EXPORT_DATA) && (
-                                                        <Button size="sm" className="bg-primary hover:bg-primary/90 text-white font-bold rounded-xl h-9 px-5 uppercase tracking-wider text-[10px] shadow-lg shadow-primary/20 transition-all" onClick={downloadCSV}>
+                                                        <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl h-9 px-5 uppercase tracking-wider text-[10px] shadow-lg shadow-primary/20 transition-all" onClick={downloadCSV}>
                                                             <Download className="h-4 w-4 mr-2" /> Export Dataset
                                                         </Button>
                                                     )}
                                                 </div>
-                                                <div className="bg-white min-h-[400px]">
+                                                <div className="bg-card min-h-[400px]">
                                                     {analysisData?.assignments ? (
                                                         <Table>
                                                             <TableHeader>
-                                                                <TableRow className="bg-slate-50/50 hover:bg-slate-50/50 border-b border-slate-50">
-                                                                    <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 pl-6">Zone Area</TableHead>
-                                                                    <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Assigned Hub</TableHead>
-                                                                    <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12">Protocol</TableHead>
-                                                                    <TableHead className="text-[9px] font-bold uppercase text-slate-400 tracking-widest h-12 text-right pr-6">Status</TableHead>
+                                                                <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border">
+                                                                    <TableHead className="text-[9px] font-bold uppercase text-muted-foreground tracking-widest h-12 pl-6">Zone Area</TableHead>
+                                                                    <TableHead className="text-[9px] font-bold uppercase text-muted-foreground tracking-widest h-12">Assigned Hub</TableHead>
+                                                                    <TableHead className="text-[9px] font-bold uppercase text-muted-foreground tracking-widest h-12">Protocol</TableHead>
+                                                                    <TableHead className="text-[9px] font-bold uppercase text-muted-foreground tracking-widest h-12 text-right pr-6">Status</TableHead>
                                                                 </TableRow>
                                                             </TableHeader>
                                                             <TableBody>
                                                                 {Object.values(analysisData.assignments).map((row: any, i) => (
-                                                                    <TableRow key={i} className="hover:bg-slate-50/30 transition-colors border-slate-50">
-                                                                        <TableCell className="font-bold text-xs text-slate-700 h-14 pl-6">{row.name}</TableCell>
-                                                                        <TableCell><Badge className="bg-slate-100 text-slate-500 text-[9px] font-bold border-none uppercase tracking-wide px-2.5 py-0.5 rounded-md shadow-none">{row.storeName}</Badge></TableCell>
-                                                                        <TableCell className="text-[10px] font-mono text-slate-400 uppercase">{row.category || 'Default'}</TableCell>
+                                                                    <TableRow key={i} className="hover:bg-muted/30 transition-colors border-border">
+                                                                        <TableCell className="font-bold text-xs text-foreground h-14 pl-6">{row.name}</TableCell>
+                                                                        <TableCell><Badge className="bg-muted text-muted-foreground text-[9px] font-bold border-none uppercase tracking-wide px-2.5 py-0.5 rounded-md shadow-none">{row.storeName}</Badge></TableCell>
+                                                                        <TableCell className="text-[10px] font-mono text-muted-foreground uppercase">{row.category || 'Default'}</TableCell>
                                                                         <TableCell className="text-right pr-6">
-                                                                            <Badge className={`${row.status === 'in' ? 'bg-emerald-50 text-emerald-600' : row.status === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'} text-[9px] font-bold border-none shadow-none uppercase tracking-wider px-2 rounded-md`}>
+                                                                            <Badge className={`${row.status === 'in' ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400' : row.status === 'warning' ? 'bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400' : 'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400'} text-[9px] font-bold border-none shadow-none uppercase tracking-wider px-2 rounded-md`}>
                                                                                 {row.status === 'in' ? 'Secure' : row.status === 'warning' ? 'At Risk' : 'Outside'}
                                                                             </Badge>
                                                                         </TableCell>
@@ -623,17 +623,17 @@ export default function DashboardPage() {
                                                         </Table>
                                                     ) : (
                                                         <div className="flex flex-col items-center justify-center h-[400px] gap-4">
-                                                            <Activity className="h-10 w-10 text-slate-50 animate-pulse" />
-                                                            <p className="text-slate-300 font-bold uppercase tracking-widest text-[10px]">Interface awaiting data synchronization</p>
+                                                            <Activity className="h-10 w-10 text-muted-foreground/20 animate-pulse" />
+                                                            <p className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Interface awaiting data synchronization</p>
                                                         </div>
                                                     )}
                                                 </div>
                                             </Card>
                                         </div>
                                     ) : (
-                                        <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 p-10 bg-white">
-                                            <Lock className="h-12 w-12 mb-4 text-slate-100" />
-                                            <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Access Restricted</p>
+                                        <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground p-10 bg-card">
+                                            <Lock className="h-12 w-12 mb-4 text-muted-foreground/30" />
+                                            <p className="font-bold text-muted-foreground uppercase tracking-widest text-xs">Access Restricted</p>
                                         </div>
                                     )}
                                 </TabsContent>

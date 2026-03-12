@@ -7,6 +7,7 @@ import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { db, auth as firebaseAuth } from '@/firebase';
 import { signInWithCustomToken } from 'firebase/auth';
 import { logoutAction } from '@/app/actions/auth';
+import { useTheme } from 'next-themes';
 import { 
   LayoutDashboard, 
   Users, 
@@ -21,7 +22,9 @@ import {
   Menu,
   X,
   Loader2,
-  BookOpen
+  BookOpen,
+  Sun,
+  Moon
 } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -52,6 +55,8 @@ const NAV_ITEMS = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [openTicketCount, setOpenTicketCount] = useState(0);
@@ -64,6 +69,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Prevent hydration mismatch for theme icon
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     const syncSession = async () => {
@@ -175,15 +183,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // 🛡️ 5. GUARD: SHOW LOADER DURING VERIFICATION
   if (loading || !user) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="animate-spin h-10 w-10 text-primary/30" />
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] animate-pulse">Initializing Workspace</p>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] animate-pulse">Initializing Workspace</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/30 flex flex-col font-body">
+    <div className="min-h-screen bg-background flex flex-col font-body">
       
       {/* 🟢 TOP NAVIGATION BAR */}
       <header className="h-16 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-6 lg:px-10 shrink-0 sticky top-0 z-[100] shadow-lg">
@@ -253,15 +261,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {isSearchOpen && (
-              <div className="absolute top-full right-0 mt-3 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+              <div className="absolute top-full right-0 mt-3 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
                 <div className="p-2">
-                  <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest px-3 py-2">Quick Navigation</p>
+                  <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest px-3 py-2">Quick Navigation</p>
                   {searchResults.length > 0 ? (
                     searchResults.map((res) => (
                       <Link 
                         key={res.href} 
                         href={res.href} 
-                        className="flex items-center gap-3 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-primary rounded-xl transition-colors"
+                        className="flex items-center gap-3 px-3 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-primary rounded-xl transition-colors"
                         onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}
                       >
                         <res.icon className="h-4 w-4 opacity-40" />
@@ -269,7 +277,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       </Link>
                     ))
                   ) : (
-                    <div className="px-4 py-6 text-center text-[10px] font-medium text-slate-300 italic">
+                    <div className="px-4 py-6 text-center text-[10px] font-medium text-slate-300 dark:text-slate-600 italic">
                       No matching results found.
                     </div>
                   )}
@@ -279,6 +287,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="h-6 w-[1px] bg-slate-800 mx-2 hidden md:block" />
+
+          {/* Dark Mode Toggle */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="relative text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label="Toggle dark mode"
+          >
+            {mounted && theme === 'dark' ? (
+              <Sun className="h-5 w-5 transition-transform duration-300 rotate-0" />
+            ) : (
+              <Moon className="h-5 w-5 transition-transform duration-300 rotate-0" />
+            )}
+          </Button>
 
           <NotificationBell user={user} />
 
@@ -301,15 +324,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             </HoverCardTrigger>
             
-            <HoverCardContent align="end" className="w-72 p-0 overflow-hidden border-slate-100 shadow-2xl rounded-2xl mt-3">
-              <div className="bg-slate-50/50 p-5 border-b border-slate-100 flex items-center gap-4">
-                <Avatar className="h-12 w-12 border border-white shadow-sm rounded-xl">
-                  <AvatarFallback className="bg-primary text-white font-bold text-lg rounded-xl">
+            <HoverCardContent align="end" className="w-72 p-0 overflow-hidden border-slate-100 dark:border-slate-800 shadow-2xl rounded-2xl mt-3 bg-white dark:bg-slate-900">
+              <div className="bg-slate-50/50 dark:bg-slate-800/50 p-5 border-b border-slate-100 dark:border-slate-800 flex items-center gap-4">
+                <Avatar className="h-12 w-12 border border-white dark:border-slate-700 shadow-sm rounded-xl">
+                  <AvatarFallback className="bg-primary text-white dark:text-slate-900 font-bold text-lg rounded-xl">
                     {user.username?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h4 className="font-bold text-slate-900 text-sm">{user.username}</h4>
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm">{user.username}</h4>
                   <Badge className="mt-1 bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-wider rounded-md px-2 py-0 border-none shadow-none">
                     {user.role === 'admin' ? 'Full Administrator' : 'User Access'}
                   </Badge>
@@ -317,30 +340,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
               
               <div className="p-5">
-                <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-3">Permissions</p>
+                <p className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest mb-3">Permissions</p>
                 <div className="flex flex-wrap gap-1.5">
                   {user.role === 'admin' ? (
-                    <Badge className="bg-slate-100 text-slate-600 rounded-md font-bold text-[9px] uppercase border-none shadow-none px-2">
+                    <Badge className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md font-bold text-[9px] uppercase border-none shadow-none px-2">
                       <ShieldCheck className="h-3 w-3 mr-1.5 opacity-50" /> System Superuser
                     </Badge>
                   ) : user.permissions && Object.keys(user.permissions).length > 0 ? (
                     Object.entries(user.permissions)
                       .filter(([, v]) => v)
                       .map(([k]) => (
-                        <span key={k} className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-50 text-slate-500 text-[9px] font-bold uppercase tracking-wide border border-slate-100">
+                        <span key={k} className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[9px] font-bold uppercase tracking-wide border border-slate-100 dark:border-slate-700">
                           {k.replace(/_/g, ' ')}
                         </span>
                       ))
                   ) : (
-                    <span className="text-[10px] font-medium text-slate-300 italic">Limited read access</span>
+                    <span className="text-[10px] font-medium text-slate-300 dark:text-slate-600 italic">Limited read access</span>
                   )}
                 </div>
               </div>
 
-              <div className="p-2 bg-slate-50/50 border-t border-slate-100">
+              <div className="p-2 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
                 <Button 
                   variant="ghost" 
-                  className="w-full justify-start text-slate-500 hover:text-red-600 hover:bg-red-50 h-9 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all"
+                  className="w-full justify-start text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 h-9 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all"
                   onClick={handleLogout}
                 >
                   <LogOut className="h-3.5 w-3.5 mr-2.5 opacity-50" /> Sign Out
@@ -427,7 +450,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 lg:p-8 animate-in fade-in duration-500">
+      <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 lg:p-8 animate-in fade-in duration-500 bg-background">
         {children}
       </main>
 

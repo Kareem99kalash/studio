@@ -66,7 +66,7 @@ function LoginContent() {
   };
 
   return (
-    <div className="w-full max-w-[440px] bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden">
+    <div className="w-full max-w-[440px] bg-card rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.4)] border border-border overflow-hidden">
       <div className="p-12">
         <div className="flex flex-col items-center mb-10 space-y-4 text-center">
           <div className="h-16 w-16 bg-primary/5 text-primary rounded-2xl flex items-center justify-center">
@@ -74,36 +74,36 @@ function LoginContent() {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-primary tracking-tight">GeoCoverage</h1>
-            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-[0.1em] mt-1">Access Management Portal</p>
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-[0.1em] mt-1">Access Management Portal</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Account Identity</label>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider ml-1">Account Identity</label>
             <Input 
               name="username"
               type="text" 
               placeholder="Username"
-              className="h-12 bg-slate-50 border-slate-100 focus:bg-white focus:ring-primary/20 rounded-xl transition-all px-4"
+              className="h-12 bg-muted/50 border-border focus:bg-card focus:ring-primary/20 rounded-xl transition-all px-4"
               disabled={loading} 
               required
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Secure Passcode</label>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider ml-1">Secure Passcode</label>
             <Input 
               name="password"
               type="password" 
               placeholder="••••••••" 
-              className="h-12 bg-slate-50 border-slate-100 focus:bg-white focus:ring-primary/20 rounded-xl transition-all px-4"
+              className="h-12 bg-muted/50 border-border focus:bg-card focus:ring-primary/20 rounded-xl transition-all px-4"
               disabled={loading} 
               required
             />
           </div>
           <Button 
             type="submit" 
-            className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-[0.98] mt-4 group"
+            className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-[0.98] mt-4 group"
             disabled={loading}
           >
             {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <>Enter Dashboard <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" /></>}
@@ -117,12 +117,12 @@ function LoginContent() {
 // 🟢 2. SUSPENSE WRAPPER (Fixes Build Error)
 export default function LoginPage() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-slate-50/50 p-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-background p-4">
       {/* Suspense handles the useSearchParams hook during build */}
       <Suspense fallback={
         <div className="flex flex-col items-center gap-6">
            <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
-           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] animate-pulse">Verifying Security Protocols</p>
+           <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] animate-pulse">Verifying Security Protocols</p>
         </div>
       }>
         <LoginContent />

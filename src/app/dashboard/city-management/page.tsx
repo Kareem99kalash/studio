@@ -122,7 +122,7 @@ export default function CityManagementPage() {
             <ShieldAlert className="h-12 w-12 text-red-500" />
             <div className="text-center">
                 <h2 className="text-xl font-bold">Access Restricted</h2>
-                <p className="text-slate-500">You do not have permission to view cities.</p>
+                <p className="text-muted-foreground">You do not have permission to view cities.</p>
             </div>
             <Button variant="outline" onClick={() => router.push('/dashboard')}>Return</Button>
         </div>
@@ -284,31 +284,31 @@ export default function CityManagementPage() {
   const getEngineLabel = (url: string) => ENGINES.find(e => e.value === url)?.label || "Unknown";
 
   return (
-    <div className="p-8 space-y-8 bg-slate-50/30 min-h-full max-w-7xl mx-auto">
+    <div className="p-8 space-y-8 bg-muted/30 min-h-full max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
            City Management
            <Link href="/dashboard/documentation#operational">
-              <HelpCircle className="h-5 w-5 text-slate-300 hover:text-primary transition-colors cursor-help" />
+              <HelpCircle className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors cursor-help" />
            </Link>
         </h1>
-        <Badge variant="outline" className="bg-white border-slate-200 rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">{canCreate && canEdit && canDelete ? 'Full Access' : 'Restricted Access'}</Badge>
+        <Badge variant="outline" className="bg-card border-border rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider">{canCreate && canEdit && canDelete ? 'Full Access' : 'Restricted Access'}</Badge>
       </div>
 
       <div className="grid gap-8 md:grid-cols-3">
         {canCreate && (
-          <Card className="md:col-span-1 border-t-4 border-t-primary shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden">
+          <Card className="md:col-span-1 border-t-4 border-t-primary shadow-xl shadow-black/5 rounded-2xl overflow-hidden">
             <CardHeader><CardTitle className="text-xl">Add New City</CardTitle><CardDescription>Configure zones and engine.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
-              <div className={`p-4 rounded-xl border transition-all ${step === 1 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-white border-slate-100 opacity-50'}`}>
+              <div className={`p-4 rounded-xl border transition-all ${step === 1 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-card border-border opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>1</Badge> Identity</div>
                   {step === 1 && (
                     <>
-                      <Input placeholder="City Name (e.g. Mosul)" value={cityName} onChange={e => setCityName(e.target.value)} className="mb-2 bg-white" />
+                      <Input placeholder="City Name (e.g. Mosul)" value={cityName} onChange={e => setCityName(e.target.value)} className="mb-2 bg-card" />
                       
                       <div className="space-y-2 mb-2">
-                          <label className="text-[10px] font-bold uppercase text-slate-500">Agent Group</label>
-                          <select className="w-full p-2 border rounded-md text-sm bg-white" value={selectedGroupId} onChange={(e) => setSelectedGroupId(e.target.value)}>
+                          <label className="text-[10px] font-bold uppercase text-muted-foreground">Agent Group</label>
+                          <select className="w-full p-2 border rounded-md text-sm bg-card" value={selectedGroupId} onChange={(e) => setSelectedGroupId(e.target.value)}>
                               <option value="">-- No Agent Group --</option>
                               {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                           </select>
@@ -316,8 +316,8 @@ export default function CityManagementPage() {
 
                       {/* 🟢 ENGINE SELECTOR */}
                       <div className="space-y-2 mb-2">
-                          <label className="text-[10px] font-bold uppercase text-slate-500">Routing Engine</label>
-                          <select className="w-full p-2 border rounded-md text-sm bg-white" value={selectedEngine} onChange={(e) => setSelectedEngine(e.target.value)}>
+                          <label className="text-[10px] font-bold uppercase text-muted-foreground">Routing Engine</label>
+                          <select className="w-full p-2 border rounded-md text-sm bg-card" value={selectedEngine} onChange={(e) => setSelectedEngine(e.target.value)}>
                               {ENGINES.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
                           </select>
                       </div>
@@ -327,42 +327,42 @@ export default function CityManagementPage() {
                   )}
               </div>
 
-              <div className={`p-4 rounded-xl border transition-all ${step === 2 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-white border-slate-100 opacity-50'}`}>
+              <div className={`p-4 rounded-xl border transition-all ${step === 2 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-card border-border opacity-50'}`}>
                   <div className="flex items-center justify-between font-bold text-sm mb-2">
                       <div className="flex items-center gap-2"><Badge>2</Badge> Upload Polygons</div>
                       {step === 2 && <HelpGuide type="city-upload" />}
                   </div>
                   {step === 2 && (
                     <>
-                        <div className="text-xs text-slate-500 mb-2">To create sub-zones, include <strong>Zone_Group</strong> column.</div>
-                        <Input type="file" accept=".csv" onChange={handleFileLoad} className="mb-2 bg-white" />
+                        <div className="text-xs text-muted-foreground mb-2">To create sub-zones, include <strong>Zone_Group</strong> column.</div>
+                        <Input type="file" accept=".csv" onChange={handleFileLoad} className="mb-2 bg-card" />
                         <Button size="sm" className="w-full" disabled={csvData.length === 0} onClick={() => setStep(3)}>Next</Button>
                     </>
                   )}
               </div>
 
-              <div className={`p-4 rounded-xl border transition-all ${step === 3 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-white border-slate-100 opacity-50'}`}>
+              <div className={`p-4 rounded-xl border transition-all ${step === 3 ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-card border-border opacity-50'}`}>
                   <div className="flex items-center gap-2 font-bold text-sm mb-2"><Badge>3</Badge> Thresholds</div>
                   {step === 3 && (
                     <>
                         <div className="space-y-4 mb-4 max-h-[400px] overflow-y-auto pr-1">
                             {detectedZones.map(zone => (
-                                <div key={zone} className="bg-white p-3 rounded border shadow-sm space-y-3">
-                                    <div className="text-xs font-black uppercase text-slate-600 flex items-center gap-2">
+                                <div key={zone} className="bg-card p-3 rounded border shadow-sm space-y-3">
+                                    <div className="text-xs font-black uppercase text-muted-foreground flex items-center gap-2">
                                         <Layers className="h-3 w-3" /> {zone} Rules
                                     </div>
                                     <div className="bg-emerald-50 p-2 rounded">
                                         <div className="text-[9px] font-bold text-emerald-700 mb-1 uppercase">Inside Zone</div>
                                         <div className="flex gap-2">
-                                            <Input type="number" className="h-6 text-xs bg-white" value={zoneThresholds[zone]?.internal?.green} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], internal: {...p[zone].internal, green: Number(e.target.value)}} }))} />
-                                            <Input type="number" className="h-6 text-xs bg-white" value={zoneThresholds[zone]?.internal?.yellow} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], internal: {...p[zone].internal, yellow: Number(e.target.value)}} }))} />
+                                            <Input type="number" className="h-6 text-xs bg-card" value={zoneThresholds[zone]?.internal?.green} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], internal: {...p[zone].internal, green: Number(e.target.value)}} }))} />
+                                            <Input type="number" className="h-6 text-xs bg-card" value={zoneThresholds[zone]?.internal?.yellow} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], internal: {...p[zone].internal, yellow: Number(e.target.value)}} }))} />
                                         </div>
                                     </div>
                                     <div className="bg-amber-50 p-2 rounded">
                                         <div className="text-[9px] font-bold text-amber-700 mb-1 uppercase flex items-center gap-1"><ArrowRightLeft className="h-3 w-3"/> Cross-Zone</div>
                                         <div className="flex gap-2">
-                                            <Input type="number" className="h-6 text-xs bg-white" value={zoneThresholds[zone]?.external?.green} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], external: {...p[zone].external, green: Number(e.target.value)}} }))} />
-                                            <Input type="number" className="h-6 text-xs bg-white" value={zoneThresholds[zone]?.external?.yellow} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], external: {...p[zone].external, yellow: Number(e.target.value)}} }))} />
+                                            <Input type="number" className="h-6 text-xs bg-card" value={zoneThresholds[zone]?.external?.green} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], external: {...p[zone].external, green: Number(e.target.value)}} }))} />
+                                            <Input type="number" className="h-6 text-xs bg-card" value={zoneThresholds[zone]?.external?.yellow} onChange={e => setZoneThresholds(p => ({...p, [zone]: {...p[zone], external: {...p[zone].external, yellow: Number(e.target.value)}} }))} />
                                         </div>
                                     </div>
                                 </div>
@@ -382,8 +382,8 @@ export default function CityManagementPage() {
         )}
 
         {/* ACTIVE CITIES TABLE */}
-        <Card className={`${canCreate ? "md:col-span-2" : "md:col-span-3"} shadow-xl shadow-slate-200/50 rounded-2xl overflow-hidden border-slate-100`}>
-          <CardHeader className="bg-white border-b border-slate-50"><CardTitle className="text-xl">Active Cities</CardTitle></CardHeader>
+        <Card className={`${canCreate ? "md:col-span-2" : "md:col-span-3"} shadow-xl shadow-black/5 rounded-2xl overflow-hidden border-border`}>
+          <CardHeader className="bg-card border-b border-border"><CardTitle className="text-xl">Active Cities</CardTitle></CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
@@ -408,7 +408,7 @@ export default function CityManagementPage() {
                                     {ENGINES.map(e => <option key={e.value} value={e.value}>{e.label.split(' ')[0]}</option>)}
                                 </select>
                             ) : (
-                                <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                                     <Server className="h-3 w-3" />
                                     {getEngineLabel(c.routingEngine).split(' ')[0]}
                                 </div>
@@ -417,12 +417,12 @@ export default function CityManagementPage() {
                         <TableCell>
                             {c.subZones ? (
                                 <div className="flex flex-wrap gap-1">
-                                    {c.subZones.map((z:any) => <Badge key={z.name} variant="outline" className="text-[10px] bg-slate-50">{z.name}</Badge>)}
+                                    {c.subZones.map((z:any) => <Badge key={z.name} variant="outline" className="text-[10px] bg-muted">{z.name}</Badge>)}
                                 </div>
                             ) : <Badge variant="outline">Default</Badge>}
                         </TableCell>
                         <TableCell>
-                            <span className="text-xs text-slate-400 italic">View Details</span>
+                            <span className="text-xs text-muted-foreground italic">View Details</span>
                         </TableCell>
                         {(canEdit || canDelete) && (
                             <TableCell className="text-right">
@@ -439,7 +439,7 @@ export default function CityManagementPage() {
                                         {canDelete && (
                                             <Button size="icon" variant="ghost" className="text-red-400" onClick={() => handleDeleteCity(c.id)}><Trash2 className="h-4 w-4" /></Button>
                                         )}
-                                        {!canEdit && !canDelete && <Lock className="h-4 w-4 text-slate-200" />}
+                                        {!canEdit && !canDelete && <Lock className="h-4 w-4 text-muted-foreground" />}
                                     </div>
                                 )}
                             </TableCell>

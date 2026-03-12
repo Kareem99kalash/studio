@@ -628,25 +628,25 @@ export default function BatchCoveragePage() {
   return (
     <div className="space-y-6">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border space-y-4 md:space-y-0">
+      <div className="flex flex-col md:flex-row justify-between items-center bg-card p-4 rounded-xl shadow-sm border space-y-4 md:space-y-0">
         <div>
             <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                     <MapIcon className="h-6 w-6 text-purple-600"/> Coverage Commander
                 </h1>
-                <Link href="/dashboard/documentation#batch-processor" className="text-slate-300 hover:text-primary transition-colors" title="View Documentation">
+                <Link href="/dashboard/documentation#batch-processor" className="text-muted-foreground hover:text-primary transition-colors" title="View Documentation">
                     <HelpCircle className="h-5 w-5" />
                 </Link>
             </div>
-            <p className="text-slate-500 text-xs">Multi-Layer Analysis • Weighted Demand • Visual Reassignment</p>
+            <p className="text-muted-foreground text-xs">Multi-Layer Analysis • Weighted Demand • Visual Reassignment</p>
         </div>
         <div className="flex flex-wrap gap-3 items-end">
             <div className="w-24">
-                <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">Max KM</label>
+                <label className="text-[9px] font-bold uppercase text-muted-foreground block mb-1">Max KM</label>
                 <Input type="number" value={threshold} onChange={e => setThreshold(Number(e.target.value))} className="h-9" />
             </div>
             <div className="w-32">
-                 <label className="text-[9px] font-bold uppercase text-slate-400 block mb-1">Engine</label>
+                 <label className="text-[9px] font-bold uppercase text-muted-foreground block mb-1">Engine</label>
                  <Select value={region} onValueChange={setRegion}>
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent className="z-[9999]">
@@ -655,7 +655,7 @@ export default function BatchCoveragePage() {
                     </SelectContent>
                 </Select>
             </div>
-            <div className="flex items-center gap-2 border p-2 rounded bg-slate-50 h-9">
+            <div className="flex items-center gap-2 border p-2 rounded bg-muted h-9">
                 <Switch checked={useAiBalance} onCheckedChange={setUseAiBalance} id="ai-mode" />
                 <Label htmlFor="ai-mode" className="text-xs font-bold cursor-pointer flex items-center gap-1">
                     <Sparkles className="h-3 w-3 text-amber-500" /> Smart Balance
@@ -666,27 +666,27 @@ export default function BatchCoveragePage() {
 
       {/* UPLOAD AREA */}
       <div className="grid grid-cols-3 gap-4">
-        <Card className={`border-dashed border-2 transition ${stores.length ? 'border-green-500 bg-green-50' : 'hover:bg-slate-50'}`}>
+        <Card className={`border-dashed border-2 transition ${stores.length ? 'border-green-500 bg-green-50' : 'hover:bg-muted'}`}>
             <CardContent className="pt-6 text-center">
                 <UploadCloud className={`mx-auto h-8 w-8 mb-2 ${stores.length ? 'text-green-600' : 'text-blue-500'}`}/>
                 <h3 className="font-bold text-sm">1. Stores</h3>
-                <p className="text-[10px] text-slate-400 mb-2">{stores.length} Loaded</p>
+                <p className="text-[10px] text-muted-foreground mb-2">{stores.length} Loaded</p>
                 <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'stores')} className="text-xs ml-8 mt-2"/>
             </CardContent>
         </Card>
-        <Card className={`border-dashed border-2 transition ${polygons.some(p => p.group === 'primary') ? 'border-blue-500 bg-blue-50' : 'hover:bg-slate-50'}`}>
+        <Card className={`border-dashed border-2 transition ${polygons.some(p => p.group === 'primary') ? 'border-blue-500 bg-blue-50' : 'hover:bg-muted'}`}>
             <CardContent className="pt-6 text-center">
                 <Layers className={`mx-auto h-8 w-8 mb-2 ${polygons.some(p => p.group === 'primary') ? 'text-blue-600' : 'text-blue-400'}`}/>
                 <h3 className="font-bold text-sm">2. Primary Zones</h3>
-                <p className="text-[10px] text-slate-400 mb-2">{polygons.filter(p => p.group === 'primary').length} Zones</p>
+                <p className="text-[10px] text-muted-foreground mb-2">{polygons.filter(p => p.group === 'primary').length} Zones</p>
                 <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons_primary')} className="text-xs ml-8 mt-2"/>
             </CardContent>
         </Card>
-        <Card className={`border-dashed border-2 transition ${polygons.some(p => p.group === 'secondary') ? 'border-orange-500 bg-orange-50' : 'hover:bg-slate-50'}`}>
+        <Card className={`border-dashed border-2 transition ${polygons.some(p => p.group === 'secondary') ? 'border-orange-500 bg-orange-50' : 'hover:bg-muted'}`}>
             <CardContent className="pt-6 text-center">
                 <Layers className={`mx-auto h-8 w-8 mb-2 ${polygons.some(p => p.group === 'secondary') ? 'text-orange-600' : 'text-orange-400'}`}/>
                 <h3 className="font-bold text-sm">3. Secondary Zones</h3>
-                <p className="text-[10px] text-slate-400 mb-2">Cross-Zone / Overlap</p>
+                <p className="text-[10px] text-muted-foreground mb-2">Cross-Zone / Overlap</p>
                 <input type="file" accept=".csv" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], 'polygons_secondary')} className="text-xs ml-8 mt-2"/>
             </CardContent>
         </Card>
@@ -694,7 +694,7 @@ export default function BatchCoveragePage() {
 
       {/* COLUMN MAPPING WIZARD */}
       <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
-        <DialogContent className="max-w-xl z-[9999] bg-white backdrop-blur-sm">
+        <DialogContent className="max-w-xl z-[9999] bg-card backdrop-blur-sm">
             <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                     <FileSpreadsheet className="h-5 w-5 text-green-600"/> Map CSV Columns
@@ -706,7 +706,7 @@ export default function BatchCoveragePage() {
             <div className="grid gap-4 py-4">
                 {(wizardType === 'stores' ? REQUIRED_FIELDS.stores : REQUIRED_FIELDS.polygons).map((field) => (
                     <div key={field.key} className="grid grid-cols-4 items-center gap-4">
-                        <Label className="text-right text-xs font-bold uppercase text-slate-500 col-span-1">
+                        <Label className="text-right text-xs font-bold uppercase text-muted-foreground col-span-1">
                             {field.label} {field.required && <span className="text-red-500">*</span>}
                         </Label>
                         <Select 
@@ -732,15 +732,15 @@ export default function BatchCoveragePage() {
 
       {/* REASSIGN DIALOG */}
       <Dialog open={!!reassignDialogData} onOpenChange={(open) => !open && setReassignDialogData(null)}>
-        <DialogContent className="z-[9999] bg-white/95 backdrop-blur-sm shadow-2xl border border-slate-200">
+        <DialogContent className="z-[9999] bg-white/95 backdrop-blur-sm shadow-2xl border border-border">
             <DialogHeader>
                 <DialogTitle>Reassign Polygon</DialogTitle>
                 <DialogDescription>
-                    Move <span className="font-bold text-slate-900">{reassignDialogData?.polyName}</span> to a new branch under <span className="font-bold text-slate-900">{selectedParent}</span>.
+                    Move <span className="font-bold text-foreground">{reassignDialogData?.polyName}</span> to a new branch under <span className="font-bold text-foreground">{selectedParent}</span>.
                 </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-                <Label className="text-xs mb-2 block font-bold uppercase text-slate-500">Select New Branch</Label>
+                <Label className="text-xs mb-2 block font-bold uppercase text-muted-foreground">Select New Branch</Label>
                 <Select value={pendingReassignStore} onValueChange={setPendingReassignStore}>
                     <SelectTrigger className="w-full">
                         <SelectValue placeholder="Choose branch..." />
@@ -775,21 +775,21 @@ export default function BatchCoveragePage() {
 
                 {activeTab === 'map' && (
                     <div className="flex gap-2">
-                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                            <button onClick={() => setViewLayer('all')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'all' ? 'bg-white shadow text-slate-800' : 'text-slate-400'}`}>All</button>
-                            <button onClick={() => setViewLayer('primary')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'primary' ? 'bg-blue-100 text-blue-700' : 'text-slate-400'}`}>Primary</button>
-                            <button onClick={() => setViewLayer('secondary')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'secondary' ? 'bg-orange-100 text-orange-700' : 'text-slate-400'}`}>Secondary</button>
+                        <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
+                            <button onClick={() => setViewLayer('all')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'all' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}>All</button>
+                            <button onClick={() => setViewLayer('primary')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'primary' ? 'bg-blue-100 text-blue-700' : 'text-muted-foreground'}`}>Primary</button>
+                            <button onClick={() => setViewLayer('secondary')} className={`px-2 py-1 text-xs font-bold rounded ${viewLayer === 'secondary' ? 'bg-orange-100 text-orange-700' : 'text-muted-foreground'}`}>Secondary</button>
                         </div>
 
                         <Select value={selectedParent} onValueChange={setSelectedParent}>
-                            <SelectTrigger className="w-[200px] h-9 bg-white shadow-sm border-blue-200 z-[50]">
+                            <SelectTrigger className="w-[200px] h-9 bg-card shadow-sm border-blue-200 z-[50]">
                                 <SelectValue placeholder="Select Parent" />
                             </SelectTrigger>
                             <SelectContent className="z-[9999] max-h-[300px]">
                                 {sortedParents.map(p => (
                                     <SelectItem key={p.id} value={p.id}>
                                         <span className="font-mono text-xs">{p.id}</span>
-                                        <span className="mx-2 text-slate-300">-</span>
+                                        <span className="mx-2 text-muted-foreground">-</span>
                                         <span className="font-bold">{p.name}</span>
                                     </SelectItem>
                                 ))}
@@ -797,7 +797,7 @@ export default function BatchCoveragePage() {
                         </Select>
                         
                         <div className="relative">
-                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                              <Input placeholder="Search Branch..." value={searchStore} onChange={e => setSearchStore(e.target.value)} className="w-40 h-9 pl-8" />
                         </div>
 
@@ -813,7 +813,7 @@ export default function BatchCoveragePage() {
                 )}
             </div>
 
-            <TabsContent value="map" className="h-[650px] border-2 border-slate-200 rounded-xl overflow-hidden relative shadow-inner">
+            <TabsContent value="map" className="h-[650px] border-2 border-border rounded-xl overflow-hidden relative shadow-inner">
                 {reassignMode && (
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-4 py-2 rounded-full shadow-xl z-[999] font-bold text-sm animate-pulse flex items-center gap-2">
                         <Edit className="h-4 w-4" /> REASSIGN MODE: Select polygon to change
@@ -849,19 +849,19 @@ export default function BatchCoveragePage() {
                                                         {a.group === 'secondary' ? 'Secondary' : 'Primary'}
                                                     </Badge>
                                                 </div>
-                                                <div className="text-[10px] text-slate-400 mb-2">Demand: {a.demand || 1}</div>
+                                                <div className="text-[10px] text-muted-foreground mb-2">Demand: {a.demand || 1}</div>
                                                 
                                                 {!reassignMode ? (
                                                     <>
                                                         {a.isCovered ? (
                                                             <>
-                                                                <div className="bg-slate-100 p-2 rounded mb-2 border-l-4" style={{borderLeftColor: a.Color}}>
-                                                                    <div className="text-xs font-bold text-slate-400 uppercase">Assigned Branch</div>
-                                                                    <div className="font-bold text-slate-800">{a.StoreName}</div>
-                                                                    <div className="text-xs text-slate-500">{a.DistanceKM} km</div>
+                                                                <div className="bg-muted p-2 rounded mb-2 border-l-4" style={{borderLeftColor: a.Color}}>
+                                                                    <div className="text-xs font-bold text-muted-foreground uppercase">Assigned Branch</div>
+                                                                    <div className="font-bold text-foreground">{a.StoreName}</div>
+                                                                    <div className="text-xs text-muted-foreground">{a.DistanceKM} km</div>
                                                                 </div>
                                                                 {a.isAiOptimized && <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px] w-full justify-center mb-2">✨ AI Rebalanced</Badge>}
-                                                                <div className="text-[10px] text-center text-slate-400 mt-2">Click to view 3-point analysis</div>
+                                                                <div className="text-[10px] text-center text-muted-foreground mt-2">Click to view 3-point analysis</div>
                                                             </>
                                                         ) : (
                                                             <div className="bg-red-50 p-3 rounded border border-red-100"><div className="flex items-center gap-2 text-red-600 font-bold text-sm mb-1"><AlertCircle className="h-4 w-4"/> Uncovered</div><p className="text-xs text-red-800">{a.failureReason}</p></div>
@@ -902,7 +902,7 @@ export default function BatchCoveragePage() {
                     <Pane name="stores" style={{ zIndex: 500 }}>
                         {processedStores.filter(s => s.parentId === selectedParent).map((s, i) => (
                             <CircleMarker key={`store-${i}`} center={[s.lat, s.lng]} radius={8} pathOptions={{ color: 'white', weight: 3, fillColor: s.color, fillOpacity: 1 }}>
-                                <Popup><strong>{s.name}</strong><br/><span className="text-xs text-slate-500">{s.id}</span></Popup>
+                                <Popup><strong>{s.name}</strong><br/><span className="text-xs text-muted-foreground">{s.id}</span></Popup>
                             </CircleMarker>
                         ))}
                     </Pane>
@@ -915,9 +915,9 @@ export default function BatchCoveragePage() {
                     <CardHeader className="flex flex-row justify-between py-3 items-center">
                         <div className="flex items-center gap-4">
                             <CardTitle>Master Assignment Summary</CardTitle>
-                            <div className="flex bg-slate-100 p-1 rounded-lg">
-                                <button onClick={() => setSummaryMode('polygon')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${summaryMode === 'polygon' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>By Polygon</button>
-                                <button onClick={() => setSummaryMode('store')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${summaryMode === 'store' ? 'bg-white shadow text-purple-600' : 'text-slate-500'}`}>By Store</button>
+                            <div className="flex bg-muted p-1 rounded-lg">
+                                <button onClick={() => setSummaryMode('polygon')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${summaryMode === 'polygon' ? 'bg-card shadow text-blue-600' : 'text-muted-foreground'}`}>By Polygon</button>
+                                <button onClick={() => setSummaryMode('store')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${summaryMode === 'store' ? 'bg-card shadow text-purple-600' : 'text-muted-foreground'}`}>By Store</button>
                             </div>
                         </div>
                         <Button size="sm" variant="outline" onClick={() => {
@@ -947,7 +947,7 @@ export default function BatchCoveragePage() {
                                         <TableCell className="font-mono text-xs leading-relaxed">{row.Items}</TableCell>
                                         <TableCell className="font-mono font-bold">{row.Count}</TableCell>
                                         {summaryMode === 'store' && <TableCell className="font-mono text-green-600 font-bold">{row.CoveragePercent}</TableCell>}
-                                        {summaryMode === 'store' && <TableCell className="font-mono text-slate-500">{row.TotalDemand}</TableCell>}
+                                        {summaryMode === 'store' && <TableCell className="font-mono text-muted-foreground">{row.TotalDemand}</TableCell>}
                                     </TableRow>
                                 ))}
                             </TableBody>

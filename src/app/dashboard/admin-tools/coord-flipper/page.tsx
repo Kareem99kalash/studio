@@ -66,29 +66,29 @@ export default function CoordinateFlipperPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="border-b pb-4">
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <RefreshCw className="h-6 w-6 text-orange-600"/> Coordinate Flipper
             <Link href="/dashboard/documentation#coord-flipper">
-                <HelpCircle className="h-4 w-4 text-slate-300 hover:text-orange-600 transition-colors cursor-help" />
+                <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-orange-600 transition-colors cursor-help" />
             </Link>
         </h1>
-        <p className="text-slate-500">Converts WKT to flipped raw coordinates (Lat Lng,Lat Lng...)</p>
+        <p className="text-muted-foreground">Converts WKT to flipped raw coordinates (Lat Lng,Lat Lng...)</p>
       </div>
       
       <Card>
         <CardContent className="p-8 space-y-6">
-          <div className="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center bg-slate-50 relative">
+          <div className="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center bg-muted relative">
             <input type="file" accept=".csv" onChange={handleUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
             <div className="flex flex-col items-center">
                 <Upload className="h-8 w-8 text-orange-500 mb-2" />
-                <span className="font-bold text-slate-700">Click to Upload CSV</span>
+                <span className="font-bold text-foreground">Click to Upload CSV</span>
             </div>
           </div>
 
           {cols.length > 0 && (
-            <div className="flex gap-4 items-end bg-white p-4 rounded border">
+            <div className="flex gap-4 items-end bg-card p-4 rounded border">
                 <div className="flex-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">WKT Column</label>
+                    <label className="text-xs font-bold text-muted-foreground uppercase">WKT Column</label>
                     <select className="w-full p-2 border rounded" value={wktCol} onChange={e => setWktCol(e.target.value)}>
                         {cols.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>

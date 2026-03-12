@@ -339,33 +339,33 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
       <div ref={mapContainerRef} className="h-full w-full cursor-crosshair z-0" />
       
       {/* HUD Panel */}
-      <div className={`absolute top-4 right-4 z-[1000] bg-white rounded-2xl shadow-xl p-2 transition-all duration-300 border border-slate-200 ${isHudCollapsed ? 'w-12 h-12 overflow-hidden' : 'w-64'}`}>
+      <div className={`absolute top-4 right-4 z-[1000] bg-card rounded-2xl shadow-xl p-2 transition-all duration-300 border border-border ${isHudCollapsed ? 'w-12 h-12 overflow-hidden' : 'w-64'}`}>
         <div className="flex justify-between items-center px-2 py-1 mb-2">
           {!isHudCollapsed && (
-             <div className="text-[10px] font-bold text-slate-400 uppercase">
+             <div className="text-[10px] font-bold text-muted-foreground uppercase">
                AI Architect <span className={isProcessing ? "animate-pulse text-purple-600 ml-2" : "hidden"}>ACTIVE</span>
              </div>
           )}
-          <button onClick={() => setIsHudCollapsed(!isHudCollapsed)} className="hover:bg-slate-100 p-1 rounded-full">
-            {isHudCollapsed ? <Maximize2 className="h-4 w-4 text-slate-600" /> : <Minimize2 className="h-3 w-3 text-slate-400" />}
+          <button onClick={() => setIsHudCollapsed(!isHudCollapsed)} className="hover:bg-muted p-1 rounded-full">
+            {isHudCollapsed ? <Maximize2 className="h-4 w-4 text-muted-foreground" /> : <Minimize2 className="h-3 w-3 text-muted-foreground" />}
           </button>
         </div>
         
         {!isHudCollapsed && (
           <div className="space-y-2">
-            <button onClick={() => setSnapToVertices(!snapToVertices)} className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all ${snapToVertices ? 'bg-purple-100 text-purple-700' : 'bg-slate-50 text-slate-500'}`}>
+            <button onClick={() => setSnapToVertices(!snapToVertices)} className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all ${snapToVertices ? 'bg-purple-100 text-purple-700' : 'bg-muted text-muted-foreground'}`}>
               <Merge className="h-3 w-3" /> Vertex Magnet <div className={`ml-auto w-2 h-2 rounded-full ${snapToVertices ? 'bg-purple-500' : 'bg-slate-300'}`} />
             </button>
-            <button onClick={() => setSnapToRoads(!snapToRoads)} className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all ${snapToRoads ? 'bg-blue-100 text-blue-700' : 'bg-slate-50 text-slate-500'}`}>
+            <button onClick={() => setSnapToRoads(!snapToRoads)} className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all ${snapToRoads ? 'bg-blue-100 text-blue-700' : 'bg-muted text-muted-foreground'}`}>
               <Zap className="h-3 w-3" /> Auto-Align Grid <div className={`ml-auto w-2 h-2 rounded-full ${snapToRoads ? 'bg-blue-500' : 'bg-slate-300'}`} />
             </button>
           </div>
         )}
       </div>
 
-      <button onClick={toggleSat} className="absolute bottom-6 right-6 z-[1000] bg-white px-4 py-2 rounded-xl shadow-2xl border flex items-center gap-2 hover:bg-slate-50">
-        {isSatellite ? <MapIcon className="h-4 w-4 text-blue-500" /> : <Satellite className="h-4 w-4 text-slate-400" />}
-        <span className="text-[10px] font-black uppercase tracking-widest text-slate-700">{isSatellite ? 'Street Map' : 'Satellite'}</span>
+      <button onClick={toggleSat} className="absolute bottom-6 right-6 z-[1000] bg-card px-4 py-2 rounded-xl shadow-2xl border flex items-center gap-2 hover:bg-muted">
+        {isSatellite ? <MapIcon className="h-4 w-4 text-blue-500" /> : <Satellite className="h-4 w-4 text-muted-foreground" />}
+        <span className="text-[10px] font-black uppercase tracking-widest text-foreground">{isSatellite ? 'Street Map' : 'Satellite'}</span>
       </button>
 
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] bg-slate-900/90 backdrop-blur text-white px-6 py-2 rounded-full shadow-xl text-[10px] font-bold uppercase tracking-widest flex items-center gap-3 border border-slate-700">
@@ -375,9 +375,9 @@ export function DrawingInterface({ geojson, onChange }: DrawingInterfaceProps) {
       
       {isProcessing && (
         <div className="absolute inset-0 z-[2000] bg-white/50 backdrop-blur-[2px] flex items-center justify-center">
-            <div className="bg-white p-4 rounded-full shadow-2xl flex items-center gap-3 border border-purple-100 animate-in zoom-in duration-200">
+            <div className="bg-card p-4 rounded-full shadow-2xl flex items-center gap-3 border border-purple-100 animate-in zoom-in duration-200">
                 <Loader2 className="h-6 w-6 text-purple-600 animate-spin" />
-                <span className="text-xs font-black uppercase tracking-widest text-slate-800">Aligning to Roads...</span>
+                <span className="text-xs font-black uppercase tracking-widest text-foreground">Aligning to Roads...</span>
             </div>
         </div>
       )}

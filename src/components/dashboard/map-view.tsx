@@ -134,7 +134,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
     setResetTrigger(prev => prev + 1);
   };
 
-  if (!isClient) return <div className="h-full w-full bg-slate-50 flex items-center justify-center font-bold">Initializing Map...</div>;
+  if (!isClient) return <div className="h-full w-full bg-muted flex items-center justify-center font-bold">Initializing Map...</div>;
 
   const fetchRoutePath = async (start: [number, number], end: [number, number], color: string, label: string) => {
     if (!start || !end || isNaN(start[0]) || isNaN(end[0])) return { success: false, color, label, errorMsg: "Invalid Coords" };
@@ -224,7 +224,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
   };
 
   return (
-    <div className="flex h-full w-full gap-4 p-2 bg-slate-50 overflow-hidden">
+    <div className="flex h-full w-full gap-4 p-2 bg-muted overflow-hidden">
       
       {usePatterns && (
         <svg width="0" height="0" style={{ position: 'absolute' }}>
@@ -233,7 +233,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
       )}
 
       {/* MAP */}
-      <div className="flex-[7] rounded-xl overflow-hidden border relative shadow-md bg-white">
+      <div className="flex-[7] rounded-xl overflow-hidden border relative shadow-md bg-card">
         <div className="absolute top-4 left-4 z-[1000] flex items-center gap-2">
            <Button variant="secondary" size="sm" className="h-8 bg-white/90 shadow-sm font-bold text-[10px]" onClick={handleReset}>
               <RefreshCw className="h-3 w-3 mr-1" /> Reset View
@@ -244,7 +244,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
         {/* Legend */}
         {usePatterns && Object.keys(storePatternMap).length > 0 && (
             <div className="absolute bottom-4 right-4 z-[1000] bg-white/90 p-2 rounded-lg shadow-md border space-y-1">
-                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-600 mb-1">
+                <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground mb-1">
                     <Layers className="h-3 w-3" /> Branch Patterns
                 </div>
                 {stores.map((store: any) => {
@@ -332,8 +332,8 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                    <CheckCircle2 className="h-6 w-6 opacity-40" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-white p-2 rounded border border-purple-100 text-center shadow-sm"><div className="text-[8px] font-bold text-slate-400 uppercase">Covered</div><div className="text-sm font-bold text-green-600">{aiInsights.covered} Zones</div></div>
-                    <div className="bg-white p-2 rounded border border-purple-100 text-center shadow-sm"><div className="text-[8px] font-bold text-slate-400 uppercase">Warning</div><div className="text-sm font-bold text-amber-500">{aiInsights.warning} Zones</div></div>
+                    <div className="bg-card p-2 rounded border border-purple-100 text-center shadow-sm"><div className="text-[8px] font-bold text-muted-foreground uppercase">Covered</div><div className="text-sm font-bold text-green-600">{aiInsights.covered} Zones</div></div>
+                    <div className="bg-card p-2 rounded border border-purple-100 text-center shadow-sm"><div className="text-[8px] font-bold text-muted-foreground uppercase">Warning</div><div className="text-sm font-bold text-amber-500">{aiInsights.warning} Zones</div></div>
                 </div>
               </>
             )}
@@ -348,26 +348,26 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
             ) : (
               <div className="space-y-4">
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
-                    <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-blue-600" /><span className="text-sm font-bold text-slate-800 truncate">{selectedZoneData.name}</span></div>
-                    <div className="flex items-center gap-2 pl-6"><Badge variant="outline" className="text-[10px] bg-white border-blue-200 text-slate-500 font-mono">ID: {selectedZoneData.id}</Badge></div>
+                    <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-blue-600" /><span className="text-sm font-bold text-foreground truncate">{selectedZoneData.name}</span></div>
+                    <div className="flex items-center gap-2 pl-6"><Badge variant="outline" className="text-[10px] bg-card border-blue-200 text-muted-foreground font-mono">ID: {selectedZoneData.id}</Badge></div>
                 </div>
 
                 <div className="space-y-2">
                   {routePaths.map((r, i) => (
-                    <div key={i} className={`p-2.5 border rounded-lg shadow-sm flex justify-between items-center ${r.success ? 'bg-white border-slate-100' : 'bg-red-50 border-red-100'}`}>
+                    <div key={i} className={`p-2.5 border rounded-lg shadow-sm flex justify-between items-center ${r.success ? 'bg-card border-border' : 'bg-red-50 border-red-100'}`}>
                       {r.success ? (
                         <>
                             <div className="flex flex-col">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                <span className="text-[9px] font-bold text-muted-foreground uppercase flex items-center gap-1">
                                 <div className="h-2 w-2 rounded-full shadow-sm" style={{backgroundColor: r.color}} /> {r.label}
                                 </span>
-                                <span className="font-bold text-slate-700 text-xs flex items-center gap-1 mt-0.5">
+                                <span className="font-bold text-foreground text-xs flex items-center gap-1 mt-0.5">
                                 <Clock className="h-3 w-3 text-blue-500" /> {r.durationMin} mins
                                 </span>
                             </div>
                             <div className="text-right">
-                                <span className="text-[8px] font-bold text-slate-300 uppercase">Road Dist.</span>
-                                <div className="text-sm font-black text-slate-800">{r.distanceKm} km</div>
+                                <span className="text-[8px] font-bold text-muted-foreground uppercase">Road Dist.</span>
+                                <div className="text-sm font-black text-foreground">{r.distanceKm} km</div>
                             </div>
                         </>
                       ) : (
@@ -381,7 +381,7 @@ export function MapView({ selectedCity, stores = [], analysisData, isLoading }: 
                       )}
                     </div>
                   ))}
-                  {isFetchingRoute && <div className="text-center text-xs text-slate-400 italic py-4">Calculating...</div>}
+                  {isFetchingRoute && <div className="text-center text-xs text-muted-foreground italic py-4">Calculating...</div>}
                 </div>
               </div>
             )}

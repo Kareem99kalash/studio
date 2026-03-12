@@ -15,9 +15,9 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
   // 2. Loading State
   if (loading) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-slate-50">
+      <div className="h-screen flex flex-col items-center justify-center bg-background">
         <Loader2 className="animate-spin h-10 w-10 text-purple-600 mb-2" />
-        <p className="text-slate-500 font-bold text-sm tracking-widest uppercase">Validating Credentials</p>
+        <p className="text-muted-foreground font-bold text-sm tracking-widest uppercase">Validating Credentials</p>
       </div>
     );
   }
@@ -30,18 +30,18 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
   // 4. Access Denied State (Logged in, but insufficient permissions)
   if (!isAuthorized) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-slate-100 p-6 text-center">
-        <div className="bg-white p-10 rounded-2xl shadow-2xl max-w-md border-t-4 border-t-red-500">
-            <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+      <div className="h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
+        <div className="bg-card p-10 rounded-2xl shadow-2xl max-w-md border-t-4 border-t-red-500">
+            <div className="bg-red-50 dark:bg-red-950 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
               <ShieldAlert className="h-10 w-10 text-red-500" />
             </div>
-            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Restricted Area</h1>
-            <p className="text-slate-500 mt-3 mb-8 text-sm leading-relaxed">
+            <h1 className="text-2xl font-black text-foreground uppercase tracking-tight">Restricted Area</h1>
+            <p className="text-muted-foreground mt-3 mb-8 text-sm leading-relaxed">
                 This sector is reserved for <strong>Admins & Managers</strong> only. Your current clearance level does not grant access.
             </p>
             <button 
               onClick={() => router.push('/dashboard')} 
-              className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-lg"
+              className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-colors shadow-lg"
             >
                 Return to Command Center
             </button>
@@ -52,20 +52,20 @@ export default function AdminToolsLayout({ children }: { children: React.ReactNo
 
   // 5. Authorized View
   return (
-    <div className="flex flex-col h-full bg-slate-50 min-h-screen">
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+    <div className="flex flex-col h-full bg-background min-h-screen">
+      <div className="bg-card border-b border-border px-6 py-4 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center gap-3">
             <div className="bg-purple-600 p-1.5 rounded-md">
                <Lock className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-slate-800 tracking-tight leading-none">Admin Utilities</h2>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Elevated Permissions Active</span>
+              <h2 className="font-bold text-foreground tracking-tight leading-none">Admin Utilities</h2>
+              <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Elevated Permissions Active</span>
             </div>
         </div>
         <div className="flex items-center gap-2">
            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Secure Session</span>
+           <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Secure Session</span>
         </div>
       </div>
       <div className="flex-1 p-6 md:p-10">

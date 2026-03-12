@@ -21,12 +21,12 @@ export function MaintenanceScreen({ message }: MaintenanceScreenProps) {
           System Under Maintenance
         </h1>
         
-        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-6">
+        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-6">
             Updating Routing Engine
         </p>
 
         <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-800 mb-6">
-           <p className="text-slate-300 text-sm leading-relaxed">
+           <p className="text-muted-foreground text-sm leading-relaxed">
              {message || "We are optimizing the coverage zones. Access is temporarily restricted to Administrators."}
            </p>
         </div>
@@ -46,7 +46,7 @@ export function MaintenanceScreen({ message }: MaintenanceScreenProps) {
             </Button>
         </div>
 
-        <div className="mt-8 flex justify-center items-center gap-2 text-[9px] font-black text-slate-600 uppercase tracking-widest">
+        <div className="mt-8 flex justify-center items-center gap-2 text-[9px] font-black text-muted-foreground uppercase tracking-widest">
            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
            Status Page: Offline
         </div>
