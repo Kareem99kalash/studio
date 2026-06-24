@@ -19,28 +19,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing HF token' }, { status: 500 });
     }
 
-    // OSRM POST format: send everything in body, empty path
-    const url = `${endpoint}/table/v1/driving`;
+    // Build URL with coordinates in path (OSRM GET format)
+    const coordString = coordinates
+      .map((c: number[]) => `${c[0].toFixed(5)},${c[1].toFixed(5)}`)
+      .join(';');
 
-    const osrmBody = {
-      coordinates: coordinates,
-      sources: sources,
-      destinations: destinations,
-      annotations: ['distance']
-    };
+    const params = new URLSearchParams();
+    if (sources?.length) params.append('sources', sources.join(';'));
+    if (destinations?.length) params.append('destinations', destinations.join(';'));
+    params.append('annotations', 'distance');
+
+    const url = `${endpoint}/table/v1/driving/${coordString}?${params.toString()}`;
 
     const res = await fetch(url, {
-      method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(osrmBody)
     });
 
     if (!res.ok) {
       const error = await res.text();
-      console.error('OSRM Error:', res.status, error);
+      console.error('OSRM Error:', res.status, url.substring(0, 200));
       return NextResponse.json(
         { error: `OSRM error: ${res.status}`, details: error },
         { status: res.status }

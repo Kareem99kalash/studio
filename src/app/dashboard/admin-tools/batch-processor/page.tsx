@@ -310,7 +310,7 @@ export default function BatchCoveragePage() {
         } catch { return null; }
     }).filter(p => p !== null);
 
-    const chunkSize = 25; 
+    const chunkSize = 3; 
     let hasError = false;
 
     // BATCH LOOP
