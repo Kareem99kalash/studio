@@ -31,18 +31,8 @@ const nextConfig = {
     ],
   },
 
-  async rewrites() {
-    return [
-      {
-        source: '/api/osrm/erbil/:path*',
-        destination: 'https://kareem99k-erbil-osrm-engine.hf.space/:path*',
-      },
-      {
-        source: '/api/osrm/beirut/:path*',
-        destination: 'https://kareem99k-beirut-osrm-engine.hf.space/:path*',
-      },
-    ]
-  },
+  // Proxy rewrites removed - using direct OSRM endpoints instead
+
 
   async headers() {
     const allowedOrigin = process.env.NODE_ENV === 'development'

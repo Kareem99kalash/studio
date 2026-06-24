@@ -31,8 +31,8 @@ const Pane = dynamic(() => import('react-leaflet').then(m => m.Pane), { ssr: fal
 import 'leaflet/dist/leaflet.css';
 
 const OSRM_ENDPOINTS = {
-  "Iraq": "/api/osrm/erbil",
-  "Lebanon": "/api/osrm/beirut"
+  "Iraq": process.env.NEXT_PUBLIC_OSRM_ERBIL || "https://kareem99k-erbil-osrm-engine.hf.space",
+  "Lebanon": process.env.NEXT_PUBLIC_OSRM_BEIRUT || "https://kareem99k-beirut-osrm-engine.hf.space"
 };
 
 const HF_TOKEN = process.env.NEXT_PUBLIC_HF_TOKEN;
@@ -103,14 +103,11 @@ const getGeoPointsForDisplay = (polyFeature: any, storeCoords: {lat: number, lng
     ];
 };
 
-async function fetchRouteGeometry(start: {lat: number, lng: number}, end: {lat: number, lng: number}, region: string) {
+async function fetchRouteGeometry(start: {lat: number, lng: number}, end: {lat: number, lng: number}, endpoint: string) {
     if (!HF_TOKEN) return null;
+    const url = `${endpoint}/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
     try {
-        const res = await fetch('/api/osrm/route', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ region, start, end })
-        });
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${HF_TOKEN}` } });
         if (!res.ok) return null;
         const data = await res.json();
         if (data.code === 'Ok' && data.routes[0]) {
@@ -259,6 +256,7 @@ export default function BatchCoveragePage() {
 
     setProcessing(true); setProgress(0); setAssignments([]); setManualOverrides([]);
 
+    const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
     const initialResults: any[] = [];
     
     // Group stores
@@ -310,7 +308,7 @@ export default function BatchCoveragePage() {
         } catch { return null; }
     }).filter(p => p !== null);
 
-    const chunkSize = 3; 
+    const chunkSize = 25;
     let hasError = false;
 
     // BATCH LOOP
@@ -321,26 +319,16 @@ export default function BatchCoveragePage() {
 
         const chunk = validPolys.slice(i, i + chunkSize);
 
-        const coordinates = [
-          ...validStores.map(s => [s.lng, s.lat]),
-          ...chunk.map((p: any) => [p.center.lng, p.center.lat])
-        ];
+        const storeCoords = validStores.map(s => `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`).join(';');
+        const polyCoords = chunk.map((p: any) => `${p.center.lng.toFixed(5)},${p.center.lat.toFixed(5)}`).join(';');
 
-        const srcIndices = validStores.map((_, idx) => idx);
-        const dstIndices = chunk.map((_, idx) => idx + validStores.length);
+        const srcIndices = validStores.map((_, idx) => idx).join(';');
+        const dstIndices = chunk.map((_, idx) => idx + validStores.length).join(';');
+        const url = `${osrmUrl}/table/v1/driving/${storeCoords};${polyCoords}?sources=${srcIndices}&destinations=${dstIndices}&annotations=distance`;
 
         try {
-            const res = await fetch('/api/osrm/table', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                region,
-                coordinates,
-                sources: srcIndices,
-                destinations: dstIndices
-              })
-            });
-            if (!res.ok) { console.error("OSRM Error", res.status); hasError = true; break; }
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${HF_TOKEN}` } });
+            if (!res.ok) { console.error("OSRM Error"); hasError = true; break; }
             const data = await res.json();
 
             if (data.code === 'Ok' && data.distances) {
@@ -630,8 +618,9 @@ export default function BatchCoveragePage() {
       if (!store) return;
       const pts = getGeoPointsForDisplay(assignment.feature || { type: 'Polygon', coordinates: [] }, store);
       const routes = [];
+      const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
       for (const pt of pts) {
-          const route = await fetchRouteGeometry({lat: store.lat, lng: store.lng}, {lat: pt.lat, lng: pt.lng}, region);
+          const route = await fetchRouteGeometry({lat: store.lat, lng: store.lng}, {lat: pt.lat, lng: pt.lng}, osrmUrl);
           if (route) routes.push({ ...pt, geom: route.geom, dist: route.dist });
       }
       setVisualRoutes(routes);
