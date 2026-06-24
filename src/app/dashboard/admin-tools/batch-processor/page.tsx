@@ -334,19 +334,28 @@ export default function BatchCoveragePage() {
             if (!res.ok) { console.error("OSRM Error", res.status); hasError = true; break; }
             const data = await res.json();
 
-            if (data.code === 'Ok' && data.distances) {
+            console.log(`[Batch Processor] Chunk ${i}: distances structure =`, {
+              code: data.code,
+              rows: data.distances?.length,
+              cols: data.distances?.[0]?.length,
+              sample: data.distances?.[0]?.slice(0, 3)
+            });
+
+            if (data.code === 'Ok' && data.distances && data.distances.length > 0) {
                 for (let pIdx = 0; pIdx < chunk.length; pIdx++) {
                     const poly = chunk[pIdx];
                     const bestPerParent: Record<string, {store: any, dist: number, pointsScore: number, failureReason?: string}> = {};
                     const candidates: any[] = [];
-                    
+
                     validStores.forEach((store, sIdx) => {
-                        const dMeter = data.distances[sIdx][pIdx];
-                        if (dMeter !== null) {
+                        const dMeter = data.distances[sIdx]?.[pIdx];
+                        if (dMeter !== null && dMeter !== undefined) {
                             const dKm = dMeter / 1000;
                             if (dKm <= threshold * 1.5) candidates.push({ store, centroidDist: dKm });
                         }
                     });
+
+                    console.log(`[Batch Processor] Polygon ${pIdx} (${poly.id}): ${candidates.length} candidates out of ${validStores.length} stores`);
 
                     for (const cand of candidates) {
                         if (cand.centroidDist < threshold * 0.5) {
