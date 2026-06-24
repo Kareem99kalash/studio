@@ -31,6 +31,16 @@ const nextConfig = {
     ],
   },
 
+  // 👇 THIS IS THE NEW VERCEL PROXY REWRITE 👇
+  async rewrites() {
+    return [
+      {
+        source: '/api/osrm/:path*',
+        destination: 'https://kareem99k-erbil-osrm-engine.hf.space/:path*',
+      },
+    ]
+  },
+
   async headers() {
     // 🧠 SMART ORIGIN: Allows localhost in dev, locks to prod domain in production
     const allowedOrigin = process.env.NODE_ENV === 'development' 
