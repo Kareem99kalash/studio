@@ -103,21 +103,13 @@ const getGeoPointsForDisplay = (polyFeature: any, storeCoords: {lat: number, lng
     ];
 };
 
-async function fetchRouteGeometry(start: {lat: number, lng: number}, end: {lat: number, lng: number}, endpoint: string) {
+async function fetchRouteGeometry(start: {lat: number, lng: number}, end: {lat: number, lng: number}, region: string) {
     if (!HF_TOKEN) return null;
-    const url = `${endpoint}/route/v1/driving`;
     try {
-        const res = await fetch(url, {
+        const res = await fetch('/api/osrm/route', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${HF_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            coordinates: [[start.lng, start.lat], [end.lng, end.lat]],
-            overview: 'full',
-            geometries: 'geojson'
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ region, start, end })
         });
         if (!res.ok) return null;
         const data = await res.json();
@@ -265,9 +257,8 @@ export default function BatchCoveragePage() {
         return;
     }
 
-    setProcessing(true); setProgress(0); setAssignments([]); setManualOverrides([]); 
+    setProcessing(true); setProgress(0); setAssignments([]); setManualOverrides([]);
 
-    const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
     const initialResults: any[] = [];
     
     // Group stores
@@ -337,20 +328,16 @@ export default function BatchCoveragePage() {
 
         const srcIndices = validStores.map((_, idx) => idx);
         const dstIndices = chunk.map((_, idx) => idx + validStores.length);
-        const url = `${osrmUrl}/table/v1/driving`;
 
         try {
-            const res = await fetch(url, {
+            const res = await fetch('/api/osrm/table', {
               method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${HF_TOKEN}`,
-                'Content-Type': 'application/json'
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                region,
                 coordinates,
                 sources: srcIndices,
-                destinations: dstIndices,
-                annotations: ['distance']
+                destinations: dstIndices
               })
             });
             if (!res.ok) { console.error("OSRM Error", res.status); hasError = true; break; }
@@ -638,14 +625,13 @@ export default function BatchCoveragePage() {
 
   const handleMapClick = async (assignment: any) => {
       if (reassignMode) return;
-      if (!assignment.isCovered) return; 
+      if (!assignment.isCovered) return;
       const store = processedStores.find(s => s.id === assignment.StoreID);
       if (!store) return;
       const pts = getGeoPointsForDisplay(assignment.feature || { type: 'Polygon', coordinates: [] }, store);
       const routes = [];
-      const osrmUrl = OSRM_ENDPOINTS[region as keyof typeof OSRM_ENDPOINTS];
       for (const pt of pts) {
-          const route = await fetchRouteGeometry({lat: store.lat, lng: store.lng}, {lat: pt.lat, lng: pt.lng}, osrmUrl);
+          const route = await fetchRouteGeometry({lat: store.lat, lng: store.lng}, {lat: pt.lat, lng: pt.lng}, region);
           if (route) routes.push({ ...pt, geom: route.geom, dist: route.dist });
       }
       setVisualRoutes(routes);
