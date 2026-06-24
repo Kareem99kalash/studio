@@ -148,6 +148,8 @@ export default function BatchCoveragePage() {
   const [polygons, setPolygons] = useState<any[]>([]);
   const [processedStores, setProcessedStores] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [allValidPairings, setAllValidPairings] = useState<any[]>([]);
+  const [masterDistanceList, setMasterDistanceList] = useState<any[]>([]);
   const [manualOverrides, setManualOverrides] = useState<any[]>([]);
   
   // Wizard State
@@ -165,6 +167,7 @@ export default function BatchCoveragePage() {
   const [progress, setProgress] = useState(0);
   const [activeTab, setActiveTab] = useState("map");
   const [selectedParent, setSelectedParent] = useState<string>(""); 
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
   const [searchStore, setSearchStore] = useState("");
   const [reassignMode, setReassignMode] = useState(false);
   const [viewLayer, setViewLayer] = useState<'all' | 'primary' | 'secondary'>('all');
@@ -257,11 +260,9 @@ export default function BatchCoveragePage() {
         return;
     }
 
-    setProcessing(true); setProgress(0); setAssignments([]); setManualOverrides([]);
+    setProcessing(true); setProgress(0); setAssignments([]); setAllValidPairings([]); setMasterDistanceList([]); setManualOverrides([]);
 
-    const initialResults: any[] = [];
-    
-    // Group stores
+    // 1. Prepare Stores & Polygons
     const storesByParent: Record<string, any[]> = {};
     stores.forEach(s => {
         const pid = s.parentId ? String(s.parentId).trim() : 'Unassigned';
@@ -274,7 +275,7 @@ export default function BatchCoveragePage() {
         storesByParent[pid].forEach((s, index) => {
             validStores.push({ 
                 ...s, 
-                id: s.id, 
+                id: String(s.id),
                 name: s.name,
                 parentId: pid, 
                 parentName: s.parentName || pid,
@@ -284,7 +285,6 @@ export default function BatchCoveragePage() {
     });
     setProcessedStores(validStores);
 
-    // PRE-CALC POLYGONS
     const validPolys = polygons.map((p, i) => {
         try {
             const rawCoords = p.wkt.replace(/^[A-Z]+\s*\(+/, '').replace(/\)+$/, '');
@@ -293,32 +293,30 @@ export default function BatchCoveragePage() {
                 return [parseFloat(parts[0]), parseFloat(parts[1])]; 
             });
             if (pairs[0][0] !== pairs[pairs.length-1][0]) pairs.push(pairs[0]);
-            
             const poly = turf.polygon([pairs]);
             const centroid = turf.centroid(poly);
-            
             return {
-                id: p.id,
+                id: String(p.id),
                 name: p.name,
                 group: p.group || 'primary',
-                demand: p.demand || 1, // 🟢 PASS DEMAND
+                demand: p.demand || 1,
                 center: { lat: centroid.geometry.coordinates[1], lng: centroid.geometry.coordinates[0] },
                 geometry: poly.geometry,
                 vertices: pairs, 
                 feature: poly
             };
         } catch { return null; }
-    }).filter(p => p !== null);
+    }).filter(p => p !== null) as any[];
 
     const chunkSize = 25;
     let hasError = false;
+    const allPairs: any[] = [];
+    const distancesForMaster: any[] = [];
 
-    // BATCH LOOP
+    // 2. Batch Analysis (OSRM Table)
     for (let i = 0; i < validPolys.length; i += chunkSize) {
         if (hasError) break;
-
         await new Promise(r => setTimeout(r, 0));
-
         const chunk = validPolys.slice(i, i + chunkSize);
 
         try {
@@ -331,199 +329,186 @@ export default function BatchCoveragePage() {
                 polygons: chunk.map((p: any) => ({ lng: p.center.lng, lat: p.center.lat }))
               })
             });
-            if (!res.ok) { console.error("OSRM Error", res.status); hasError = true; break; }
+            if (!res.ok) { hasError = true; break; }
             const data = await res.json();
 
-            console.log(`[Batch Processor] Chunk ${i}: distances structure =`, {
-              code: data.code,
-              rows: data.distances?.length,
-              cols: data.distances?.[0]?.length,
-              sample: data.distances?.[0]?.slice(0, 3)
-            });
-
-            if (data.code === 'Ok' && data.distances && data.distances.length > 0) {
+            if (data.code === 'Ok' && data.distances) {
                 for (let pIdx = 0; pIdx < chunk.length; pIdx++) {
                     const poly = chunk[pIdx];
-                    const bestPerParent: Record<string, {store: any, dist: number, pointsScore: number, failureReason?: string}> = {};
-                    const candidates: any[] = [];
 
                     validStores.forEach((store, sIdx) => {
                         const dMeter = data.distances[sIdx]?.[pIdx];
-                        if (dMeter !== null && dMeter !== undefined) {
-                            const dKm = dMeter / 1000;
-                            if (dKm <= threshold * 1.5) candidates.push({ store, centroidDist: dKm });
-                        }
-                    });
+                        const dKm = (dMeter !== null && dMeter !== undefined) ? dMeter / 1000 : 999;
 
-                    console.log(`[Batch Processor] Polygon ${pIdx} (${poly.id}): ${candidates.length} candidates out of ${validStores.length} stores`);
-
-                    for (const cand of candidates) {
-                        if (cand.centroidDist < threshold * 0.5) {
-                             const existing = bestPerParent[cand.store.parentId];
-                             if (!existing || cand.centroidDist < existing.dist) {
-                                bestPerParent[cand.store.parentId] = { store: cand.store, dist: cand.centroidDist, pointsScore: 3 };
-                             }
-                             continue;
-                        }
-
-                        const pts = getGeoPointsOptimized(poly.vertices, poly.center, cand.store);
-                        let validPoints = 0;
-                        const detailedDists: number[] = [];
-
-                        pts.forEach(pt => {
-                            const dist = turf.distance(
-                                turf.point([cand.store.lng, cand.store.lat]), 
-                                turf.point([pt.lng, pt.lat]), 
-                                { units: 'kilometers' }
-                            );
-                            const estRoadDist = dist * 1.3;
-                            if (estRoadDist <= threshold) validPoints++;
-                            detailedDists.push(estRoadDist);
-                        });
-
-                        const isCovered = validPoints >= 2;
-                        const finalDist = detailedDists[0]; 
-                        const existing = bestPerParent[cand.store.parentId];
-                        
-                        if (isCovered) {
-                            if (!existing || (!existing.pointsScore && isCovered) || (existing.pointsScore && finalDist < existing.dist)) {
-                                bestPerParent[cand.store.parentId] = { store: cand.store, dist: finalDist, pointsScore: 3 };
-                            }
-                        } else {
-                            if (!existing) {
-                                bestPerParent[cand.store.parentId] = { store: cand.store, dist: finalDist, pointsScore: 0, failureReason: `Best option: ${cand.store.name} at ${finalDist.toFixed(1)}km` };
-                            } else if (finalDist < existing.dist && existing.pointsScore === 0) {
-                                bestPerParent[cand.store.parentId] = { store: cand.store, dist: finalDist, pointsScore: 0, failureReason: `Best option: ${cand.store.name} at ${finalDist.toFixed(1)}km` };
-                            }
-                        }
-                    }
-
-                    let hasCoverage = false;
-                    Object.values(bestPerParent).forEach(winner => {
-                        if (winner.pointsScore > 0) {
-                            hasCoverage = true;
-                            initialResults.push({
-                                PolygonID: poly.id,
-                                PolygonName: poly.name,
-                                group: poly.group,
-                                demand: poly.demand, // 🟢 STORE DEMAND
-                                StoreID: winner.store.id,
-                                StoreName: winner.store.name,
-                                ParentID: winner.store.parentId,
-                                ParentName: winner.store.parentName || winner.store.parentId,
-                                DistanceKM: winner.dist,
-                                Color: winner.store.color,
-                                geometry: poly.geometry,
-                                center: poly.center,
-                                feature: poly.feature, 
-                                isAiOptimized: false,
-                                isCovered: true
-                            });
-                        }
-                    });
-
-                    if (!hasCoverage) {
-                        const bestFail = Object.values(bestPerParent).sort((a,b) => a.dist - b.dist)[0];
-                        initialResults.push({
+                        distancesForMaster.push({
+                            StoreID: store.id,
+                            StoreName: store.name,
+                            ParentID: store.parentId,
                             PolygonID: poly.id,
                             PolygonName: poly.name,
-                            group: poly.group,
-                            demand: poly.demand, // 🟢 STORE DEMAND
-                            StoreID: "Uncovered",
-                            StoreName: "No Coverage",
-                            ParentID: "None",
-                            ParentName: "Unassigned",
-                            DistanceKM: bestFail ? bestFail.dist : 999,
-                            Color: poly.group === 'secondary' ? '#fdba74' : '#94a3b8',
-                            geometry: poly.geometry,
-                            center: poly.center,
-                            feature: poly.feature,
-                            isCovered: false,
-                            failureReason: bestFail ? bestFail.failureReason : "No branches nearby"
+                            DistanceKM: dKm.toFixed(2)
                         });
+
+                        if (dKm <= threshold * 2) {
+                            const pts = getGeoPointsOptimized(poly.vertices, poly.center, store);
+                            let validPoints = 0;
+                            const detailedDists: number[] = [];
+
+                            pts.forEach(pt => {
+                                const dist = turf.distance(
+                                    turf.point([store.lng, store.lat]),
+                                    turf.point([pt.lng, pt.lat]),
+                                    { units: 'kilometers' }
+                                );
+                                const estRoadDist = dist * 1.3;
+                                if (estRoadDist <= threshold) validPoints++;
+                                detailedDists.push(estRoadDist);
+                            });
+
+                            if (validPoints >= 2 || dKm < threshold * 0.5) {
+                                allPairs.push({
+                                    poly,
+                                    store,
+                                    dist: dKm,
+                                    isCovered: true
+                                });
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (e) { hasError = true; }
+        setProgress(Math.round(((i + chunkSize) / validPolys.length) * 80));
+    }
+
+    if (hasError) {
+        toast({ variant: "destructive", title: "Analysis Failed", description: "Error communicating with OSRM engine." });
+        setProcessing(false);
+        return;
+    }
+
+    setMasterDistanceList(distancesForMaster);
+    setAllValidPairings(allPairs);
+
+    // 3. Parent-ID Splitting & Balancing
+    const parentIds = Array.from(new Set(validStores.map(s => s.parentId)));
+    const assignmentsPerParent: Record<string, any[]> = {};
+
+    parentIds.forEach(pid => {
+        const storesInParent = validStores.filter(s => s.parentId === pid);
+        const pairsForParent = allPairs.filter(p => p.store.parentId === pid);
+        const polysInParentRange = Array.from(new Set(pairsForParent.map(p => p.poly.id)));
+
+        const storeLoad: Record<string, number> = {};
+        storesInParent.forEach(s => storeLoad[s.id] = 0);
+
+        const finalParentAssignments: any[] = [];
+        polysInParentRange.forEach(polyId => {
+            const candidates = pairsForParent.filter(p => p.poly.id === polyId);
+            candidates.sort((a, b) => a.dist - b.dist);
+            const winner = { ...candidates[0] };
+            finalParentAssignments.push(winner);
+            storeLoad[winner.store.id] += (winner.poly.demand || 1);
+        });
+
+        if (useAiBalance && storesInParent.length > 1) {
+            let moved = true;
+            let iterations = 0;
+            while (moved && iterations < 10) {
+                moved = false; iterations++;
+                const sortedStores = storesInParent.slice().sort((a, b) => storeLoad[b.id] - storeLoad[a.id]);
+                const over = sortedStores[0];
+                const under = sortedStores[sortedStores.length - 1];
+                const totalDemand = Object.values(storeLoad).reduce((a, b) => a + b, 0);
+                const avgLoad = totalDemand / storesInParent.length;
+
+                if (storeLoad[over.id] > avgLoad) {
+                    const options = finalParentAssignments.filter(a => a.store.id === over.id);
+                    options.sort((a, b) => {
+                        const distToUnder = allPairs.find(p => p.poly.id === a.poly.id && p.store.id === under.id)?.dist || 999;
+                        return distToUnder - a.dist;
+                    });
+
+                    for (const opt of options) {
+                        const pairWithUnder = allPairs.find(p => p.poly.id === opt.poly.id && p.store.id === under.id);
+                        if (pairWithUnder && pairWithUnder.isCovered) {
+                            const demand = opt.poly.demand || 1;
+                            if (storeLoad[under.id] + demand < storeLoad[over.id]) {
+                                opt.store = under.store;
+                                opt.dist = pairWithUnder.dist;
+                                opt.isAiOptimized = true;
+                                storeLoad[over.id] -= demand;
+                                storeLoad[under.id] += demand;
+                                moved = true;
+                                break;
+                            }
+                        }
                     }
                 }
             }
-        } catch (e) { 
-            console.error(e);
-            hasError = true;
         }
-        setProgress(Math.round(((i + chunkSize) / validPolys.length) * 100));
-    }
+        assignmentsPerParent[pid] = finalParentAssignments;
+    });
 
-    // 🟢 3. AI FAIRNESS / LOAD BALANCING (WEIGHTED DEMAND)
-    let finalAssignments = initialResults;
-    if (useAiBalance && !hasError) {
-        // Group by Parent
-        const parentGroups: Record<string, any[]> = {};
-        finalAssignments.forEach(a => {
-            if (a.isCovered) {
-                if (!parentGroups[a.ParentID]) parentGroups[a.ParentID] = [];
-                parentGroups[a.ParentID].push(a);
-            }
-        });
+    // 4. Final Flattening
+    const finalResults: any[] = [];
+    validPolys.forEach(poly => {
+        let polyHasAnyCoverage = false;
+        const polyNearbyStores = allPairs.filter(p => p.poly.id === poly.id).map(p => p.store.id);
 
-        Object.keys(parentGroups).forEach(pid => {
-            const assignments = parentGroups[pid];
-            const stores = validStores.filter(s => s.parentId === pid);
-            if (stores.length < 2) return;
-
-            // Calculate Load (Sum of Demands)
-            const storeLoad: Record<string, number> = {};
-            stores.forEach(s => storeLoad[s.id] = 0);
-            
-            let totalDemand = 0;
-            assignments.forEach(a => {
-                const d = a.demand || 1;
-                storeLoad[a.StoreID] += d;
-                totalDemand += d;
-            });
-
-            const avgLoad = totalDemand / stores.length;
-            const limit = avgLoad * 1.3; // 30% tolerance
-
-            // Find Overloaded Stores
-            const hoarders = stores.filter(s => storeLoad[s.id] > limit);
-            const starving = stores.filter(s => storeLoad[s.id] < avgLoad);
-
-            if (hoarders.length && starving.length) {
-                // Sort assignments by distance (descending) -> Move furthest ones first
-                assignments.sort((a, b) => b.DistanceKM - a.DistanceKM);
-
-                assignments.forEach(assign => {
-                    // If current store is overloaded
-                    if (storeLoad[assign.StoreID] > limit) {
-                        // Check if we can move it to a starving store without insane distance penalty
-                        // (e.g., if new distance is < 1.5x threshold)
-                        const bestTarget = starving.sort((a,b) => storeLoad[a.id] - storeLoad[b.id])[0];
-                        
-                        if (bestTarget) {
-                            // Only swap if it's geographically reasonable (simplified check)
-                            // Ideally we'd need exact distance, but for now we assume neighbors
-                            // This AI logic is "best effort" within batch context
-                            
-                            assign.StoreID = bestTarget.id;
-                            assign.StoreName = bestTarget.name;
-                            assign.Color = bestTarget.color;
-                            assign.isAiOptimized = true;
-                            
-                            // Update loads
-                            const d = assign.demand || 1;
-                            storeLoad[assign.StoreID] -= d;
-                            storeLoad[bestTarget.id] += d;
-                        }
-                    }
+        parentIds.forEach(pid => {
+            const assign = assignmentsPerParent[pid]?.find(a => a.poly.id === poly.id);
+            if (assign) {
+                polyHasAnyCoverage = true;
+                finalResults.push({
+                    PolygonID: poly.id,
+                    PolygonName: poly.name,
+                    group: poly.group,
+                    demand: poly.demand,
+                    StoreID: assign.store.id,
+                    StoreName: assign.store.name,
+                    ParentID: assign.store.parentId,
+                    ParentName: assign.store.parentName || assign.store.parentId,
+                    DistanceKM: assign.dist.toFixed(2),
+                    Color: assign.store.color,
+                    geometry: poly.geometry,
+                    center: poly.center,
+                    feature: poly.feature,
+                    isCovered: true,
+                    isAiOptimized: !!assign.isAiOptimized,
+                    AllNearbyStores: polyNearbyStores.join(', ')
                 });
             }
         });
-    }
 
-    finalAssignments.forEach(a => a.DistanceKM = typeof a.DistanceKM === 'number' ? a.DistanceKM.toFixed(2) : a.DistanceKM);
-    setAssignments(finalAssignments);
+        if (!polyHasAnyCoverage) {
+            finalResults.push({
+                PolygonID: poly.id,
+                PolygonName: poly.name,
+                group: poly.group,
+                demand: poly.demand,
+                StoreID: "Uncovered",
+                StoreName: "No Coverage",
+                ParentID: "None",
+                ParentName: "Unassigned",
+                DistanceKM: "999",
+                Color: poly.group === 'secondary' ? '#fdba74' : '#94a3b8',
+                geometry: poly.geometry,
+                center: poly.center,
+                feature: poly.feature,
+                isCovered: false,
+                failureReason: "No branches nearby",
+                AllNearbyStores: ""
+            });
+        }
+    });
+
+    setAssignments(finalResults);
+    setProgress(100);
     setProcessing(false);
-    if (finalAssignments.length > 0) {
-        const validParents = finalAssignments.filter(a => a.isCovered).map(a => a.ParentID);
-        if (validParents.length > 0) setSelectedParent(validParents[0]);
+    if (finalResults.length > 0) {
+        const firstCovered = finalResults.find(a => a.isCovered);
+        if (firstCovered) setSelectedParent(firstCovered.ParentID);
     }
   };
 
@@ -557,12 +542,17 @@ export default function BatchCoveragePage() {
       if (viewLayer === 'primary') data = data.filter(a => a.group === 'primary');
       if (viewLayer === 'secondary') data = data.filter(a => a.group === 'secondary');
       if (searchStore) data = data.filter(a => a.StoreName.toLowerCase().includes(searchStore.toLowerCase()));
+
+      if (selectedStores.length > 0) {
+          data = data.filter(a => !a.isCovered || selectedStores.includes(a.StoreID));
+      }
+
       return data;
-  }, [activeAssignments, selectedParent, searchStore, viewLayer]);
+  }, [activeAssignments, selectedParent, searchStore, viewLayer, selectedStores]);
 
   // 🟢 WEIGHTED SUMMARY
   const currentSummary = useMemo(() => {
-      const groups: Record<string, {items: string[], demand: number}> = {};
+      const groups: Record<string, {items: string[], demand: number, nearby?: string}> = {};
       const totalDemand = polygons.reduce((sum, p) => sum + (p.demand || 1), 0);
 
       activeAssignments.forEach(a => {
@@ -573,7 +563,7 @@ export default function BatchCoveragePage() {
           const key = summaryMode === 'polygon' ? a.PolygonID : a.StoreID;
           const val = summaryMode === 'polygon' ? a.StoreID : a.PolygonID;
           
-          if (!groups[key]) groups[key] = { items: [], demand: 0 };
+          if (!groups[key]) groups[key] = { items: [], demand: 0, nearby: a.AllNearbyStores };
           
           if (!groups[key].items.includes(val)) {
               groups[key].items.push(val);
@@ -587,6 +577,10 @@ export default function BatchCoveragePage() {
               Items: v.items.join(', '),
               Count: v.items.length
           };
+
+          if (summaryMode === 'polygon') {
+              row.AllNearbyStores = v.nearby || "";
+          }
           
           if (summaryMode === 'store') {
               // Show % of Total Demand covered
@@ -617,7 +611,7 @@ export default function BatchCoveragePage() {
           isCovered: true,
           originalParentID: parentId 
       };
-      setManualOverrides(prev => [...prev.filter(x => x.PolygonID !== polyId), newEntry]);
+      setManualOverrides(prev => [...prev.filter(x => !(x.PolygonID === polyId && (x.originalParentID || x.ParentID) === parentId)), newEntry]);
       setPendingReassignStore("");
       setReassignDialogData(null); 
       toast({title: "Reassigned!", description: `Zone moved to ${storeObj.name}.`});
@@ -625,7 +619,10 @@ export default function BatchCoveragePage() {
 
   const handleMapClick = async (assignment: any) => {
       if (reassignMode) return;
-      if (!assignment.isCovered) return;
+      if (!assignment.isCovered) {
+          setVisualRoutes([]);
+          return;
+      }
       const store = processedStores.find(s => s.id === assignment.StoreID);
       if (!store) return;
       const pts = getGeoPointsForDisplay(assignment.feature || { type: 'Polygon', coordinates: [] }, store);
@@ -962,6 +959,7 @@ export default function BatchCoveragePage() {
                              <Input placeholder="Search Branch..." value={searchStore} onChange={e => setSearchStore(e.target.value)} className="w-40 h-9 pl-8" />
                         </div>
 
+
                         <Button 
                             variant={reassignMode ? "destructive" : "outline"} 
                             size="sm" 
@@ -974,7 +972,46 @@ export default function BatchCoveragePage() {
                 )}
             </div>
 
-            <TabsContent value="map" className="h-[650px] border-2 border-border rounded-xl overflow-hidden relative shadow-inner">
+            <TabsContent value="map" className="h-[650px] border-2 border-border rounded-xl overflow-hidden relative shadow-inner flex">
+                {/* Store Sidebar */}
+                <div className="w-64 bg-card border-r flex flex-col h-full z-[1000] overflow-hidden">
+                    <div className="p-3 border-b bg-muted/30">
+                        <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                            <Layers className="h-3 w-3" /> Branch Selection
+                        </h3>
+                        <p className="text-[10px] text-muted-foreground mt-1">Select branches to view their specific coverage</p>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                        <button
+                            onClick={() => setSelectedStores([])}
+                            className={`w-full text-left px-3 py-2 rounded-md text-xs font-bold transition-colors ${selectedStores.length === 0 ? 'bg-blue-600 text-white' : 'hover:bg-muted text-foreground'}`}
+                        >
+                            Show All Branches
+                        </button>
+                        <div className="h-px bg-border my-2" />
+                        {processedStores.filter(s => s.parentId === selectedParent).map(s => {
+                            const isSelected = selectedStores.includes(s.id);
+                            return (
+                                <button
+                                    key={s.id}
+                                    onClick={() => setSelectedStores(prev => isSelected ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                                    className={`w-full text-left px-3 py-2 rounded-md text-xs flex items-center gap-3 transition-colors ${isSelected ? 'bg-muted border-l-4 border-blue-600 font-bold' : 'hover:bg-muted/50 border-l-4 border-transparent'}`}
+                                >
+                                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{backgroundColor: s.color}} />
+                                    <span className="truncate">{s.name}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {selectedStores.length > 0 && (
+                        <div className="p-3 border-t bg-blue-50">
+                            <p className="text-[10px] text-blue-700 font-bold uppercase">Filtering Active</p>
+                            <p className="text-[9px] text-blue-600">{selectedStores.length} branches selected</p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex-1 relative h-full">
                 {reassignMode && (
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-4 py-2 rounded-full shadow-xl z-[999] font-bold text-sm animate-pulse flex items-center gap-2">
                         <Edit className="h-4 w-4" /> REASSIGN MODE: Select polygon to change
@@ -1010,7 +1047,13 @@ export default function BatchCoveragePage() {
                                                         {a.group === 'secondary' ? 'Secondary' : 'Primary'}
                                                     </Badge>
                                                 </div>
-                                                <div className="text-[10px] text-muted-foreground mb-2">Demand: {a.demand || 1}</div>
+                                                <div className="text-[10px] text-muted-foreground mb-1">Demand: {a.demand || 1}</div>
+                                                {a.AllNearbyStores && (
+                                                    <div className="text-[9px] text-blue-600 mb-2 leading-tight">
+                                                        <span className="font-bold">Other nearby stores:</span><br/>
+                                                        {a.AllNearbyStores}
+                                                    </div>
+                                                )}
                                                 
                                                 {!reassignMode ? (
                                                     <>
@@ -1069,6 +1112,7 @@ export default function BatchCoveragePage() {
                     </Pane>
 
                 </MapContainer>
+                </div>
             </TabsContent>
 
             <TabsContent value="summary">
@@ -1081,14 +1125,25 @@ export default function BatchCoveragePage() {
                                 <button onClick={() => setSummaryMode('store')} className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${summaryMode === 'store' ? 'bg-card shadow text-purple-600' : 'text-muted-foreground'}`}>By Store</button>
                             </div>
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => {
-                             const csv = Papa.unparse(currentSummary as any);
-                             const blob = new Blob([csv], { type: 'text/csv' });
-                             const link = document.createElement('a');
-                             link.href = URL.createObjectURL(blob);
-                             link.download = `coverage_summary_${summaryMode}.csv`;
-                             link.click();
-                        }}><Download className="h-4 w-4 mr-2"/> Download CSV</Button>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" className="bg-blue-50 hover:bg-blue-100" onClick={() => {
+                                 const csv = Papa.unparse(masterDistanceList);
+                                 const blob = new Blob([csv], { type: 'text/csv' });
+                                 const link = document.createElement('a');
+                                 link.href = URL.createObjectURL(blob);
+                                 link.download = `master_distance_analysis.csv`;
+                                 link.click();
+                            }}><FileSpreadsheet className="h-4 w-4 mr-2"/> Master Distance Analysis</Button>
+
+                            <Button size="sm" variant="outline" onClick={() => {
+                                 const csv = Papa.unparse(currentSummary as any);
+                                 const blob = new Blob([csv], { type: 'text/csv' });
+                                 const link = document.createElement('a');
+                                 link.href = URL.createObjectURL(blob);
+                                 link.download = `coverage_summary_${summaryMode}.csv`;
+                                 link.click();
+                            }}><Download className="h-4 w-4 mr-2"/> Download CSV</Button>
+                        </div>
                     </CardHeader>
                     <CardContent className="h-[500px] overflow-auto">
                         <Table>
@@ -1096,6 +1151,7 @@ export default function BatchCoveragePage() {
                                 <TableRow>
                                     <TableHead className="w-[150px]">{summaryMode === 'polygon' ? 'Polygon ID' : 'Store ID'}</TableHead>
                                     <TableHead>{summaryMode === 'polygon' ? 'Assigned Branches' : 'Covered Polygons (Zones)'}</TableHead>
+                                    {summaryMode === 'polygon' && <TableHead>All Nearby Stores</TableHead>}
                                     <TableHead className="w-[100px]">{summaryMode === 'polygon' ? 'Branch Count' : 'Zone Count'}</TableHead>
                                     {summaryMode === 'store' && <TableHead className="w-[100px]">Coverage (Weighted)</TableHead>}
                                     {summaryMode === 'store' && <TableHead className="w-[100px]">Total Demand</TableHead>}
@@ -1106,6 +1162,7 @@ export default function BatchCoveragePage() {
                                     <TableRow key={i}>
                                         <TableCell className={`font-mono font-bold ${summaryMode === 'polygon' ? 'text-blue-600' : 'text-purple-600'}`}>{row.ID}</TableCell>
                                         <TableCell className="font-mono text-xs leading-relaxed">{row.Items}</TableCell>
+                                        {summaryMode === 'polygon' && <TableCell className="font-mono text-[10px] text-blue-500 leading-tight">{row.AllNearbyStores}</TableCell>}
                                         <TableCell className="font-mono font-bold">{row.Count}</TableCell>
                                         {summaryMode === 'store' && <TableCell className="font-mono text-green-600 font-bold">{row.CoveragePercent}</TableCell>}
                                         {summaryMode === 'store' && <TableCell className="font-mono text-muted-foreground">{row.TotalDemand}</TableCell>}
