@@ -31,31 +31,32 @@ const nextConfig = {
     ],
   },
 
-  // 👇 THIS IS THE NEW VERCEL PROXY REWRITE 👇
   async rewrites() {
     return [
       {
-        source: '/api/osrm/:path*',
+        source: '/api/osrm/erbil/:path*',
         destination: 'https://kareem99k-erbil-osrm-engine.hf.space/:path*',
+      },
+      {
+        source: '/api/osrm/beirut/:path*',
+        destination: 'https://kareem99k-beirut-osrm-engine.hf.space/:path*',
       },
     ]
   },
 
   async headers() {
-    // 🧠 SMART ORIGIN: Allows localhost in dev, locks to prod domain in production
-    const allowedOrigin = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:3000' 
+    const allowedOrigin = process.env.NODE_ENV === 'development'
+      ? 'http://localhost:3000'
       : 'https://studio-neon-three-52.vercel.app';
 
     return [
       {
-        // 🔒 Apply these headers to all routes under /api/
         source: "/api/:path*",
         headers: [
           { key: "Access-Control-Allow-Credentials", value: "true" },
           { key: "Access-Control-Allow-Origin", value: allowedOrigin },
           { key: "Access-Control-Allow-Methods", value: "GET,DELETE,PATCH,POST,PUT,OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" },
+          { key: "Access-Control-Allow-Headers", value: "Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" },
         ]
       }
     ];

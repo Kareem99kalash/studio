@@ -31,8 +31,8 @@ const Pane = dynamic(() => import('react-leaflet').then(m => m.Pane), { ssr: fal
 import 'leaflet/dist/leaflet.css';
 
 const OSRM_ENDPOINTS = {
-  "Iraq": process.env.NEXT_PUBLIC_OSRM_ERBIL || "https://kareem99k-erbil-osrm-engine.hf.space",
-  "Lebanon": process.env.NEXT_PUBLIC_OSRM_BEIRUT || "https://kareem99k-beirut-osrm-engine.hf.space"
+  "Iraq": "/api/osrm/erbil",
+  "Lebanon": "/api/osrm/beirut"
 };
 
 const HF_TOKEN = process.env.NEXT_PUBLIC_HF_TOKEN;
