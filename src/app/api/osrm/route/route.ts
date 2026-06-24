@@ -19,13 +19,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing HF token' }, { status: 500 });
     }
 
-    const coordString = `${start.lng.toFixed(5)},${start.lat.toFixed(5)};${end.lng.toFixed(5)},${end.lat.toFixed(5)}`;
-    const url = `${endpoint}/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
+    const url = `${endpoint}/route/v1/driving`;
+
+    const osrmBody = {
+      coordinates: [[start.lng, start.lat], [end.lng, end.lat]],
+      overview: 'full',
+      geometries: 'geojson'
+    };
 
     const res = await fetch(url, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(osrmBody)
     });
 
     if (!res.ok) {

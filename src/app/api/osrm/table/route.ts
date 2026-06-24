@@ -19,27 +19,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing HF token' }, { status: 500 });
     }
 
-    // Build coordinate string: lon,lat;lon,lat;...
-    const coordString = coordinates
-      .map((c: number[]) => `${c[0].toFixed(5)},${c[1].toFixed(5)}`)
-      .join(';');
+    // OSRM POST format: send everything in body, empty path
+    const url = `${endpoint}/table/v1/driving`;
 
-    // Build query params
-    const params = new URLSearchParams();
-    if (sources && Array.isArray(sources)) {
-      params.append('sources', sources.join(';'));
-    }
-    if (destinations && Array.isArray(destinations)) {
-      params.append('destinations', destinations.join(';'));
-    }
-    params.append('annotations', 'distance');
-
-    const url = `${endpoint}/table/v1/driving/${coordString}?${params.toString()}`;
+    const osrmBody = {
+      coordinates: coordinates,
+      sources: sources,
+      destinations: destinations,
+      annotations: ['distance']
+    };
 
     const res = await fetch(url, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(osrmBody)
     });
 
     if (!res.ok) {
@@ -61,3 +57,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
