@@ -105,9 +105,20 @@ const getGeoPointsForDisplay = (polyFeature: any, storeCoords: {lat: number, lng
 
 async function fetchRouteGeometry(start: {lat: number, lng: number}, end: {lat: number, lng: number}, endpoint: string) {
     if (!HF_TOKEN) return null;
-    const url = `${endpoint}/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+    const url = `${endpoint}/route/v1/driving`;
     try {
-        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${HF_TOKEN}` } });
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${HF_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            coordinates: [[start.lng, start.lat], [end.lng, end.lat]],
+            overview: 'full',
+            geometries: 'geojson'
+          })
+        });
         if (!res.ok) return null;
         const data = await res.json();
         if (data.code === 'Ok' && data.routes[0]) {
@@ -313,22 +324,36 @@ export default function BatchCoveragePage() {
 
     // BATCH LOOP
     for (let i = 0; i < validPolys.length; i += chunkSize) {
-        if (hasError) break; 
-        
+        if (hasError) break;
+
         await new Promise(r => setTimeout(r, 0));
 
         const chunk = validPolys.slice(i, i + chunkSize);
-        
-        const storeCoords = validStores.map(s => `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`).join(';');
-        const polyCoords = chunk.map((p: any) => `${p.center.lng.toFixed(5)},${p.center.lat.toFixed(5)}`).join(';');
-        
-        const srcIndices = validStores.map((_, idx) => idx).join(';');
-        const dstIndices = chunk.map((_, idx) => idx + validStores.length).join(';');
-        const url = `${osrmUrl}/table/v1/driving/${storeCoords};${polyCoords}?sources=${srcIndices}&destinations=${dstIndices}&annotations=distance`;
+
+        const coordinates = [
+          ...validStores.map(s => [s.lng, s.lat]),
+          ...chunk.map((p: any) => [p.center.lng, p.center.lat])
+        ];
+
+        const srcIndices = validStores.map((_, idx) => idx);
+        const dstIndices = chunk.map((_, idx) => idx + validStores.length);
+        const url = `${osrmUrl}/table/v1/driving`;
 
         try {
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${HF_TOKEN}` } });
-            if (!res.ok) { console.error("OSRM Error"); hasError = true; break; }
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${HF_TOKEN}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                coordinates,
+                sources: srcIndices,
+                destinations: dstIndices,
+                annotations: ['distance']
+              })
+            });
+            if (!res.ok) { console.error("OSRM Error", res.status); hasError = true; break; }
             const data = await res.json();
 
             if (data.code === 'Ok' && data.distances) {
