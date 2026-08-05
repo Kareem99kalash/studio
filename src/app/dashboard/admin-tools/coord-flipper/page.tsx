@@ -46,21 +46,24 @@ export default function CoordinateFlipperPage() {
       .trim();
 
     // 2. Split into coordinate pairs by comma
-    const pairs = clean.split(',').map(item => item.trim());
+    const pairs = clean.split(',');
 
-    // 3. Swap X Y (Lng Lat) -> Y X (Lat Lng) SAFELY
+    // 3. Swap X Y (Lng Lat) -> Y X (Lat Lng) SAFELY and ROUND
     const flippedPairs = pairs.map(pair => {
-      const parts = pair.split(/\s+/);
+      const parts = pair.trim().split(/\s+/);
       
       // ONLY flip if there are two parts AND the first part is actually a number
       if (parts.length >= 2 && !isNaN(Number(parts[0]))) {
-        return `${parts[1]} ${parts[0]}`;
+        // Convert to number, round to 6 decimal places, and remove trailing zeros natively
+        const lng = Number(Number(parts[0]).toFixed(6));
+        const lat = Number(Number(parts[1]).toFixed(6));
+        return `${lat} ${lng}`;
       }
-      return pair;
+      return pair.trim();
     });
 
-    // 4. Return space/comma separated raw coordinates
-    return flippedPairs.join(', ');
+    // 4. Return with NO SPACES after the commas to match your exact format
+    return flippedPairs.join(',');
   };
 
   const flipCoords = () => {
@@ -100,7 +103,7 @@ export default function CoordinateFlipperPage() {
                 <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-orange-600 transition-colors cursor-help" />
             </Link>
         </h1>
-        <p className="text-muted-foreground">Converts WKT to flipped raw coordinates (Lat Lng, Lat Lng...)</p>
+        <p className="text-muted-foreground">Converts WKT to flipped raw coordinates (Lat Lng,Lat Lng...)</p>
       </div>
       
       <Card>
