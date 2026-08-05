@@ -11,6 +11,7 @@ export default function CoordinateFlipperPage() {
   const [data, setData] = useState<any[]>([]);
   const [wktCol, setWktCol] = useState('');
   const [cols, setCols] = useState<string[]>([]);
+  const [nameCol, setNameCol] = useState('name');
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -20,45 +21,64 @@ export default function CoordinateFlipperPage() {
       skipEmptyLines: true,
       complete: (res) => {
         setData(res.data);
-        setCols(res.meta.fields || []);
-        // Auto-detect common names
-        const guess = res.meta.fields?.find(f => f.toLowerCase().includes('wkt') || f.toLowerCase().includes('geom'));
-        if (guess) setWktCol(guess);
+        const fields = res.meta.fields || [];
+        setCols(fields);
+        
+        // Auto-detect columns
+        const guessWkt = fields.find(f => f.toLowerCase().includes('wkt') || f.toLowerCase().includes('geom'));
+        if (guessWkt) setWktCol(guessWkt);
+
+        const guessName = fields.find(f => f.toLowerCase().includes('name') || f.toLowerCase().includes('zone') || f.toLowerCase().includes('title'));
+        if (guessName) setNameCol(guessName);
       }
     });
+  };
+
+  const flipAndCleanWKT = (wktString: string) => {
+    if (!wktString || typeof wktString !== 'string') return '';
+    
+    // 1. Remove POLYGON ((, MULTIPOLYGON (((, and trailing parens
+    let clean = wktString
+      .replace(/^[A-Z]+\s*\(+/i, '')
+      .replace(/\)+$/, '')
+      .trim();
+
+    // 2. Split into coordinate pairs by comma
+    const pairs = clean.split(',').map(item => item.trim());
+
+    // 3. Swap X Y (Lng Lat) -> Y X (Lat Lng)
+    const flippedPairs = pairs.map(pair => {
+      const parts = pair.split(/\s+/);
+      if (parts.length >= 2) {
+        return `${parts[1]} ${parts[0]}`;
+      }
+      return pair;
+    });
+
+    // 4. Return space/comma separated raw coordinates
+    return flippedPairs.join(', ');
   };
 
   const flipCoords = () => {
     if (!wktCol) return;
-    const flippedData = data.map(row => {
-      const wkt = row[wktCol];
-      if (typeof wkt === 'string' && wkt.trim()) {
-        // Preserves WKT syntax (POLYGON, MULTIPOLYGON) and swaps coordinate pairs inside parentheses
-        const flippedWkt = wkt.replace(/\(\s*([^\(\)]+)\s*\)/g, (_, innerCoords) => {
-          const flippedPairs = innerCoords
-            .split(',')
-            .map((pair: string) => {
-              const parts = pair.trim().split(/\s+/);
-              if (parts.length >= 2) {
-                // Swap X Y (Lon Lat) -> Y X (Lat Lon)
-                return `${parts[1]} ${parts[0]}`;
-              }
-              return pair.trim();
-            })
-            .join(', ');
-          return `(${flippedPairs})`;
-        });
 
-        return { ...row, [wktCol]: flippedWkt };
-      }
-      return row;
+    // Build fresh array containing ONLY 'name' and flipped 'coordinates'
+    const cleanedData = data.map(row => {
+      const rawWkt = row[wktCol] || '';
+      const zoneName = row[nameCol] || row['name'] || '';
+
+      return {
+        name: zoneName,
+        coordinates: flipAndCleanWKT(rawWkt)
+      };
     });
-    setData(flippedData);
+
+    setData(cleanedData);
   };
 
   const download = () => {
     const csv = Papa.unparse(data);
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = "flipped_coords_clean.csv";
@@ -74,7 +94,7 @@ export default function CoordinateFlipperPage() {
                 <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-orange-600 transition-colors cursor-help" />
             </Link>
         </h1>
-        <p className="text-muted-foreground">Converts WKT coordinates to flipped order (Lat Lng)</p>
+        <p className="text-muted-foreground">Converts WKT to flipped raw coordinates (Lat Lng, Lat Lng...)</p>
       </div>
       
       <Card>
