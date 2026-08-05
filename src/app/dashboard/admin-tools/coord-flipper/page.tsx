@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Papa from 'papaparse';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, RefreshCw, Upload, FileSpreadsheet, HelpCircle } from 'lucide-react';
+import { Download, RefreshCw, Upload, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CoordinateFlipperPage() {
@@ -32,22 +32,24 @@ export default function CoordinateFlipperPage() {
     if (!wktCol) return;
     const flippedData = data.map(row => {
       const wkt = row[wktCol];
-      if (typeof wkt === 'string') {
-        // 1. Clean the WKT to get just the numbers
-        const cleanContent = wkt.replace(/^[A-Z]+\s*\(+/, '').replace(/\)+$/, '');
-        
-        // 2. Split into pairs
-        const pairs = cleanContent.split(',').map((pair: string) => {
-            const parts = pair.trim().split(/\s+/);
-            // 3. FLIP: Lon Lat -> Lat Lon
-            // Assuming input was Lon Lat (WKT standard), we want Lat Lon
-            return `${parts[1]} ${parts[0]}`; 
+      if (typeof wkt === 'string' && wkt.trim()) {
+        // Preserves WKT syntax (POLYGON, MULTIPOLYGON) and swaps coordinate pairs inside parentheses
+        const flippedWkt = wkt.replace(/\(\s*([^\(\)]+)\s*\)/g, (_, innerCoords) => {
+          const flippedPairs = innerCoords
+            .split(',')
+            .map((pair: string) => {
+              const parts = pair.trim().split(/\s+/);
+              if (parts.length >= 2) {
+                // Swap X Y (Lon Lat) -> Y X (Lat Lon)
+                return `${parts[1]} ${parts[0]}`;
+              }
+              return pair.trim();
+            })
+            .join(', ');
+          return `(${flippedPairs})`;
         });
-        
-        // 4. Join with commas to match requested format: "35.58 45.44,35.58 45.44"
-        const finalStr = pairs.join(',');
-        
-        return { ...row, [wktCol]: finalStr };
+
+        return { ...row, [wktCol]: flippedWkt };
       }
       return row;
     });
@@ -72,7 +74,7 @@ export default function CoordinateFlipperPage() {
                 <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-orange-600 transition-colors cursor-help" />
             </Link>
         </h1>
-        <p className="text-muted-foreground">Converts WKT to flipped raw coordinates (Lat Lng,Lat Lng...)</p>
+        <p className="text-muted-foreground">Converts WKT coordinates to flipped order (Lat Lng)</p>
       </div>
       
       <Card>
