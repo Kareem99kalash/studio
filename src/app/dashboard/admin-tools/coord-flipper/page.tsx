@@ -9,6 +9,7 @@ import Link from 'next/link';
 
 export default function CoordinateFlipperPage() {
   const [data, setData] = useState<any[]>([]);
+  const [processedData, setProcessedData] = useState<any[]>([]);
   const [wktCol, setWktCol] = useState('');
   const [cols, setCols] = useState<string[]>([]);
   const [nameCol, setNameCol] = useState('name');
@@ -21,6 +22,7 @@ export default function CoordinateFlipperPage() {
       skipEmptyLines: true,
       complete: (res) => {
         setData(res.data);
+        setProcessedData([]); // Reset processed data on new upload
         const fields = res.meta.fields || [];
         setCols(fields);
         
@@ -37,19 +39,21 @@ export default function CoordinateFlipperPage() {
   const flipAndCleanWKT = (wktString: string) => {
     if (!wktString || typeof wktString !== 'string') return '';
     
-    // 1. Remove POLYGON ((, MULTIPOLYGON (((, and trailing parens
+    // 1. Strip POLYGON, MULTIPOLYGON, and all parentheses
     let clean = wktString
-      .replace(/^[A-Z]+\s*\(+/i, '')
-      .replace(/\)+$/, '')
+      .replace(/[a-zA-Z]+\s*\(+/g, '')
+      .replace(/\)+/g, '')
       .trim();
 
     // 2. Split into coordinate pairs by comma
     const pairs = clean.split(',').map(item => item.trim());
 
-    // 3. Swap X Y (Lng Lat) -> Y X (Lat Lng)
+    // 3. Swap X Y (Lng Lat) -> Y X (Lat Lng) SAFELY
     const flippedPairs = pairs.map(pair => {
       const parts = pair.split(/\s+/);
-      if (parts.length >= 2) {
+      
+      // ONLY flip if there are two parts AND the first part is actually a number
+      if (parts.length >= 2 && !isNaN(Number(parts[0]))) {
         return `${parts[1]} ${parts[0]}`;
       }
       return pair;
@@ -73,11 +77,13 @@ export default function CoordinateFlipperPage() {
       };
     });
 
-    setData(cleanedData);
+    // Save to a NEW state variable so we don't corrupt the original data
+    setProcessedData(cleanedData);
   };
 
   const download = () => {
-    const csv = Papa.unparse(data);
+    // Download the PROCESSED data, not the original data
+    const csv = Papa.unparse(processedData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -119,9 +125,9 @@ export default function CoordinateFlipperPage() {
             </div>
           )}
 
-          {data.length > 0 && (
+          {processedData.length > 0 && (
              <div className="flex justify-between items-center pt-4 border-t">
-                <span className="text-sm font-medium">{data.length} rows ready</span>
+                <span className="text-sm font-medium text-green-600">{processedData.length} rows ready to download</span>
                 <Button variant="outline" onClick={download}><Download className="mr-2 h-4 w-4"/> Download Fixed CSV</Button>
              </div>
           )}
